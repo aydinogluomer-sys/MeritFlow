@@ -121,7 +121,7 @@ select is(
 
 -- Catalog (§8A): global catalog readable; exact seeded counts.
 select is( (select count(*) from public.roles),       7::bigint,  'roles catalog readable (7)' );
-select is( (select count(*) from public.permissions), 19::bigint, 'permissions catalog readable (19)' );
+select is( (select count(*) from public.permissions), 20::bigint, 'permissions catalog readable (20)' );
 
 -- Catalog is read-only to clients (no INSERT privilege).
 select throws_ok(

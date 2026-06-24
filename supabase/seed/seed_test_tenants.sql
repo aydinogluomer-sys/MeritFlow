@@ -174,3 +174,52 @@ values
    'a0000000-0000-0000-0000-0000000000a1', now() + interval '30 days', 'active', now()),
   ('a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-0000000000ab', 'read',
    'a0000000-0000-0000-0000-0000000000a1', now() - interval '1 day',   'active', now() - interval '60 days');
+
+-- =============================================================================
+-- Phase 3B-A seed — scoring policies (DEV/STAGING ONLY)
+-- Refs: 18 §8 / §5.5 decision 1. Adds the policy.manage permission + role mapping
+-- (owner/admin/hr only) and deterministic scoring policy/version fixtures.
+-- NOTE: this raises the global permission catalog to 20 rows (was 19).
+-- =============================================================================
+
+-- policy.manage permission (scoring domain) — catalog addition.
+insert into public.permissions (key, label, domain, is_sensitive) values
+  ('policy.manage', 'Manage scoring policy', 'scoring', false)
+on conflict (key) do nothing;
+
+-- Grant policy.manage to owner/admin/hr ONLY (NOT manager/finance/employee/auditor).
+insert into public.role_permissions (role_key, permission_key)
+select r, p from (values
+  ('owner', 'policy.manage'),
+  ('admin', 'policy.manage'),
+  ('hr',    'policy.manage')
+) as rp(r, p)
+on conflict (role_key, permission_key) do nothing;
+
+-- scoring_policies: Org A (acme) + Org B (globex, for cross-tenant tests).
+insert into public.scoring_policies (id, organization_id, name, status, created_by) values
+  ('a0000000-0000-0000-0000-0000000000d1', 'a0000000-0000-0000-0000-000000000001',
+   'Default Scoring', 'active', 'a0000000-0000-0000-0000-0000000000a3'),
+  ('b0000000-0000-0000-0000-0000000000d1', 'b0000000-0000-0000-0000-000000000002',
+   'Default Scoring', 'active', 'b0000000-0000-0000-0000-0000000000b1')
+on conflict (id) do nothing;
+
+-- scoring_policy_versions: Org A published (v1) + Org A draft (v2) + Org B published (v1).
+-- created_by/published_by are policy.manage holders (HR A / Owner B).
+insert into public.scoring_policy_versions
+  (id, organization_id, scoring_policy_id, version_no, status,
+   multipliers, revision_penalty_rule, timeliness_thresholds, published_at, published_by, created_by)
+values
+  ('a0000000-0000-0000-0000-0000000000d2', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-0000000000d1', 1, 'published',
+   '{"complexity":{},"impact":{},"quality":{},"timeliness":{}}'::jsonb, '{}'::jsonb, '{}'::jsonb,
+   now(), 'a0000000-0000-0000-0000-0000000000a3', 'a0000000-0000-0000-0000-0000000000a3'),
+  ('a0000000-0000-0000-0000-0000000000d3', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-0000000000d1', 2, 'draft',
+   '{"complexity":{},"impact":{},"quality":{},"timeliness":{}}'::jsonb, '{}'::jsonb, '{}'::jsonb,
+   null, null, 'a0000000-0000-0000-0000-0000000000a3'),
+  ('b0000000-0000-0000-0000-0000000000d2', 'b0000000-0000-0000-0000-000000000002',
+   'b0000000-0000-0000-0000-0000000000d1', 1, 'published',
+   '{"complexity":{},"impact":{},"quality":{},"timeliness":{}}'::jsonb, '{}'::jsonb, '{}'::jsonb,
+   now(), 'b0000000-0000-0000-0000-0000000000b1', 'b0000000-0000-0000-0000-0000000000b1')
+on conflict (id) do nothing;
