@@ -1,0 +1,17 @@
+# Normalize text files in repo
+* text=auto
+
+# Keep project/source files LF across Windows/macOS/Linux
+*.md text eol=lf
+*.sql text eol=lf
+*.toml text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.css text eol=lf
+*.scss text eol=lf
+*.sh text eol=lf

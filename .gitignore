@@ -1,0 +1,23 @@
+# --- Secrets / env ---
+.env
+.env.*
+!.env.example
+
+# --- Logs ---
+*.log
+phase3a-test-debug.log
+
+# --- Supabase local / tooling artifacts (dev-only; never tracked) ---
+supabase/.branches/
+supabase/.temp/
+.supabase/
+
+# --- Agent / editor / tooling ---
+.claude/
+
+# --- Dependencies ---
+node_modules/
+
+# --- OS cruft ---
+.DS_Store
+Thumbs.db

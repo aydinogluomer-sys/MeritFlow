@@ -1,0 +1,49 @@
+# Supabase local (dev/staging) configuration — MeritFlow
+# Phase 3A: Database Foundation & RBAC.
+#
+# NON-NEGOTIABLE (CLAUDE.md / ADR-014):
+#   - This config is for LOCAL dev / staging only.
+#   - Production database is NEVER touched via CLI/MCP from here.
+#   - Apply & test with:  supabase start  →  supabase db reset  →  supabase test db
+#   - Service role key is env-only; never committed, never shipped to client.
+
+project_id = "meritflow-dev"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[db.pooler]
+enabled = false
+
+[studio]
+enabled = true
+port = 54323
+
+[inbucket]
+enabled = true
+port = 54324
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+# JWT is identity-only; authorization is server-side + RLS from DB (Decision Lock AD1).
+jwt_expiry = 3600
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false
+
+# Local-only seed applied on `supabase db reset`.
+[db.seed]
+enabled = true
+sql_paths = ["./seed/seed_test_tenants.sql"]

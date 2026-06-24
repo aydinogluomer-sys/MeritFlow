@@ -1,0 +1,126 @@
+# 12 — Implementation Roadmap
+
+## Purpose
+
+Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol haritasına bağlamak. Bu doküman
+**kod içermez**; her fazın hedefini, çıktısını, kabul/test kriterini ve bağımlılığını tanımlar.
+
+## Scope
+
+- Kapsam: Phase 0–10, faz başına goal/deliverable/acceptance/test/risk/dependency/difficulty.
+- Kapsam dışı: kod, migration, gerçek tahminleme (gün/efor) — implementation authorize sonrası netleşir.
+
+## Assumptions
+
+- `Assumption:` Tek ekip, modular monolith, Supabase + Next.js (context stack).
+- Implementation yalnız kullanıcı `implementation authorized` dedikten sonra başlar; izin **faz-sınırlı** kabul edilir (ADR-020).
+
+## Non-negotiable rules
+
+- Hiçbir faz, bağımlı olduğu güvenlik temeli (RLS, ledger) tamamlanmadan ileri taşınmaz.
+- Her faz kendi acceptance + test kriterini geçmeden "done" sayılmaz.
+- Phase 3 (DB/RLS/Ledger) güvenlik temeli; sonraki fazların ön koşulu.
+
+## Detailed specification
+
+### Phase 0 — Source & Prompt Audit  [TAMAMLANDI]
+- Goal: çelişki/karar netleştirme.
+- Deliverable: planlama paketi + Decision Lock (D1–D12) + Phase-Gate OQ Resolution (AD1–AD10).
+- Acceptance: 22 karar kilitli; faz-gate OQ'lar kapatıldı; çelişkiler çözülmüş.
+- Status: ✅ (PDF kullanılmıyor; context pack tek source of truth).
+
+### Phase 1 — Product & Risk Framing  [DOKÜMAN AŞAMASI — TAMAMLANDI]
+- Goal: PRD + legal/ethical risk haritası + tam ADR gövdeleri.
+- Deliverable: `01_PRD` (kesin), `/docs/adr/ADR-001…020` tam metin, `CLAUDE.md`.
+- Acceptance: non-negotiable'lar net; legal-review item listesi hazır; 20 ADR Accepted/Proposed.
+- Status: ✅ ADR'ler + CLAUDE.md üretildi. Test: yok (doküman). Risk: hukuki belirsizlik. Dep: Phase 0. Difficulty: M.
+
+### Phase 2 — Domain Model & Permissions
+- Goal: entity finalizasyonu + RBAC (primary_role, AD2) + RLS stratejisi somutlanması (DB authz, AD1).
+- Deliverable: `02_DOMAIN_MODEL` + `03_PERMISSION_RLS_STRATEGY` (policy intent → uygulanabilir tasarım).
+- Acceptance: her tablo için RLS policy intent + Finance view + comp audit (AD3) onaylı.
+- Test: RLS test planı. Risk: recursive RLS, primary_role. Dep: Phase 1. Difficulty: M.
+
+### Phase 3 — Database & Ledger Foundation  [GÜVENLİK TEMELİ]
+- Goal: schema + RLS + point/bonus ledger + audit + comp records + seed.
+- Deliverable: tablolar, RLS policy'leri, ledger yapıları, comp audit maskeleme, test tenant seed.
+- Acceptance: RLS negatif suite yeşil; ledger append-only; audit yazıyor (comp maskeli); AD1/AD3 testleri geçer.
+- Test: cross-tenant, append-only, audit coverage, JWT-bypass. Risk: ledger doğruluğu. Dep: Phase 2. Difficulty: L.
+- **Dilimler:**
+  - **Phase 3A — Database Foundation & RBAC** [VERIFIED/DONE — `implementation authorized only for Phase 3A`]:
+    11 temel/RBAC tablosu (organizations, organization_settings, profiles, roles, permissions,
+    role_permissions, memberships, teams, team_memberships, support_access_grants, audit_logs iskeleti),
+    RLS helper'ları (recursive-safe — §7A), RLS ENABLED+FORCE + policy'ler, constraint'ler, test tenant seed,
+    bloklayıcı pgTAP suite. Kod: `supabase/` (plan: `17_PHASE_3A_...`). Apply/test: yalnız dev/staging.
+    **Durum: Phase 3A verified/done** (2026-06-24, lokal dev stack). Kanıt: `db reset` passed,
+    `test db` passed, **38/38 pgTAP testi geçti**. Doğrulama sırasında tek kod/test değişikliği
+    `supabase/tests/0001_phase3a_rls.test.sql` oldu (pgTAP `throws_ok` assertion formu 3-arg→4-arg düzeltildi);
+    **migration/seed/RLS/schema bug bulunmadı**.
+    **Karar:** primary team canonical source = `team_memberships.is_primary` (memberships `primary_team_id`
+    taşımaz; AD9 — bkz. doc 13/14, ADR-019 not).
+    **Phase 3B+ hâlâ gated**; her dilim ayrı, birebir authorization ister (ADR-020).
+  - **Phase 3B+ — Ledger & sensitive data** [GATED]: tasks/scoring/point_ledger, bonus_* /bonus_ledger,
+    compensation_records + comp audit maskeleme (AD3), disputes, anti-gaming, exports. Her dilim ayrı
+    `implementation authorized` ister (faz-sınırlı — ADR-020).
+
+### Phase 4 — Task & Review Core
+- Goal: task CRUD → assign → submit → review.
+- Deliverable: task akışı + state machine + self-approval block + submission/revision history (AD4).
+- Acceptance: state machine doğru; self-approval blocked; period-lock guard.
+- Test: state geçişleri, self-approval. Risk: status bug. Dep: Phase 3. Difficulty: M.
+
+### Phase 5 — Scoring Engine
+- Goal: `04` motorunun uygulanması.
+- Deliverable: policy versioning (AD7) + multipliers + timeliness(submitted_at, AD4) + collaboration-no-effect (AD5) + approve→ledger + breakdown.
+- Acceptance: determinizm; quality=poor approve etmez; geç onay cezalandırmaz; idempotent approve.
+- Test: scoring suite (`10` #1, #5). Risk: yanlış puan. Dep: Phase 4. Difficulty: M.
+
+### Phase 6 — Bonus Engine
+- Goal: `05` motorunun uygulanması.
+- Deliverable: period/pool(lock, AD10)/eligibility/proration/T_org(+top-up, AD8)/cap basis(AD6)/calculation run/snapshot(faktörler, AD7).
+- Acceptance: Σ invariant; worked example reproduce; cap basis yoksa pending+export bloğu; T_org=1.2 top-up'suz pool aşmaz; idempotent run; snapshot immutable.
+- Test: bonus calculation suite (`10` #4). Risk: finansal hata. Dep: Phase 5. Difficulty: L.
+
+### Phase 7 — Anti-Gaming & Disputes
+- Goal: 5 flag + dispute workflow.
+- Deliverable: `08` kuralları + `07` dispute akışı (HR atama, 5 iş günü, manager final değil) + recalculation.
+- Acceptance: flag→review (no auto-punish); dispute→adjustment/snapshot; manager final değil.
+- Test: anti-gaming + dispute suite. Risk: false positive. Dep: Phase 6. Difficulty: M.
+
+### Phase 8 — Dashboards & UX
+- Goal: 5 rol ekranları + 2 leaderboard görünümü.
+- Deliverable: `09` IA'ya göre ekranlar + breakdown'lar (cap basis/T_org top-up notları dahil).
+- Acceptance: her puan/prim açıklanabilir; estimated/final ayrımı; privacy-first leaderboard.
+- Test: E2E + erişim + temel a11y. Risk: UX altitude. Dep: Phase 5–7. Difficulty: L.
+
+### Phase 9 — Testing & Security
+- Goal: tam test suite + güvenlik incelemesi.
+- Deliverable: business/RLS/permission/anti-gaming/E2E/security testleri.
+- Acceptance: cross-tenant + self-approval bloklayıcı yeşil; audit coverage tam; AD1–AD10 testleri geçer.
+- Test: tüm suite. Risk: kapsam boşluğu. Dep: Phase 3–8. Difficulty: L.
+
+### Phase 10 — Production Readiness
+- Goal: monitoring, error handling, audit export, docs, deploy checklist, support access.
+- Deliverable: gözlemlenebilirlik + deploy checklist + support workflow.
+- Acceptance: audit export çalışır; deploy checklist geçer; support access audit'li.
+- Test: smoke + export. Risk: ops. Dep: Phase 9. Difficulty: M.
+
+## Edge cases
+
+- Phase atlanması: güvenlik temeli (Phase 3) atlanamaz.
+- Paralel çalışma: Phase 4–5 ardışık (scoring task'a bağlı); Phase 8 erken prototiplenebilir ama gerçek veri Phase 6 sonrası.
+
+## Acceptance criteria
+
+- Her faz ölçülebilir acceptance + test kriterine sahip.
+- Güvenlik temeli (RLS/ledger) sonraki fazların ön koşulu olarak işaretli.
+- Roadmap Decision Lock (D + AD) + tüm spec'lerle tutarlı.
+
+## Test implications
+
+- Faz başına "done" tanımı `10_TEST_STRATEGY` ilgili bölümüne bağlanır.
+
+## Open questions
+
+- OQ-RM-1: Efor tahminleri implementation authorize sonrası mı netleştirilir? (Öneri: evet.)
+- OQ-RM-2: Phase 8 (UX) için erken prototip (mock veri) Phase 6 öncesi başlasın mı? (Öneri: opsiyonel, paralel.)
