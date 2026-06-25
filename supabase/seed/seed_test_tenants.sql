@@ -223,3 +223,31 @@ values
    '{"complexity":{},"impact":{},"quality":{},"timeliness":{}}'::jsonb, '{}'::jsonb, '{}'::jsonb,
    now(), 'b0000000-0000-0000-0000-0000000000b1', 'b0000000-0000-0000-0000-0000000000b1')
 on conflict (id) do nothing;
+
+-- =============================================================================
+-- Phase 3B-B seed — point_ledger fixtures (DEV/STAGING ONLY)
+-- Refs: 18 §8. Deterministic rows to exercise RLS visibility + append-only.
+-- created_by = HR A (org A) / Owner B (org B). Writes here run as the bypassrls
+-- migration role (server-only model); no client mint path exists.
+--   e1 = manual_adjustment, emp-alpha (team alpha) — employee-owned / manager-visible
+--   e2 = reversal of e1, emp-alpha
+--   e3 = manual_adjustment, emp-beta (team beta) — manager-alpha NOT visible
+--   b_e1 = manual_adjustment, emp-b (org B) — cross-tenant
+-- =============================================================================
+insert into public.point_ledger
+  (id, organization_id, employee_id, event_type, points_delta, reason,
+   scoring_policy_version_id, reverses_entry_id, created_by)
+values
+  ('a0000000-0000-0000-0000-0000000000e1', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-0000000000a7', 'manual_adjustment', 10, 'seed: alpha manual adjustment',
+   'a0000000-0000-0000-0000-0000000000d2', null, 'a0000000-0000-0000-0000-0000000000a3'),
+  ('a0000000-0000-0000-0000-0000000000e2', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-0000000000a7', 'reversal', -10, 'seed: reverse e1',
+   null, 'a0000000-0000-0000-0000-0000000000e1', 'a0000000-0000-0000-0000-0000000000a3'),
+  ('a0000000-0000-0000-0000-0000000000e3', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-0000000000a8', 'manual_adjustment', 5, 'seed: beta manual adjustment',
+   null, null, 'a0000000-0000-0000-0000-0000000000a3'),
+  ('b0000000-0000-0000-0000-0000000000e1', 'b0000000-0000-0000-0000-000000000002',
+   'b0000000-0000-0000-0000-0000000000b2', 'manual_adjustment', 7, 'seed: org B manual adjustment',
+   null, null, 'b0000000-0000-0000-0000-0000000000b1')
+on conflict (id) do nothing;
