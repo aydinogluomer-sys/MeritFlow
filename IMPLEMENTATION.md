@@ -3,7 +3,7 @@
 > **Yaşayan durum/todo takip dosyası.** Detaylı "neden/nasıl" için kaynak: `docs/planning/` (00–18),
 > `docs/adr/` (ADR-001…020), `CLAUDE.md`. Çelişki olursa `docs/planning/00_DECISION_LOCK.md` kazanır.
 > Bu dosya **kod değildir**; yalnızca nerede olduğumuzu ve ne yapacağımızı izler.
-> Son güncelleme: 2026-07-24 (compensation_records runtime verified + committed + docs sync).
+> Son güncelleme: 2026-07-24 (bonus_periods + bonus_pools runtime verified + committed + docs sync).
 
 ## 0. Yönetişim kuralı (her şeyden önce)
 
@@ -28,11 +28,12 @@ Decision Lock = D1–D12 + AD1–AD10 (22 karar).
 | Phase 3A | 11 foundation/RBAC tablosu + RLS helper + RLS + audit + seed | `migrations/0001–0007`, `seed`, `tests/0001` | ✅ verified | 38/38 pgTAP (2026-06-24) |
 | Phase 3B-A | `scoring_policies` + `scoring_policy_versions` (published immutable AD7) + RLS + `policy.manage` | `migrations/0008`, `tests/0002` | ✅ verified | commit `dd9b861`; 2026-07-24 |
 | Phase 3B-B | `point_ledger` (append-only, server-only, Finance excluded) + `team_of()` + RLS | `migrations/0009`, `tests/0003` | ✅ verified | commit `f46ab49`; 2026-07-24 |
-| Phase 3 comp | `compensation_records` (raw SELECT closed, comp.read writes, DELETE blocked, masked write/access audit, justified `read_compensation_record`) | `migrations/0010`, `tests/0004` | ✅ **verified** | commit `c9cd0f2`; 2026-07-24 |
+| Phase 3 comp | `compensation_records` (raw SELECT closed, comp.read writes, DELETE blocked, masked write/access audit, justified `read_compensation_record`) | `migrations/0010`, `tests/0004` | ✅ verified | commit `c9cd0f2`; 2026-07-24 |
+| Phase 3 bonus P/P | `bonus_periods` + `bonus_pools` (state machine, AD10 pool-lock-before-period-lock, locked t_org+metadata required, locked immutability, period identity immutability, period.manage/pool.create) | `migrations/0011`, `tests/0005` | ✅ **verified** | commit `d04b954`; 2026-07-24 |
 
 **Runtime verification (2026-07-24, local dev stack, npx Supabase CLI 2.109.1):** `supabase db reset`
-migrations **0001..0010** + seed temiz uyguladı; `supabase test db` → **Files=4, Tests=139, Result=PASS,
-Failed=0** (`0001`·`0002`·`0003`·`0004` ok), iki temiz koşuda tekrar-üretildi. `db reset`'teki
+migrations **0001..0011** + seed temiz uyguladı; `supabase test db` → **Files=5, Tests=194, Result=PASS,
+Failed=0** (`0001`·`0002`·`0003`·`0004`·`0005` ok), iki temiz koşuda tekrar-üretildi. `db reset`'teki
 storage-container "not ready" uyarısı **non-fatal**.
 
 **compensation_records güvenlik özelliği (AD3/D7/SI-5):** doğrudan **raw SELECT kapalı** (SELECT policy yok;
@@ -40,10 +41,15 @@ maaş kolonları selectable değil); ham okuma **yalnız** `read_compensation_re
 (comp.read/auditor + boş olmayan reason); **write + access audit maskeli** → ham maaş/cap `audit_logs`'a
 asla düşmez.
 
+**bonus_periods + bonus_pools invariant'ları (AD10/SI-4):** period **pool locked olmadan lock edilemez**
+(AD10); locked pool **t_org + locked_at + locked_by** ister; locked pool amount/t_org **immutable** (new
+version); locked/non-open period identity (dates/type/org) **immutable** (SI-4); RLS ENABLE+FORCE +
+**görev ayrımı** (period.manage=owner/hr vs pool.create=finance); DELETE bloklu.
+
 **App katmanı (Next.js/API/UI): ⬜ hiç başlanmadı** (repo'da `package.json` yok, sadece `supabase/`).
 
 **✅ Doküman senkron güncel (2026-07-24):** `supabase/README.md`, `docs/planning/12`, `docs/planning/18`,
-bu dosya — 0001..0010 + 3A/3B/comp verified durumunu yansıtıyor.
+bu dosya — 0001..0011 + 3A/3B/comp/bonus-P/P verified durumunu yansıtıyor.
 
 ---
 
@@ -62,11 +68,14 @@ Kural: güvenlik temeli (RLS/ledger) bitmeden feature fazı ilerlemez.
 - [x] **3B-A — Scoring policy** ✅ (commit `dd9b861`, verified 2026-07-24).
 - [x] **3B-B — Point ledger + `team_of` + append-only** ✅ (commit `f46ab49`, verified 2026-07-24).
 - [x] **compensation_records + comp audit masking** ✅ (commit `c9cd0f2`, verified 2026-07-24; raw SELECT closed, justified read, masked audit).
+- [x] **bonus_periods + bonus_pools** ✅ (commit `d04b954`, verified 2026-07-24; state machine, AD10 pool-lock, locked t_org+immutability, period identity immutability).
 - [x] Docs/status sync (README + roadmap 12 + doc 18 + bu dosya).
 
 ### B. Kalan Phase 3 DB-foundation dilimleri (SQL-only, app gerektirmez)  ⛔ her biri ayrı yetki
 > Her dilim = tablo(lar) + RLS ENABLE+FORCE + policy + bloklayıcı pgTAP + additive seed, **aynı dilimde**.
-- [ ] **Bonus foundation** — **sıradaki önerilen dilim**: `bonus_periods`, `bonus_pools`, `bonus_pool_components`, `bonus_pool_eligibility`, `bonus_calculation_runs`, `bonus_allocations`, `bonus_allocation_snapshots` (immutable), `bonus_ledger` (double-entry). Pool-lock (AD10), snapshot faktörleri (AD7), `pending_missing_cap_basis` (AD6, compensation_records tüketir). ⛔ henüz yetkili değil.
+- [ ] **bonus_pool_components + bonus_pool_eligibility** — **sıradaki önerilen dilim**: component ağırlıkları (MVP `individual`=1.0, Σweight=1.0 — D1) + eligibility kaydı (15 gün + active membership, proration cap üzerinde — D10; `primary_team_id` = `team_memberships.is_primary`'den türev). ⛔ henüz yetkili değil.
+- [ ] **bonus_calculation_runs + bonus_allocations + bonus_allocation_snapshots** — hesaplama iskeleti; run idempotency, allocation `pending_missing_cap_basis` (AD6), snapshot immutable (INV-6) + Σfinal+remainder=pool (INV-4).
+- [ ] **bonus_ledger** — double-entry money (Σdebit=Σcredit; accrual yalnız approved snapshot'tan — ADR-017).
 - [ ] **disputes** + `dispute_events` (SLA/atama alanları, D9).
 - [ ] **anti_gaming_flags** (+ `anomaly_baselines` iskeleti).
 - [ ] **notifications**, **exports** (export snapshot olmadan üretilemez — AD6/SI-3).
@@ -93,6 +102,7 @@ Kural: güvenlik temeli (RLS/ledger) bitmeden feature fazı ilerlemez.
 - Bonus snapshot olmadan payout/export yok; snapshot immutable (ADR-006).
 - Malus/clawback = approval workflow, otomatik kesinti yok (D2).
 - `compensation_records`: doğrudan raw SELECT yok; ham okuma reason + masked access audit ister; employee'ye kapalı (D7/AD3).
+- Bonus: period pool locked olmadan lock edilemez (AD10); locked pool/period sessizce mutate edilemez (SI-4).
 - Primary team tek kaynak: `team_memberships.is_primary` — `memberships.primary_team_id` **eklenmez** (AD9).
 - KVKK / Türkiye iş hukuku = legal-review item (uzman onayı; kesin hüküm verilmez).
 
@@ -100,11 +110,12 @@ Kural: güvenlik temeli (RLS/ledger) bitmeden feature fazı ilerlemez.
 
 ## 5. Önerilen ilk adım
 
-Phase 3 comp foundation **verified + committed + synced**. Sıradaki mantıklı iş: **bonus foundation**
-dilimi (`bonus_periods`/`pools`/`allocations`/`snapshots`/`bonus_ledger`) — snapshot immutability +
-double-entry ledger + `pending_missing_cap_basis` (compensation_records'ı tüketir). **Henüz yetkili değil.**
-Başlatmak için yetki cümlesi (örnek, tek dilim):
+Phase 3 bonus_periods + bonus_pools foundation **verified + committed + synced**. Sıradaki mantıklı iş:
+**bonus_pool_components + bonus_pool_eligibility** dilimi — component ağırlıkları (MVP `individual`=1.0) +
+eligibility kaydı (15 gün + active membership, proration; `primary_team_id` `team_memberships.is_primary`'den).
+En küçük, güvenli sonraki bonus dilimi (hesaplama motoru henüz yok). **Henüz yetkili değil.** Başlatmak için
+yetki cümlesi (örnek, tek dilim):
 
-`implementation authorized only for Phase 3 — bonus_periods + bonus_pools (tables + RLS + tests)`
+`implementation authorized only for Phase 3 — bonus_pool_components + bonus_pool_eligibility (tables + RLS + tests)`
 
 > Bu cümle gelene kadar hiçbir kod/migration/test yazılmaz; sonraki her dilim ayrı, faz-sınırlı yetki ister (ADR-020).

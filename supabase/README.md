@@ -1,6 +1,6 @@
-# MeritFlow — Supabase (Database Foundation: Phase 3A–3B + compensation_records)
+# MeritFlow — Supabase (Database Foundation: Phase 3A–3B + comp + bonus periods/pools)
 
-This directory is the **database foundation**. It currently implements four verified
+This directory is the **database foundation**. It currently implements five verified
 slices (each under its own `implementation authorized only for Phase 3X — …`):
 
 - **Phase 3A — Database Foundation & RBAC** (`17_PHASE_3A_...md`): 11 foundation/RBAC
@@ -13,9 +13,13 @@ slices (each under its own `implementation authorized only for Phase 3X — …`
   with **direct raw SELECT closed**, comp.read-gated INSERT/UPDATE, supersede-only retention
   (DELETE blocked), MASKED write/access audit, and an audited + justified
   `read_compensation_record(employee, reason)` — RLS + pgTAP.
+- **Phase 3 — bonus_periods + bonus_pools** (`14`/`15`/`16` §3, AD10): period lifecycle state machine +
+  pool (one active per period); **AD10 pool-lock-before-period-lock**; a locked pool requires
+  `t_org` + `locked_at` + `locked_by` and its financial fields are immutable; locked/non-open period
+  identity (dates/type/org) is immutable (SI-4); `period.manage` / `pool.create` separation — RLS + pgTAP.
 
-Migrations `0001..0010` + seed apply cleanly; blocking pgTAP suites (`0001`/`0002`/`0003`/`0004`) are
-green (see "Verification"). **Everything downstream is still gated** (see "Out of scope").
+Migrations `0001..0011` + seed apply cleanly; blocking pgTAP suites (`0001`..`0005`) are green (see
+"Verification"). **Everything downstream is still gated** (see "Out of scope").
 
 ## ⚠️ Environment rule (non-negotiable — ADR-014 / CLAUDE.md)
 
@@ -46,13 +50,17 @@ supabase/
     0010_compensation_records.sql         compensation_records (comp-sensitive) — raw SELECT closed;
                                           comp.read INSERT/UPDATE; DELETE blocked; mask_compensation +
                                           log_comp_audit (masked) + read_compensation_record (justified)
+    0011_bonus_periods_pools.sql          bonus_periods + bonus_pools — state machine + AD10 pool-lock
+                                          guard; locked pool needs t_org+locked_at+locked_by (immutable);
+                                          period identity immutable (SI-4); period.manage/pool.create RLS
   seed/seed_test_tenants.sql              2 tenants, RBAC catalog, teams, support grants,
-                                          + Phase 3B (scoring/versions, point_ledger) + Phase 3 comp fixtures
+                                          + Phase 3B (scoring/versions, point_ledger) + comp + bonus fixtures
   tests/
     0001_phase3a_rls.test.sql             blocking pgTAP — RLS/RBAC (Phase 3A)
     0002_phase3b_scoring_policies.test.sql blocking pgTAP — scoring policy/version (Phase 3B-A)
     0003_phase3b_point_ledger.test.sql    blocking pgTAP — point_ledger/append-only (Phase 3B-B)
     0004_phase3_compensation.test.sql     blocking pgTAP — compensation_records/masked audit (Phase 3)
+    0005_phase3_bonus_periods_pools.test.sql blocking pgTAP — bonus periods/pools + AD10/SI-4 (Phase 3)
 ```
 
 ## Apply & test (local)
@@ -61,8 +69,8 @@ Requires Docker + the Supabase CLI. From the repo root:
 
 ```bash
 supabase start            # boots local dev stack (Docker)
-supabase db reset         # applies migrations 0001..0010 then seed
-supabase test db          # runs the pgTAP suites in tests/ (0001..0004)
+supabase db reset         # applies migrations 0001..0011 then seed
+supabase test db          # runs the pgTAP suites in tests/ (0001..0005)
 ```
 
 If the `supabase` binary is not on PATH (e.g. a fresh install not yet picked up), the project-local
@@ -80,13 +88,19 @@ re-runnable (on-conflict guards).
 > (`0001..0009`) + seed; `test db` → **Files=3, Tests=97, PASS, Failed=0**. Reproduced across two clean runs.
 >
 > **Phase 3 compensation_records: VERIFIED / DONE** (2026-07-24, npx Supabase CLI **2.109.1**;
-> commit `c9cd0f2`). `db reset` applied migrations **0001..0010** + seed cleanly; `test db` →
-> **Files=4, Tests=139, Result=PASS, Failed=0** (`0001` ok · `0002` ok · `0003` ok · `0004` ok).
-> Security properties proven (AD3/D7/SI-5): **direct raw SELECT is closed** (no SELECT policy; salary
-> columns not selectable), **raw reads require `read_compensation_record(employee, reason)`** (comp.read/
-> auditor + non-empty reason), and **write + access audits are masked** (raw salary/cap never lands in
-> `audit_logs`). A non-fatal storage-container readiness warning during `db reset` is non-blocking
-> (the green suite confirms schema + seed).
+> commit `c9cd0f2`). `db reset` (`0001..0010`) + seed; `test db` → **Files=4, Tests=139, PASS, Failed=0**.
+> Security (AD3/D7/SI-5): **direct raw SELECT closed**, **raw reads require
+> `read_compensation_record(employee, reason)`**, **write + access audits masked** (raw salary/cap never
+> in `audit_logs`).
+>
+> **Phase 3 bonus_periods + bonus_pools: VERIFIED / DONE** (2026-07-24, npx Supabase CLI **2.109.1**;
+> commit `d04b954`). `db reset` applied migrations **0001..0011** + seed cleanly; `test db` →
+> **Files=5, Tests=194, Result=PASS, Failed=0** (`0001`..`0005` ok), reproduced across two clean runs.
+> Invariants proven (AD10/SI-4): **a period cannot lock before its pool is locked**; a **locked pool
+> requires `t_org` + `locked_at` + `locked_by`** and its amount/`t_org` are immutable (new version); a
+> **locked/non-open period's identity (dates/type/org) is immutable**; `period.manage` (owner/hr) vs
+> `pool.create` (finance) separation of duties; DELETE blocked. A non-fatal storage-container readiness
+> warning during `db reset` is non-blocking (the green suite confirms schema + seed).
 >
 > **Later phases remain gated** (ADR-020). **Never run any of this against a production project.**
 
@@ -104,18 +118,19 @@ re-runnable (on-conflict guards).
 
 ```bash
 supabase start        # 1. boot local stack; note the printed local URLs + dev-default keys
-supabase db reset     # 2. apply 0001..0010 + seed (expect clean apply)
+supabase db reset     # 2. apply 0001..0011 + seed (expect clean apply)
 supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
 ```
 
 ### Expected pass criteria
 
-- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=4, Tests=139, PASS**). Blocking.
+- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=5, Tests=194, PASS**). Blocking.
 - [ ] Green coverage: cross-tenant isolation (SI-7), non-recursive memberships read (§7A), support
   active-vs-expired grant (D4), append-only audit + append-only `point_ledger` (SI-2), helper
   correctness, scoring-policy `policy.manage` gating + published-version immutability (AD7), point_ledger
-  visibility (Finance excluded), and **compensation_records** (raw SELECT closed, comp.read writes,
-  DELETE blocked, masked write/access audit, justified `read_compensation_record`, cross-tenant — SI-5/SI-7).
+  visibility (Finance excluded), **compensation_records** (raw SELECT closed, masked audit, justified read),
+  and **bonus_periods/pools** (state machine, AD10 pool-lock, locked t_org + immutability, period identity
+  immutability, period.manage/pool.create separation — SI-4/SI-7).
 - [ ] `supabase db reset` then re-running the suite is reproducible (deterministic seed).
 
 ### Failure triage
@@ -159,7 +174,7 @@ supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
 | support_access_grants | yes | audit-critical | time-bounded (D4); audited |
 | audit_logs | yes | audit-critical | append-only; comp payload masked (AD3) |
 
-**Phase 3B-A / 3B-B / Phase 3 comp (4):**
+**Phase 3B / Phase 3 comp + bonus (6):**
 
 | Table | org_id? | Class | Notes |
 | --- | :--: | --- | --- |
@@ -167,6 +182,8 @@ supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
 | scoring_policy_versions | yes | confidential, audit-critical | **immutable once published** (AD7); same-org composite FK |
 | point_ledger | yes | audit-critical, financial-critical | **append-only**; server-only writes; Finance excluded |
 | compensation_records | yes | **compensation-sensitive**, personal-data | **no direct raw SELECT**; comp.read INSERT/UPDATE; DELETE blocked; masked write/access audit; raw reads via `read_compensation_record()` |
+| bonus_periods | yes | financial-critical | state machine (open→locked→…→closed); locked needs metadata; identity immutable once locked (SI-4); org-wide read, `period.manage` write; DELETE blocked |
+| bonus_pools | yes | financial-critical | one active pool/period; **AD10** period-lock guard; locked needs `t_org`+metadata + immutable; HR/Finance/Auditor read, `pool.create` write; DELETE blocked |
 
 ## Security guarantees enforced here
 
@@ -176,25 +193,28 @@ supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
 - **Recursive-RLS safe** (§7A): helpers (incl. `team_of`) are SECURITY DEFINER + fixed `search_path`.
 - **Least privilege**: `authenticated` is never granted `DELETE`; catalog tables read-only; `point_ledger`
   is SELECT-only for `authenticated`; **`compensation_records` has NO raw SELECT** (only column `id`;
-  raw reads via the audited `read_compensation_record()`).
+  raw reads via the audited `read_compensation_record()`); `bonus_pools` read limited to HR/Finance/Auditor.
 - **Append-only** (SI-2): triggers block UPDATE/DELETE on `audit_logs` and `point_ledger`.
 - **Scoring-version immutability** (AD7): published `scoring_policy_versions` cannot be UPDATE/DELETE'd.
 - **Compensation confidentiality** (AD3/D7/SI-5): raw salary/cap never directly selectable and never in
-  `audit_logs` (masked write + access audit); raw reads require a reason and are audited; DELETE forbidden
-  (supersede-only retention).
+  `audit_logs` (masked write + access audit); raw reads require a reason and are audited; DELETE forbidden.
+- **Bonus lock discipline** (AD10/SI-4): a period cannot lock before its pool is locked; a locked pool
+  requires `t_org` + lock metadata and freezes its amount/`t_org`; a locked/non-open period's dates/type/org
+  are immutable; `period.manage` vs `pool.create` separation of duties.
 - **Support access** (D4): default no access; read only via an **active, unexpired** grant; audited.
 
 ## Out of scope (later slices / phases — still gated, ADR-020)
 
 Scoring **engine** (final_points math + approve→ledger + `task_approved`/`task_id`), tasks & task_reviews,
-bonus_* / bonus_ledger / snapshots, disputes, anti_gaming_flags, notifications, exports, projects,
+`bonus_pool_components`, `bonus_pool_eligibility`, `bonus_calculation_runs`, `bonus_allocations`,
+`bonus_allocation_snapshots`, `bonus_ledger`, disputes, anti_gaming_flags, notifications, exports, projects,
 objectives, integrations, webhook_events, Finance aggregate views (`v_finance_*`), UI/dashboard, API
 routes. Each needs its own phase-scoped, verbatim authorization (ADR-020).
 
-> **Next recommended slice:** **bonus foundation** (`bonus_periods` / `bonus_pools` /
-> `bonus_pool_components` / `bonus_pool_eligibility` / `bonus_calculation_runs` / `bonus_allocations` /
-> `bonus_allocation_snapshots` / `bonus_ledger`) — pool-lock (AD10), snapshot factors (AD7),
-> `pending_missing_cap_basis` (AD6, consuming compensation_records). **Not authorized yet.**
+> **Next recommended slice:** **bonus_pool_components + bonus_pool_eligibility** — component weights
+> (MVP `individual` = 1.0, Σweight = 1.0 — D1) + eligibility rows (≥15 active days + membership, proration
+> over cap — D10; `primary_team_id` derived from `team_memberships.is_primary`). The smallest safe next
+> bonus slice (no calculation engine yet). **Not authorized yet.**
 
 ## Notes for reviewers
 
@@ -204,3 +224,5 @@ routes. Each needs its own phase-scoped, verbatim authorization (ADR-020).
   `primary_team_id` and must not gain one.
 - Comp direct-SELECT access-auditing for HR/Finance is intentionally closed at the DB (no raw SELECT
   path); the audited path is `read_compensation_record()` (OQ-RLS-2 resolved for this table).
+- bonus_periods overlap prevention is `unique(org, starts_on, ends_on)` + `ends_on > starts_on`; full
+  daterange overlap exclusion (btree_gist) is deferred to a later slice.

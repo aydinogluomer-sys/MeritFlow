@@ -73,12 +73,19 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
     justified `read_compensation_record`). Kod: `migrations/0010_compensation_records.sql`,
     `tests/0004_phase3_compensation.test.sql` (commit `c9cd0f2`). **Verified 2026-07-24** (`db reset`
     0001..0010 + seed; `test db` Files=4 Tests=139 PASS Failed=0). AD3/D7/SI-5 kanıtlı.
+  - **Phase 3 — bonus_periods + bonus_pools** [VERIFIED/DONE]: period lifecycle state machine + pool
+    (one active/period); AD10 pool-lock-before-period-lock; locked pool needs `t_org`+`locked_at`+`locked_by`
+    (amount/t_org immutable); locked/non-open period identity immutable (SI-4); period.manage/pool.create
+    ayrımı. Kod: `migrations/0011_bonus_periods_pools.sql`, `tests/0005_phase3_bonus_periods_pools.test.sql`
+    (commit `d04b954`). **Verified 2026-07-24** (`db reset` 0001..0011 + seed; `test db` Files=5 Tests=194
+    PASS Failed=0). AD10/SI-4 kanıtlı.
   - **Phase 3 (kalan) — Ledger & sensitive data** [GATED]: scoring **engine** (final_points math +
-    approve→ledger + `task_approved`/`task_id`), tasks/task_reviews, bonus_* /bonus_ledger/snapshots,
-    disputes, anti-gaming, notifications, exports, UI/API. Her dilim ayrı `implementation authorized`
-    ister (faz-sınırlı — ADR-020).
-    **Sıradaki önerilen DB dilimi:** **bonus foundation** (`bonus_periods`/`bonus_pools`/…/`bonus_ledger`)
-    — snapshot immutability + double-entry + `pending_missing_cap_basis` (compensation_records tüketir).
+    approve→ledger + `task_approved`/`task_id`), tasks/task_reviews, `bonus_pool_components`,
+    `bonus_pool_eligibility`, `bonus_calculation_runs`, `bonus_allocations`, `bonus_allocation_snapshots`,
+    `bonus_ledger`, disputes, anti-gaming, notifications, exports, UI/API. Her dilim ayrı
+    `implementation authorized` ister (faz-sınırlı — ADR-020).
+    **Sıradaki önerilen DB dilimi:** **bonus_pool_components + bonus_pool_eligibility** (component ağırlıkları
+    MVP `individual`=1.0; eligibility 15 gün + membership + proration; `primary_team_id` `team_memberships.is_primary`'den).
     **Henüz yetkili değil.**
 
 ### Phase 4 — Task & Review Core
