@@ -91,13 +91,23 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
     **immutable** (SI-4). Kod: `migrations/0012_bonus_components_eligibility.sql`,
     `tests/0006_phase3_bonus_components_eligibility.test.sql` (commit `8f74e8d`). **Verified 2026-07-24**
     (`db reset` 0001..0012 + seed; `test db` Files=6 Tests=238 PASS Failed=0). D1/D10/AD9/AD10/SI-4 kanıtlı.
+  - **Phase 3 — bonus_calculation_runs + bonus_allocations + bonus_allocation_snapshots** [VERIFIED/DONE]:
+    hesaplama iskeleti (motor YOK). Run state machine `running→completed→superseded`; AD10 **çift guard**
+    (run yalnız locked period + locked pool üzerinde başlar); idempotency `unique(organization_id, idempotency_key)`;
+    run completed olunca allocation'lar **blanket freeze** (SI-4/SI-14); **ince** snapshot append-only immutable
+    (UPDATE/DELETE hard-block; per-employee detay kopyalanmaz — INV-6); allocation cap-not-exceeded +
+    `cap_applied`(pending_missing_cap_basis — AD6); approved/exported/paid yazımı bloklu; same-org composite FK'ler
+    (period/pool/policy_version/run/employee/team); server-only writes; `Σfinal+remainder=pool` yalnız
+    seed/test-verified (SI-13/INV-4, hard trigger yok). Kod: `migrations/0013_bonus_calc_runs_allocations_snapshots.sql`,
+    `tests/0007_phase3_bonus_calc_runs_allocations_snapshots.test.sql` (commit `e3bd1a3`). **Verified 2026-07-25**
+    (`db reset` 0001..0013 + seed; `test db` Files=7 Tests=299 PASS Failed=0). D1/D6/AD6/AD7/AD9/AD10/SI-4/SI-12/SI-13/SI-14 kanıtlı.
+    (Ayrıca `docs/planning/14` idempotency+markdownlint sync — commit `dae4c6b`.)
   - **Phase 3 (kalan) — Ledger & sensitive data** [GATED]: scoring **engine** (final_points math +
-    approve→ledger + `task_approved`/`task_id`), tasks/task_reviews, `bonus_calculation_runs`,
-    `bonus_allocations`, `bonus_allocation_snapshots`, `bonus_ledger`, disputes, anti-gaming, notifications,
-    exports, UI/API. Her dilim ayrı `implementation authorized` ister (faz-sınırlı — ADR-020).
-    **Sıradaki önerilen DB dilimi:** **bonus_calculation_runs + bonus_allocations + bonus_allocation_snapshots**
-    (hesaplama iskeleti; run idempotency; allocation `pending_missing_cap_basis` — AD6; snapshot immutable —
-    INV-6/AD7; Σfinal + undistributed_remainder = pool — INV-4; hesaplama motoru yine Phase 5–6'da).
+    approve→ledger + `task_approved`/`task_id`), tasks/task_reviews, `bonus_ledger`, disputes, anti-gaming,
+    notifications, exports, UI/API. Her dilim ayrı `implementation authorized` ister (faz-sınırlı — ADR-020).
+    **Sıradaki önerilen DB dilimi:** **bonus_ledger + approve→accrual foundation** (double-entry money;
+    Σdebit=Σcredit; accrual yalnız approved snapshot'tan — `snapshot_id NOT NULL`, AD6/SI-3; append-only;
+    accrual idempotency `unique(snapshot_id, employee_id, account)` — ADR-017; gerçek approve/payout orkestrasyon Phase 6+).
     **Henüz yetkili değil.**
 
 ### Phase 4 — Task & Review Core

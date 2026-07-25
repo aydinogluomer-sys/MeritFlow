@@ -31,10 +31,18 @@
     `implementation authorized only for Phase 3B — Docs/status update after green verification`.
   - **Remaining work stays GATED.** Each further slice requires its own verbatim authorization in the
     form `implementation authorized only for Phase 3X — <slice name>` (ADR-020); phase- and
-    slice-scoped. **compensation_records** (commit `c9cd0f2`) and **bonus_periods + bonus_pools**
-    (commit `d04b954`, 2026-07-24 — migrations `0010`/`0011`, tests `0004`/`0005`; db reset `0001..0011`,
-    test db Files=5/Tests=194/PASS) are now **VERIFIED/DONE** (see `supabase/README.md` / `IMPLEMENTATION.md`).
-    **Next recommended DB slice:** bonus_pool_components + bonus_pool_eligibility — not authorized.
+    slice-scoped. **compensation_records** (commit `c9cd0f2`), **bonus_periods + bonus_pools**
+    (commit `d04b954` — migrations `0010`/`0011`, tests `0004`/`0005`), **bonus_pool_components +
+    bonus_pool_eligibility** (commit `8f74e8d` — migration `0012`, test `0006`), and
+    **bonus_calculation_runs + bonus_allocations + bonus_allocation_snapshots** (commit `e3bd1a3`,
+    2026-07-25 — migration `0013`, test `0007`; run machine + AD10 locked-period+locked-pool guard;
+    idempotency `unique(organization_id, idempotency_key)`; completed-run allocation freeze; thin snapshot
+    append-only; approved/exported/paid blocked; db reset `0001..0013`, test db Files=7/Tests=299/PASS) are
+    now **VERIFIED/DONE** (see `supabase/README.md` / `IMPLEMENTATION.md`). Data dictionary `14` idempotency
+    and markdownlint sync landed as commit `dae4c6b`.
+    **Next recommended DB slice:** bonus_ledger + approve→accrual foundation (double-entry money,
+    Σdebit=Σcredit; accrual only from an approved snapshot — `snapshot_id NOT NULL`, AD6/SI-3; append-only;
+    accrual idempotency `unique(snapshot_id, employee_id, account)` — ADR-017) — not authorized.
 
 ---
 

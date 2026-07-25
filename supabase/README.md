@@ -1,6 +1,6 @@
-# MeritFlow — Supabase (Database Foundation: Phase 3A–3B + comp + bonus periods/pools + components/eligibility)
+# MeritFlow — Supabase (Database Foundation: Phase 3A–3B + comp + bonus periods/pools + components/eligibility + calc runs/allocations/snapshots)
 
-This directory is the **database foundation**. It currently implements six verified
+This directory is the **database foundation**. It currently implements seven verified
 slices (each under its own `implementation authorized only for Phase 3X — …`):
 
 - **Phase 3A — Database Foundation & RBAC** (`17_PHASE_3A_...md`): 11 foundation/RBAC
@@ -24,8 +24,19 @@ slices (each under its own `implementation authorized only for Phase 3X — …`
   `team_memberships.is_primary` validation; eligibility writes are **server-only** (employee-own + HR/Finance/
   Auditor read), component writes gated by `pool.create`; component and eligibility inputs become **immutable
   once the parent pool leaves `draft`** (SI-4) — RLS + pgTAP.
+- **Phase 3 — bonus_calculation_runs + bonus_allocations + bonus_allocation_snapshots** (`14`/`15`/`16` §4–§5,
+  D1/D6/AD6/AD7/AD9/AD10): the calculation **scaffolding** (no engine/math). Run state machine
+  `running → completed → superseded`; a run starts only on a **locked period AND a locked pool** (AD10 double
+  guard); **idempotency** `unique(organization_id, idempotency_key)`; once a run is `completed`, its allocations
+  are **frozen** (blanket — amount/status/cap/team/policy/run bindings; SI-4/SI-14); a **thin** snapshot is
+  **append-only immutable** (UPDATE/DELETE hard-blocked; per-employee detail lives in allocations, not
+  duplicated); allocations carry a **cap-not-exceeded** CHECK + `cap_applied` enum (incl.
+  `pending_missing_cap_basis` — AD6); `approved/exported/paid` transitions are **blocked** this slice;
+  same-org composite FKs (period/pool/policy_version/run/employee/team); **server-only** writes with
+  employee-own allocation read (Finance raw excluded — view-only, SI-12); `Σfinal + undistributed_remainder =
+  pool` is **test/fixture-verified only** (no hard trigger — SI-13/INV-4) — RLS + pgTAP.
 
-Migrations `0001..0012` + seed apply cleanly; blocking pgTAP suites (`0001`..`0006`) are green (see
+Migrations `0001..0013` + seed apply cleanly; blocking pgTAP suites (`0001`..`0007`) are green (see
 "Verification"). **Everything downstream is still gated** (see "Out of scope").
 
 ## ⚠️ Environment rule (non-negotiable — ADR-014 / CLAUDE.md)
@@ -64,9 +75,15 @@ supabase/
                                           (same-org employee via memberships composite FK; AD9 is_primary; 15-day
                                           + proration — D10); server-only eligibility writes; inputs immutable
                                           once parent pool leaves draft (SI-4); pool.create component RLS
+    0013_bonus_calc_runs_allocations_snapshots.sql bonus_calculation_runs + bonus_allocations +
+                                          bonus_allocation_snapshots — run machine (running/completed/superseded)
+                                          + AD10 locked-period+locked-pool guard; idempotency unique(org,key);
+                                          completed-run allocation freeze (SI-4/SI-14); thin snapshot append-only;
+                                          cap-not-exceeded + pending_missing_cap_basis; approved/exported/paid
+                                          blocked; server-only writes (Finance raw excluded — SI-12)
   seed/seed_test_tenants.sql              2 tenants, RBAC catalog, teams, support grants,
                                           + Phase 3B (scoring/versions, point_ledger) + comp + bonus fixtures
-                                          (periods/pools + components/eligibility)
+                                          (periods/pools + components/eligibility + calc run/allocations/snapshot)
   tests/
     0001_phase3a_rls.test.sql             blocking pgTAP — RLS/RBAC (Phase 3A)
     0002_phase3b_scoring_policies.test.sql blocking pgTAP — scoring policy/version (Phase 3B-A)
@@ -74,6 +91,7 @@ supabase/
     0004_phase3_compensation.test.sql     blocking pgTAP — compensation_records/masked audit (Phase 3)
     0005_phase3_bonus_periods_pools.test.sql blocking pgTAP — bonus periods/pools + AD10/SI-4 (Phase 3)
     0006_phase3_bonus_components_eligibility.test.sql blocking pgTAP — components/eligibility + D1/D10/AD9/SI-4 (Phase 3)
+    0007_phase3_bonus_calc_runs_allocations_snapshots.test.sql blocking pgTAP — runs/allocations/snapshots + AD10/SI-4/SI-14 (Phase 3)
 ```
 
 ## Apply & test (local)
@@ -82,8 +100,8 @@ Requires Docker + the Supabase CLI. From the repo root:
 
 ```bash
 supabase start            # boots local dev stack (Docker)
-supabase db reset         # applies migrations 0001..0012 then seed
-supabase test db          # runs the pgTAP suites in tests/ (0001..0006)
+supabase db reset         # applies migrations 0001..0013 then seed
+supabase test db          # runs the pgTAP suites in tests/ (0001..0007)
 ```
 
 If the `supabase` binary is not on PATH (e.g. a fresh install not yet picked up), the project-local
@@ -125,6 +143,18 @@ re-runnable (on-conflict guards).
 > **component and eligibility inputs cannot mutate once the parent pool leaves `draft`** (locked/superseded →
 > `23001`); DELETE blocked. The storage-container readiness warning during `db reset` remains non-blocking.
 >
+> **Phase 3 bonus_calculation_runs + bonus_allocations + bonus_allocation_snapshots: VERIFIED / DONE**
+> (2026-07-25, npx Supabase CLI **2.109.1**; commit `e3bd1a3`). `db reset` applied migrations **0001..0013** +
+> seed cleanly; `test db` → **Files=7, Tests=299, Result=PASS, Failed=0** (`0001`..`0007` ok). Invariants proven
+> (D1/D6/AD6/AD7/AD9/AD10/SI-4/SI-12/SI-13/SI-14): a run starts **only on a locked period AND a locked pool**
+> (draft/superseded pool rejected with `23514`); state machine `running→completed→superseded`; **idempotency**
+> `unique(organization_id, idempotency_key)` (`23505` on duplicate); once a run is `completed` its allocations
+> are **frozen** (`23001` on any INSERT/UPDATE); the **thin snapshot is append-only** (UPDATE/DELETE → `23001`,
+> one per run); `cap_applied='yes'` enforces `final_amount ≤ cap`; `approved/exported/paid` writes rejected
+> (`23514`); cross-tenant runs/allocations rejected by composite FK (`23503`); `Σfinal + undistributed_remainder
+> = pool` is asserted on the seed fixture (no hard trigger). One transient `db reset` "container exit 1" flake
+> (vector/analytics/pg_meta unhealthy) cleared on a `--debug` reset — not a code/schema defect.
+>
 > **Later phases remain gated** (ADR-020). **Never run any of this against a production project.**
 
 ### Prerequisites
@@ -141,21 +171,24 @@ re-runnable (on-conflict guards).
 
 ```bash
 supabase start        # 1. boot local stack; note the printed local URLs + dev-default keys
-supabase db reset     # 2. apply 0001..0012 + seed (expect clean apply)
+supabase db reset     # 2. apply 0001..0013 + seed (expect clean apply)
 supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
 ```
 
 ### Expected pass criteria
 
-- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=6, Tests=238, PASS**). Blocking.
+- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=7, Tests=299, PASS**). Blocking.
 - [ ] Green coverage: cross-tenant isolation (SI-7), non-recursive memberships read (§7A), support
   active-vs-expired grant (D4), append-only audit + append-only `point_ledger` (SI-2), helper
   correctness, scoring-policy `policy.manage` gating + published-version immutability (AD7), point_ledger
   visibility (Finance excluded), **compensation_records** (raw SELECT closed, masked audit, justified read),
   **bonus_periods/pools** (state machine, AD10 pool-lock, locked t_org + immutability, period identity
-  immutability, period.manage/pool.create separation — SI-4/SI-7), and **bonus_pool_components/eligibility**
+  immutability, period.manage/pool.create separation — SI-4/SI-7), **bonus_pool_components/eligibility**
   (MVP individual=1.0 — D1; cross-tenant employee rejected via memberships composite FK; AD9 is_primary;
-  server-only eligibility writes; inputs immutable once parent pool leaves draft — SI-4).
+  server-only eligibility writes; inputs immutable once parent pool leaves draft — SI-4), and
+  **bonus_calculation_runs/allocations/snapshots** (run machine + AD10 locked-period+locked-pool guard;
+  idempotency; completed-run allocation freeze; thin snapshot append-only; cap-not-exceeded;
+  approved/exported/paid blocked; Finance raw-allocation excluded — SI-12/SI-14).
 - [ ] `supabase db reset` then re-running the suite is reproducible (deterministic seed).
 
 ### Failure triage
@@ -199,7 +232,7 @@ supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
 | support_access_grants | yes | audit-critical | time-bounded (D4); audited |
 | audit_logs | yes | audit-critical | append-only; comp payload masked (AD3) |
 
-**Phase 3B / Phase 3 comp + bonus (8):**
+**Phase 3B / Phase 3 comp + bonus (11):**
 
 | Table | org_id? | Class | Notes |
 | --- | :--: | --- | --- |
@@ -211,6 +244,9 @@ supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
 | bonus_pools | yes | financial-critical | one active pool/period; **AD10** period-lock guard; locked needs `t_org`+metadata + immutable; HR/Finance/Auditor read, `pool.create` write; DELETE blocked |
 | bonus_pool_components | yes | financial-critical | MVP `individual`=1.0 only (D1); same-org composite FK to pool; HR/Finance/Auditor read, `pool.create` write; **immutable once pool leaves draft** (SI-4); DELETE blocked |
 | bonus_pool_eligibility | yes | financial-critical, personal-data | 15-day + proration (D10); **same-org employee via `memberships` composite FK**; `primary_team_id` same-org + AD9 `is_primary`; **server-only writes**; employee-own + HR/Finance/Auditor read; **immutable once pool leaves draft** (SI-4); DELETE blocked |
+| bonus_calculation_runs | yes | financial-critical, audit-critical | run machine running/completed/superseded; starts only on **locked period + locked pool** (AD10); idempotency `unique(org, key)`; **server-only writes**; HR/Finance/Auditor read; audited; DELETE blocked |
+| bonus_allocations | yes | financial-critical | per (run, employee); cap-not-exceeded + `cap_applied` (pending_missing_cap_basis); same-org employee/team composite FK + AD9; **frozen once run completed** (SI-4/SI-14); **server-only writes**; employee-own + HR/Auditor read (**Finance view-only — SI-12**); DELETE blocked |
+| bonus_allocation_snapshots | yes | financial-critical, audit-critical | **thin** freeze marker, one per run; **append-only immutable** (UPDATE/DELETE blocked — INV-6/SI-14); same-org composite FK; **server-only** insert; HR/Finance/Auditor read; audited |
 
 ## Security guarantees enforced here
 
@@ -233,21 +269,30 @@ supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
   same-org and must be the employee's `team_memberships.is_primary` (AD9); components are limited to MVP
   `individual`=1.0 (D1); eligibility writes are **server-only**; once the parent pool leaves `draft`, both
   components and eligibility rows are **immutable** (locked/superseded calc inputs cannot silently change).
+- **Bonus calculation integrity** (AD6/AD10/SI-4/SI-12/SI-13/SI-14): a `bonus_calculation_run` starts **only on
+  a locked period AND a locked pool** (draft/superseded pool rejected); runs are idempotent per
+  `(organization_id, idempotency_key)`; once a run is `completed`, its `bonus_allocations` are **fully frozen**
+  (any INSERT/UPDATE rejected); `bonus_allocation_snapshots` are **thin + append-only** (UPDATE/DELETE blocked,
+  one per run); allocations enforce `final_amount ≤ cap` when capped and carry the `pending_missing_cap_basis`
+  marker (AD6); `approved/exported/paid` transitions are blocked in this slice; all run/allocation/snapshot
+  child links are **same-org composite FKs** (cross-tenant impossible); allocation reads exclude Finance (raw
+  is view-only, SI-12); `Σfinal + undistributed_remainder = pool` is verified by test/fixture, not a hard
+  trigger (SI-13/INV-4).
 - **Support access** (D4): default no access; read only via an **active, unexpired** grant; audited.
 
 ## Out of scope (later slices / phases — still gated, ADR-020)
 
 Scoring **engine** (final_points math + approve→ledger + `task_approved`/`task_id`), tasks & task_reviews,
-`bonus_calculation_runs`, `bonus_allocations`, `bonus_allocation_snapshots`, `bonus_ledger`, disputes,
-anti_gaming_flags, notifications, exports, projects, objectives, integrations, webhook_events, Finance
-aggregate views (`v_finance_*`), UI/dashboard, API routes. Each needs its own phase-scoped, verbatim
-authorization (ADR-020).
+`bonus_ledger`, disputes, anti_gaming_flags, notifications, exports, projects, objectives, integrations,
+webhook_events, Finance aggregate views (`v_finance_*`), UI/dashboard, API routes. Each needs its own
+phase-scoped, verbatim authorization (ADR-020).
 
-> **Next recommended slice:** **bonus_calculation_runs + bonus_allocations + bonus_allocation_snapshots** —
-> the calculation scaffolding: run idempotency, allocation `pending_missing_cap_basis` when cap basis is
-> absent (AD6), an **immutable snapshot** of factors (INV-6/AD7), and the `Σfinal + undistributed_remainder =
-> pool` invariant (INV-4). Containers + guarantees only; the pro-rata/`final_points` **math** stays in the
-> Phase 5–6 engines. **Not authorized yet.**
+> **Next recommended slice:** **bonus_ledger + approve→accrual foundation** — the double-entry money ledger
+> (`Σdebit = Σcredit`; `entry_type` debit/credit; `account` pool/accrual/payout/clawback) where **accrual is
+> produced only from an approved snapshot** (`snapshot_id NOT NULL` — AD6/SI-3), rows are **append-only**
+> (UPDATE/DELETE forbidden), and accrual is idempotent per `(snapshot_id, employee_id, account)` — ADR-017.
+> Containers + guarantees only; the real approve/payout/export orchestration stays in Phase 6+. **Not
+> authorized yet.**
 
 ## Notes for reviewers
 
