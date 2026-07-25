@@ -251,3 +251,27 @@ values
    'b0000000-0000-0000-0000-0000000000b2', 'manual_adjustment', 7, 'seed: org B manual adjustment',
    null, null, 'b0000000-0000-0000-0000-0000000000b1')
 on conflict (id) do nothing;
+
+-- =============================================================================
+-- Phase 3 seed — compensation_records fixtures (DEV/STAGING ONLY)
+-- Refs: 14/15/ADR-018. One ACTIVE comp per employee. created_by = HR A / Owner B.
+-- Writes run as the bypassrls migration role (RLS with_check not evaluated here);
+-- the MASKED audit trigger fires (is_sensitive rows in audit_logs; no raw salary).
+--   c1   = emp-alpha (org A), cap_basis present
+--   c2   = emp-beta  (org A), cap_basis NULL (exercises masked-null + AD6 note)
+--   b_c1 = emp-b     (org B), cross-tenant
+-- =============================================================================
+insert into public.compensation_records
+  (id, organization_id, employee_id, gross_salary_minor, currency, cap_basis_minor,
+   effective_from, status, created_by)
+values
+  ('a0000000-0000-0000-0000-0000000000c1', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-0000000000a7', 5000000, 'TRY', 5000000, date '2026-01-01', 'active',
+   'a0000000-0000-0000-0000-0000000000a3'),
+  ('a0000000-0000-0000-0000-0000000000c2', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-0000000000a8', 4000000, 'TRY', null, date '2026-01-01', 'active',
+   'a0000000-0000-0000-0000-0000000000a3'),
+  ('b0000000-0000-0000-0000-0000000000c1', 'b0000000-0000-0000-0000-000000000002',
+   'b0000000-0000-0000-0000-0000000000b2', 6000000, 'TRY', 6000000, date '2026-01-01', 'active',
+   'b0000000-0000-0000-0000-0000000000b1')
+on conflict (id) do nothing;
