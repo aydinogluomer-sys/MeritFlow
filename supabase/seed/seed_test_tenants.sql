@@ -442,3 +442,45 @@ update public.bonus_calculation_runs set status = 'completed', completed_at = no
   where id = 'a0000000-0000-0000-0000-000000000032' and status = 'running';
 update public.bonus_calculation_runs set status = 'completed', completed_at = now()
   where id = 'b0000000-0000-0000-0000-000000000032' and status = 'running';
+
+-- =============================================================================
+-- Phase 3 seed — bonus_ledger balanced accrual fixtures (DEV/STAGING ONLY)
+-- Refs: 06 §2, 14/16 (BL-1..4), ADR-017. A single balanced accrual TRANSACTION per org
+-- (one pool debit total + per-employee accrual credits), referencing the completed run
+-- snapshot. Each transaction is a SINGLE multi-row INSERT so the DEFERRABLE balance
+-- trigger sees the complete, balanced group (Σdebit=Σcredit) at commit. created_by =
+-- Finance A / Owner B. These are STORED fixtures (no posting engine).
+--   Org A: txn 50 on snapshot 35 (pool 31, 100k): debit pool 100k = credit a7 60k + a8 40k
+--   Org B: txn 50 on snapshot 35 (pool 31, 50k):  debit pool 50k  = credit b2 50k
+-- =============================================================================
+insert into public.bonus_ledger
+  (id, organization_id, bonus_pool_id, employee_id, calculation_run_id, snapshot_id, transaction_id,
+   entry_type, account, event_type, amount_minor, currency, reason, created_by)
+values
+  ('a0000000-0000-0000-0000-000000000051', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-000000000031', null, 'a0000000-0000-0000-0000-000000000032',
+   'a0000000-0000-0000-0000-000000000035', 'a0000000-0000-0000-0000-000000000050',
+   'debit', 'pool', 'bonus_accrual', 10000000, 'TRY', 'seed: accrual pool debit', 'a0000000-0000-0000-0000-0000000000a4'),
+  ('a0000000-0000-0000-0000-000000000052', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-000000000031', 'a0000000-0000-0000-0000-0000000000a7', 'a0000000-0000-0000-0000-000000000032',
+   'a0000000-0000-0000-0000-000000000035', 'a0000000-0000-0000-0000-000000000050',
+   'credit', 'accrual', 'bonus_accrual', 6000000, 'TRY', 'seed: accrual emp-alpha', 'a0000000-0000-0000-0000-0000000000a4'),
+  ('a0000000-0000-0000-0000-000000000053', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-000000000031', 'a0000000-0000-0000-0000-0000000000a8', 'a0000000-0000-0000-0000-000000000032',
+   'a0000000-0000-0000-0000-000000000035', 'a0000000-0000-0000-0000-000000000050',
+   'credit', 'accrual', 'bonus_accrual', 4000000, 'TRY', 'seed: accrual emp-beta', 'a0000000-0000-0000-0000-0000000000a4')
+on conflict (id) do nothing;
+
+insert into public.bonus_ledger
+  (id, organization_id, bonus_pool_id, employee_id, calculation_run_id, snapshot_id, transaction_id,
+   entry_type, account, event_type, amount_minor, currency, reason, created_by)
+values
+  ('b0000000-0000-0000-0000-000000000051', 'b0000000-0000-0000-0000-000000000002',
+   'b0000000-0000-0000-0000-000000000031', null, 'b0000000-0000-0000-0000-000000000032',
+   'b0000000-0000-0000-0000-000000000035', 'b0000000-0000-0000-0000-000000000050',
+   'debit', 'pool', 'bonus_accrual', 5000000, 'TRY', 'seed: accrual pool debit', 'b0000000-0000-0000-0000-0000000000b1'),
+  ('b0000000-0000-0000-0000-000000000052', 'b0000000-0000-0000-0000-000000000002',
+   'b0000000-0000-0000-0000-000000000031', 'b0000000-0000-0000-0000-0000000000b2', 'b0000000-0000-0000-0000-000000000032',
+   'b0000000-0000-0000-0000-000000000035', 'b0000000-0000-0000-0000-000000000050',
+   'credit', 'accrual', 'bonus_accrual', 5000000, 'TRY', 'seed: accrual emp-b', 'b0000000-0000-0000-0000-0000000000b1')
+on conflict (id) do nothing;
