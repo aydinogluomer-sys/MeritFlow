@@ -1,27 +1,37 @@
 # 18 — Phase 3B Implementation Plan: Scoring Policy & Point Ledger Foundation
 
-> **Planning document only.** This is the pre-implementation plan for the smallest safe
-> Phase 3B slice. It **proposes** schema, RLS, helpers, seed and tests; it does **not**
-> implement them. No migration, seed, test, config, or app code is written or changed by
-> this document. Decision Lock (D1–D12 + AD1–AD10) is binding; ADR-020 (implementation
-> gate) governs when any of this may be built.
+> **Status (updated 2026-07-24):** the slices proposed here — **3B-A (scoring policy foundation)**
+> and **3B-B (point ledger foundation)** — have since been **implemented and runtime-verified**
+> (see §1 for evidence). The remainder of this document is the original pre-implementation plan and
+> still governs any not-yet-built detail. Decision Lock (D1–D12 + AD1–AD10) is binding; ADR-020
+> (implementation gate) governs when any *further* work may be built.
 
 ---
 
 ## 1. Status and authorization
 
-- **Mode:** Planning only. **No implementation is authorized yet** for Phase 3B.
+- **Mode:** Slices **3B-A** and **3B-B** are **implemented and runtime-verified** (status below).
+  Remaining Phase 3B work (and everything downstream) stays planning-only until its own authorization.
 - **Phase 3A baseline:** `40d957f — chore: establish verified Phase 3A baseline` on branch `main`.
 - **Phase 3A verification result:** VERIFIED / DONE (2026-06-24, local dev stack). Evidence:
   `supabase db reset` applied migrations `0001..0007` + seed cleanly; `supabase test db` ran the
   blocking pgTAP suite **38/38 passed (0 failed)**. The only change during verification was the
   pgTAP `throws_ok` assertion form (3-arg → strict 4-arg) in
   `supabase/tests/0001_phase3a_rls.test.sql`; **no migration/seed/RLS/schema defect was found**.
-- **Phase 3B implementation status:** **GATED.** Each slice below requires its own verbatim
-  authorization in the form `implementation authorized only for Phase 3B — <slice name>` (ADR-020).
-  Authorization is phase- and slice-scoped; approving this plan does **not** authorize building it.
-- **This document changes:** only `docs/planning/18_...md` (itself). No code, no migrations, no seed,
-  no tests, no config, no roadmap/ADR edits.
+- **Phase 3B implementation status:**
+  - **3B-A — Scoring Policy foundation: VERIFIED/DONE** — `migrations/0008_scoring_policies.sql`,
+    `tests/0002_phase3b_scoring_policies.test.sql` (commit `dd9b861`).
+  - **3B-B — Point Ledger foundation: VERIFIED/DONE** — `migrations/0009_point_ledger.sql`,
+    `tests/0003_phase3b_point_ledger.test.sql` (commit `f46ab49`).
+  - **Verification (2026-07-24, local dev stack, npx Supabase CLI 2.109.1):** `supabase db reset`
+    applied migrations `0001..0009` + seed cleanly; `supabase test db` → **Files=3, Tests=97,
+    Result=PASS, Failed=0** (`0001` ok · `0002` ok · `0003` ok), reproduced across two clean runs
+    (deterministic seed). A non-fatal storage-container readiness warning during `db reset` was
+    **non-blocking** (no DB/migration/seed defect). Docs/status synced under
+    `implementation authorized only for Phase 3B — Docs/status update after green verification`.
+  - **Remaining work stays GATED.** Each further slice requires its own verbatim authorization in the
+    form `implementation authorized only for Phase 3X — <slice name>` (ADR-020); phase- and
+    slice-scoped. **Next recommended DB slice:** `compensation_records` + comp audit masking (not authorized).
 
 ---
 
@@ -644,4 +654,11 @@ Report: files created; append-only + audit triggers; team_of; RLS+policies in-sl
   `(scoring_policy_id, organization_id) → scoring_policies (id, organization_id)` backed by a new
   `unique (id, organization_id)` on the parent, plus blocking pgTAP #24; (4) reverted an unintended
   lint-only formatting change to `docs/adr/ADR-006-...md` (working tree now shows only this doc).
-- **Phase 3B implementation status:** still **GATED**; this revision changes only this planning doc.
+- **Rev 4 (post-verification docs sync — 2026-07-24):** slices 3B-A and 3B-B were implemented under
+  their own authorizations (commits `dd9b861`, `f46ab49`) and **runtime-verified** (`db reset`
+  `0001..0009` + seed; `test db` Files=3 / Tests=97 / PASS / Failed=0). This revision updates §1 status
+  and the top banner to reflect verified/done, under `implementation authorized only for Phase 3B —
+  Docs/status update after green verification`. Migrations/tests/seed unchanged.
+- **Phase 3B (scoring policy + point ledger foundation) status:** **VERIFIED/DONE.** Further phases
+  (scoring engine, tasks, bonus, compensation_records, disputes, anti-gaming, notifications, exports,
+  UI/API) remain **GATED** (ADR-020).

@@ -59,9 +59,21 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
     **Karar:** primary team canonical source = `team_memberships.is_primary` (memberships `primary_team_id`
     taşımaz; AD9 — bkz. doc 13/14, ADR-019 not).
     **Phase 3B+ hâlâ gated**; her dilim ayrı, birebir authorization ister (ADR-020).
-  - **Phase 3B+ — Ledger & sensitive data** [GATED]: tasks/scoring/point_ledger, bonus_* /bonus_ledger,
-    compensation_records + comp audit maskeleme (AD3), disputes, anti-gaming, exports. Her dilim ayrı
-    `implementation authorized` ister (faz-sınırlı — ADR-020).
+  - **Phase 3B-A — Scoring Policy foundation** [VERIFIED/DONE]: `scoring_policies` +
+    `scoring_policy_versions` (published immutable — AD7), `policy.manage`, RLS + pgTAP.
+    Kod: `migrations/0008_scoring_policies.sql`, `tests/0002_phase3b_scoring_policies.test.sql`
+    (commit `dd9b861`). **Verified 2026-07-24** (npx CLI 2.109.1; `db reset` 0001..0009 + seed clean;
+    `test db` Files=3 Tests=97 PASS Failed=0).
+  - **Phase 3B-B — Point Ledger foundation** [VERIFIED/DONE]: `point_ledger` (append-only, server-only
+    writes, Finance excluded), `team_of()` helper, RLS + pgTAP. Kod: `migrations/0009_point_ledger.sql`,
+    `tests/0003_phase3b_point_ledger.test.sql` (commit `f46ab49`). **Verified 2026-07-24** (aynı koşu;
+    97/97 yeşil, iki temiz koşuda tekrar-üretildi). Non-fatal storage-readiness uyarısı bloklayıcı değil.
+  - **Phase 3B+ (kalan) — Ledger & sensitive data** [GATED]: scoring **engine** (final_points math +
+    approve→ledger + `task_approved`/`task_id`), tasks/task_reviews, bonus_* /bonus_ledger/snapshots,
+    compensation_records + comp audit maskeleme (AD3), disputes, anti-gaming, notifications, exports,
+    UI/API. Her dilim ayrı `implementation authorized` ister (faz-sınırlı — ADR-020).
+    **Sıradaki önerilen DB dilimi:** `compensation_records` + comp audit masking (AD3/AD6/D7) — bonus
+    engine'in cap kaynağı, en hassas tablo. **Henüz yetkili değil.**
 
 ### Phase 4 — Task & Review Core
 - Goal: task CRUD → assign → submit → review.
