@@ -31,6 +31,7 @@ kesinlikte sabitlemek.
 ## Identity & RBAC
 
 ### organizations
+
 - **purpose:** tenant kök.
 - **owner domain:** organizations. **status:** MVP. **sensitivity:** internal.
 - **required:** `id`, `name`, `slug`, `currency` (default TRY), `status` (active|suspended), `created_at`.
@@ -40,6 +41,7 @@ kesinlikte sabitlemek.
 - **retention:** kalıcı (tenant yaşam döngüsü). **OQ:** org silme/anonimleştirme V1.
 
 ### organization_settings
+
 - **purpose:** org-seviyesi default policy (cap_default, locale, bonus defaults, anti-gaming eşikleri).
 - **owner:** organizations. **status:** MVP. **sensitivity:** confidential.
 - **required:** `organization_id` (unique 1-1), `cap_rate_default` (0.50), `period_type` (monthly).
@@ -49,6 +51,7 @@ kesinlikte sabitlemek.
 - **retention:** kalıcı. **OQ:** ayar versiyonlama gerekli mi (öneri: kritik ayarlar policy version'da).
 
 ### profiles
+
 - **purpose:** kullanıcı profili (Supabase auth kimliğine bağlı).
 - **owner:** users. **status:** MVP. **sensitivity:** personal-data.
 - **required:** `id` (= auth uid veya bağlı), `display_name`, `created_at`.
@@ -58,6 +61,7 @@ kesinlikte sabitlemek.
 - **retention:** KVKK — hesap silme/anonimleştirme legal-review item. **OQ:** PII minimizasyon kapsamı (Privacy Center, V1).
 
 ### memberships
+
 - **purpose:** (organization, profile, primary_role) — **RLS anchor**; tenant üyeliği.
 - **owner:** rbac/users. **status:** MVP. **sensitivity:** confidential.
 - **required:** `organization_id`, `profile_id`, `primary_role` (FK→roles veya enum), `status`
@@ -73,6 +77,7 @@ kesinlikte sabitlemek.
 - **retention:** kalıcı (audit izi). **OQ:** çoklu aktif membership V1 (multi-role/multi-team).
 
 ### roles
+
 - **purpose:** RBAC rol kataloğu (Owner, Admin, HR, Finance, Manager, Employee, Auditor — D4).
 - **owner:** rbac. **status:** MVP. **sensitivity:** internal.
 - **required:** `key` (owner|admin|hr|finance|manager|employee|auditor), `label`.
@@ -82,6 +87,7 @@ kesinlikte sabitlemek.
 - **retention:** kalıcı. **OQ:** custom org-defined roles V1; Department Manager/Team Lead V1 (D4).
 
 ### permissions
+
 - **purpose:** izin anahtarı kataloğu (`task.review`, `payout.export`, `comp.read`, `support.grant`, ...).
 - **owner:** rbac. **status:** MVP. **sensitivity:** internal.
 - **required:** `key`, `label`, `domain`. **optional:** `description`, `is_sensitive` (comp.read=true).
@@ -90,6 +96,7 @@ kesinlikte sabitlemek.
 - **OQ:** attribute-based (ABAC) izinler V1+.
 
 ### role_permissions
+
 - **purpose:** rol → izin eşlemesi (server-side authorization kaynağı; `has_permission` buradan okur — AD1).
 - **owner:** rbac. **status:** MVP. **sensitivity:** confidential.
 - **required:** `role_key` (FK→roles), `permission_key` (FK→permissions).
@@ -103,6 +110,7 @@ kesinlikte sabitlemek.
 ## Org yapısı
 
 ### teams
+
 - **purpose:** takım birimi.
 - **owner:** teams. **status:** MVP. **sensitivity:** internal.
 - **required:** `organization_id`, `name`, `status`. **optional:** `manager_id` (FK→profiles), `parent_team_id` (V1 hiyerarşi), `team_factor` (varsayılan policy'den).
@@ -111,6 +119,7 @@ kesinlikte sabitlemek.
 - **retention:** kalıcı. **OQ:** departman hiyerarşisi (Department Manager) V1.
 
 ### team_memberships
+
 - **purpose:** employee ↔ team ilişkisi.
 - **owner:** teams. **status:** MVP. **sensitivity:** internal.
 - **required:** `organization_id`, `team_id`, `profile_id`, `role_in_team` (member|lead-V1).
@@ -125,12 +134,14 @@ kesinlikte sabitlemek.
 - **retention:** kalıcı. **OQ:** multi-team weighted V1 (AD9).
 
 ### projects  *(MVP-minimal)*
+
 - **purpose:** görev gruplama (opsiyonel). **owner:** tasks. **status:** MVP-minimal (UI gizli, OQ-DM-2).
 - **sensitivity:** internal. **required:** `organization_id`, `name`, `status`. **optional:** `team_id`, `description`.
 - **FK:** `organization_id`, `team_id`. **unique:** (`organization_id`,`name`). **indexes:** `organization_id`.
 - **audit:** hayır. **RLS:** org/team görür. **retention:** kalıcı. **OQ:** UI görünürlüğü V1.
 
 ### objectives  *(MVP-minimal)*
+
 - **purpose:** etiketleme/gruplama (minimal OKR). **owner:** tasks. **status:** MVP-minimal.
 - **sensitivity:** internal. **required:** `organization_id`, `title`, `status`. **optional:** `team_id`, `period`.
 - **FK:** `organization_id`, `team_id`. **unique:** —. **indexes:** `organization_id`. **audit:** hayır.
@@ -141,6 +152,7 @@ kesinlikte sabitlemek.
 ## İş / Görev
 
 ### tasks
+
 - **purpose:** performans girdisi (basit todo değil).
 - **owner:** tasks. **status:** MVP. **sensitivity:** internal (puan kaynağı; confidential alanlar review'da).
 - **required:** `organization_id`, `team_id`, `title`, `status` (state machine, `16`), `created_by`,
@@ -160,6 +172,7 @@ kesinlikte sabitlemek.
 - **OQ:** `final_points` cache tutarlılık trigger'ı Phase 3 detayı.
 
 ### task_assignments
+
 - **purpose:** atama geçmişi (yeniden atama izlenir). **owner:** tasks. **status:** MVP. **sensitivity:** internal.
 - **required:** `organization_id`, `task_id`, `assignee_id`, `assigned_by`, `assigned_at`.
 - **optional:** `unassigned_at`, `reason`. **FK:** `organization_id`,`task_id`,`assignee_id`,`assigned_by`.
@@ -167,6 +180,7 @@ kesinlikte sabitlemek.
 - **audit:** atama değişimi (opsiyonel audit). **RLS:** task görüntüleyenler. **retention:** kalıcı.
 
 ### task_comments
+
 - **purpose:** görev tartışması. **owner:** tasks. **status:** MVP. **sensitivity:** personal-data (serbest metin).
 - **required:** `organization_id`, `task_id`, `author_id`, `body`, `created_at`.
 - **optional:** `parent_comment_id`. **FK:** `organization_id`,`task_id`,`author_id`. **unique:** —.
@@ -174,6 +188,7 @@ kesinlikte sabitlemek.
 - **OQ:** comment edit/delete soft-delete politikası Phase 4.
 
 ### task_attachments
+
 - **purpose:** evidence/dosya referansı. **owner:** tasks. **status:** MVP. **sensitivity:** personal-data/confidential.
 - **required:** `organization_id`, `task_id`, `uploaded_by`, `storage_path`, `created_at`.
 - **optional:** `file_name`, `mime_type`, `size_bytes`. **FK:** `organization_id`,`task_id`,`uploaded_by`.
@@ -181,6 +196,7 @@ kesinlikte sabitlemek.
 - **retention:** task ile; storage RLS Supabase Storage policy ile hizalı. **OQ:** dosya tarama/AV V1.
 
 ### task_events
+
 - **purpose:** durum geçişi + submission/revision history (append-only; AD4 history kaynağı).
 - **owner:** tasks. **status:** MVP. **sensitivity:** audit-critical.
 - **required:** `organization_id`, `task_id`, `event_type` (status_change|submitted|revision_requested|...),
@@ -191,6 +207,7 @@ kesinlikte sabitlemek.
 - **retention:** kalıcı (history). **OQ:** —.
 
 ### task_reviews
+
 - **purpose:** reviewer kararı + quality/timeliness/collaboration skorları (collaboration puanı etkilemez — AD5).
 - **owner:** reviews. **status:** MVP. **sensitivity:** confidential.
 - **required:** `organization_id`, `task_id`, `reviewer_id`, `decision` (approve|needs_revision|reject),
@@ -207,6 +224,7 @@ kesinlikte sabitlemek.
 ## Scoring
 
 ### scoring_policies
+
 - **purpose:** mantıksal scoring politikası (1—* version). **owner:** scoring. **status:** MVP. **sensitivity:** confidential.
 - **required:** `organization_id`, `name`, `status` (draft|active|archived), `created_by`.
 - **optional:** `description`. **FK:** `organization_id`,`created_by`. **unique:** (`organization_id`,`name`).
@@ -214,6 +232,7 @@ kesinlikte sabitlemek.
 - **retention:** kalıcı. **OQ:** —.
 
 ### scoring_policy_versions
+
 - **purpose:** immutable policy snapshot (çarpan tabloları, timeliness eşikleri; dönemde kilitli — AD7).
 - **owner:** scoring. **status:** MVP. **sensitivity:** confidential, audit-critical.
 - **required:** `organization_id`, `scoring_policy_id`, `version_no`, `status` (draft|published),
@@ -226,6 +245,7 @@ kesinlikte sabitlemek.
 - **OQ:** OQ-SC-2/3 (eşikler org-configurable mı) — V1.
 
 ### point_ledger  *(append-only, single-entry — ADR-005)*
+
 - **purpose:** puan defteri; çalışan toplamı satırlardan türetilir (mutable total yok).
 - **owner:** point-ledger. **status:** MVP. **sensitivity:** audit-critical, financial-critical (puan→prim).
 - **required:** `organization_id`, `employee_id`, `event_type` (task_approved|manual_adjustment|
@@ -245,6 +265,7 @@ kesinlikte sabitlemek.
 ## Bonus / Para
 
 ### bonus_periods
+
 - **purpose:** dönem yaşam döngüsü (monthly MVP — D11). **owner:** bonus-periods. **status:** MVP. **sensitivity:** financial-critical.
 - **required:** `organization_id`, `period_type` (monthly), `starts_on`, `ends_on`, `status`
   (open|locked|calculated|approved|exported|closed — `16`), `created_by`.
@@ -255,6 +276,7 @@ kesinlikte sabitlemek.
 - **OQ:** weekly/quarterly/custom V1 (D11).
 
 ### bonus_pools
+
 - **purpose:** dönem prim havuzu (calculation öncesi kilitli — AD10). **owner:** bonus-pools. **status:** MVP. **sensitivity:** financial-critical.
 - **required:** `organization_id`, `bonus_period_id`, `amount_minor bigint`, `currency`, `status`
   (draft|locked|...), `created_by`.
@@ -266,6 +288,7 @@ kesinlikte sabitlemek.
 - **RLS:** Finance create; HR/Finance/Auditor read; Employee göremez. **retention:** kalıcı. **OQ:** —.
 
 ### bonus_pool_components  *(MVP iskelet; aktif kullanım V1)*
+
 - **purpose:** havuz bileşen ağırlıkları (Hybrid model — D1). MVP'de yalnız `individual` (weight=1.0).
 - **owner:** bonus-pools. **status:** MVP-iskelet / V1-aktif. **sensitivity:** financial-critical.
 - **required:** `organization_id`, `bonus_pool_id`, `component` (individual|team|quality|winner), `weight`.
@@ -274,6 +297,7 @@ kesinlikte sabitlemek.
 - **audit:** policy change. **RLS:** Finance/HR/Auditor. **retention:** kalıcı. **OQ:** Hybrid bileşenleri V1 (ADR-002).
 
 ### bonus_pool_eligibility
+
 - **purpose:** dönem eligibility kaydı (15 gün + active membership — D10).
 - **owner:** bonus-pools. **status:** MVP. **sensitivity:** confidential, financial-critical.
 - **required:** `organization_id`, `bonus_pool_id`, `employee_id`, `eligible` (bool),
@@ -285,17 +309,19 @@ kesinlikte sabitlemek.
 - **retention:** kalıcı. **OQ:** tenure/leave/part-time gelişmiş kuralları V1 (D10).
 
 ### bonus_calculation_runs
+
 - **purpose:** hesaplama çalıştırması (idempotency key ile; aynı run yeni snapshot üretmez).
 - **owner:** bonus-calculation. **status:** MVP. **sensitivity:** financial-critical, audit-critical.
 - **required:** `organization_id`, `bonus_period_id`, `bonus_pool_id`, `status`
   (running|completed|superseded — `16`), `idempotency_key`, `triggered_by`, `created_at`.
 - **optional:** `policy_version_id`, `t_org`, `top_up_applied`, `notes`, `superseded_by`.
-- **FK:** `organization_id`,`bonus_period_id`,`bonus_pool_id`,`triggered_by`. **unique:** `idempotency_key`.
+- **FK:** `organization_id`,`bonus_period_id`,`bonus_pool_id`,`triggered_by`. **unique:** (`organization_id`,`idempotency_key`).
 - **check:** yalnız `locked` period'da başlar (AD10). **indexes:** (`bonus_period_id`,`status`).
 - **audit:** **evet** (calculation run). **RLS:** HR/Finance/Auditor read; trusted/HR trigger. **retention:** kalıcı.
 - **OQ:** —.
 
 ### bonus_allocations
+
 - **purpose:** çalışan başına hesaplanan tutar (status `pending_missing_cap_basis` dahil — AD6).
 - **owner:** bonus-calculation. **status:** MVP. **sensitivity:** financial-critical.
 - **required:** `organization_id`, `calculation_run_id`, `bonus_period_id`, `employee_id`,
@@ -311,6 +337,7 @@ kesinlikte sabitlemek.
 - **OQ:** —.
 
 ### bonus_allocation_snapshots  *(immutable — ADR-006)*
+
 - **purpose:** hesaplama sonucunun değiştirilemez kanıtı; tüm faktörleri kaydeder (AD7).
 - **owner:** bonus-calculation. **status:** MVP. **sensitivity:** financial-critical, audit-critical.
 - **required:** `organization_id`, `calculation_run_id`, `bonus_period_id`, `bonus_pool_id`,
@@ -325,6 +352,7 @@ kesinlikte sabitlemek.
 - **OQ:** —.
 
 ### bonus_ledger  *(double-entry, money — ADR-017)*
+
 - **purpose:** para hareketi defteri; Σdebit=Σcredit; accrual yalnız approved snapshot'tan.
 - **owner:** bonus-ledger. **status:** MVP. **sensitivity:** financial-critical, audit-critical.
 - **required:** `organization_id`, `bonus_pool_id`, `entry_type` (debit|credit), `account`
@@ -340,6 +368,7 @@ kesinlikte sabitlemek.
 - **retention:** **kalıcı, silinmez**. **OQ:** OQ-LA-3 banka mutabakat raporu (V1).
 
 ### compensation_records  *(comp-sensitive — ADR-018)*
+
 - **purpose:** cap basis kaynağı (maaş); en sıkı izole tablo.
 - **owner:** compensation. **status:** MVP. **sensitivity:** **compensation-sensitive**, personal-data.
 - **required:** `organization_id`, `employee_id`, `gross_salary_minor bigint`, `currency`,
@@ -356,6 +385,7 @@ kesinlikte sabitlemek.
 ## Yönetişim
 
 ### disputes
+
 - **purpose:** puan/prim itirazı (5 iş günü SLA, manager kendi kararına final değil — D9).
 - **owner:** disputes. **status:** MVP. **sensitivity:** confidential, personal-data.
 - **required:** `organization_id`, `complainant_id`, `dispute_type` (task_points_too_low|unfair_rejection|
@@ -370,6 +400,7 @@ kesinlikte sabitlemek.
 - **OQ:** OQ-DP-1 "iş günü" tanımı (V1).
 
 ### dispute_events
+
 - **purpose:** dispute durum/aksiyon geçmişi (append-only). **owner:** disputes. **status:** MVP. **sensitivity:** audit-critical.
 - **required:** `organization_id`, `dispute_id`, `event_type`, `actor_id`, `from_status`, `to_status`, `created_at`.
 - **optional:** `note`, `metadata jsonb`. **FK:** `organization_id`,`dispute_id`,`actor_id`. **unique:** —.
@@ -377,6 +408,7 @@ kesinlikte sabitlemek.
 - **retention:** kalıcı. **OQ:** —.
 
 ### anti_gaming_flags
+
 - **purpose:** 5 deterministik kural flag'i (otomatik ceza yok — D5). **owner:** anti-gaming. **status:** MVP. **sensitivity:** confidential.
 - **required:** `organization_id`, `rule` (duplicate_task|tiny_task_splitting|same_reviewer_concentration|
   period_end_spike|self_approval_attempt), `subject_employee_id`, `status` (open|reviewing|confirmed|dismissed),
@@ -390,6 +422,7 @@ kesinlikte sabitlemek.
 - **OQ:** OQ-AG-1/2/3 eşik/kapsam (V1). `self_approval_attempt` = engelleme + iz (flag opsiyonel).
 
 ### notifications
+
 - **purpose:** kullanıcı bildirimi. **owner:** notifications. **status:** MVP. **sensitivity:** personal-data.
 - **required:** `organization_id`, `recipient_id`, `type`, `payload jsonb`, `status` (unread|read), `created_at`.
 - **optional:** `read_at`, `link`. **FK:** `organization_id`,`recipient_id`. **unique:** —.
@@ -397,6 +430,7 @@ kesinlikte sabitlemek.
 - **OQ:** retention süresi (V1).
 
 ### audit_logs  *(append-only — ADR-006)*
+
 - **purpose:** yetkili aksiyonların değiştirilemez kaydı; comp maskeleme (AD3).
 - **owner:** audit. **status:** MVP. **sensitivity:** audit-critical (+ comp payload compensation-sensitive).
 - **required:** `organization_id`, `actor_id`, `action`, `target_type`, `target_id`, `created_at`.
@@ -408,6 +442,7 @@ kesinlikte sabitlemek.
 - **retention:** **kalıcı, silinmez**. **OQ:** OQ-RLS-2 (comp erişim audit mekanizması).
 
 ### exports
+
 - **purpose:** payout export kaydı (snapshot olmadan üretilemez — AD6/INV-7). **owner:** exports. **status:** MVP. **sensitivity:** financial-critical.
 - **required:** `organization_id`, `bonus_period_id`, `snapshot_id`, `exported_by`, `format`, `status`, `created_at`.
 - **optional:** `file_path`, `row_count`, `checksum`. **FK:** `organization_id`,`bonus_period_id`,`snapshot_id`,`exported_by`.
@@ -416,6 +451,7 @@ kesinlikte sabitlemek.
 - **RLS:** Finance create/read; Auditor read; employee göremez. **retention:** kalıcı (finansal iz). **OQ:** —.
 
 ### support_access_grants
+
 - **purpose:** süreli/sınırlı support erişimi (D4). **owner:** governance. **status:** MVP. **sensitivity:** audit-critical, confidential.
 - **required:** `organization_id`, `grantee_id` (support actor), `scope`, `granted_by` (Owner),
   `expires_at`, `status` (active|expired|revoked), `created_at`.
