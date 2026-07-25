@@ -31,7 +31,9 @@
     `implementation authorized only for Phase 3B — Docs/status update after green verification`.
   - **Remaining work stays GATED.** Each further slice requires its own verbatim authorization in the
     form `implementation authorized only for Phase 3X — <slice name>` (ADR-020); phase- and
-    slice-scoped. **Next recommended DB slice:** `compensation_records` + comp audit masking (not authorized).
+    slice-scoped. **compensation_records is now VERIFIED/DONE** (commit `c9cd0f2`, 2026-07-24 —
+    migrations `0010`, tests `0004`; see `supabase/README.md` / `IMPLEMENTATION.md`).
+    **Next recommended DB slice:** bonus foundation (`bonus_periods`/`bonus_pools`/…/`bonus_ledger`) — not authorized.
 
 ---
 

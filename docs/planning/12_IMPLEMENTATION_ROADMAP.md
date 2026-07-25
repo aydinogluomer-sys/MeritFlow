@@ -68,12 +68,18 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
     writes, Finance excluded), `team_of()` helper, RLS + pgTAP. Kod: `migrations/0009_point_ledger.sql`,
     `tests/0003_phase3b_point_ledger.test.sql` (commit `f46ab49`). **Verified 2026-07-24** (aynı koşu;
     97/97 yeşil, iki temiz koşuda tekrar-üretildi). Non-fatal storage-readiness uyarısı bloklayıcı değil.
-  - **Phase 3B+ (kalan) — Ledger & sensitive data** [GATED]: scoring **engine** (final_points math +
+  - **Phase 3 — compensation_records** [VERIFIED/DONE]: `compensation_records` (comp-sensitive cap/salary;
+    **direct raw SELECT closed**, comp.read INSERT/UPDATE, DELETE blocked, masked write/access audit,
+    justified `read_compensation_record`). Kod: `migrations/0010_compensation_records.sql`,
+    `tests/0004_phase3_compensation.test.sql` (commit `c9cd0f2`). **Verified 2026-07-24** (`db reset`
+    0001..0010 + seed; `test db` Files=4 Tests=139 PASS Failed=0). AD3/D7/SI-5 kanıtlı.
+  - **Phase 3 (kalan) — Ledger & sensitive data** [GATED]: scoring **engine** (final_points math +
     approve→ledger + `task_approved`/`task_id`), tasks/task_reviews, bonus_* /bonus_ledger/snapshots,
-    compensation_records + comp audit maskeleme (AD3), disputes, anti-gaming, notifications, exports,
-    UI/API. Her dilim ayrı `implementation authorized` ister (faz-sınırlı — ADR-020).
-    **Sıradaki önerilen DB dilimi:** `compensation_records` + comp audit masking (AD3/AD6/D7) — bonus
-    engine'in cap kaynağı, en hassas tablo. **Henüz yetkili değil.**
+    disputes, anti-gaming, notifications, exports, UI/API. Her dilim ayrı `implementation authorized`
+    ister (faz-sınırlı — ADR-020).
+    **Sıradaki önerilen DB dilimi:** **bonus foundation** (`bonus_periods`/`bonus_pools`/…/`bonus_ledger`)
+    — snapshot immutability + double-entry + `pending_missing_cap_basis` (compensation_records tüketir).
+    **Henüz yetkili değil.**
 
 ### Phase 4 — Task & Review Core
 - Goal: task CRUD → assign → submit → review.
