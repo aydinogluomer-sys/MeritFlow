@@ -14,6 +14,8 @@ supabase/.temp/
 
 # --- Agent / editor / tooling ---
 .claude/
+# Local VS Code state (installed extension binaries / argv.json — never track)
+.vscode/
 
 # --- Dependencies ---
 node_modules/
