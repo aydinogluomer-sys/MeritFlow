@@ -306,3 +306,36 @@ values
    'b0000000-0000-0000-0000-0000000000fa', 5000000, 'TRY', 'draft',
    'b0000000-0000-0000-0000-0000000000b1')
 on conflict (id) do nothing;
+
+-- =============================================================================
+-- Phase 3 seed — bonus_pool_components + bonus_pool_eligibility (DEV/STAGING ONLY)
+-- Refs: 14/15/16, D1/D10/AD9. MVP component = individual 1.0. Eligibility rows carry
+-- 15-day evidence + proration + derived primary_team (team_memberships.is_primary).
+-- created_by: component = Finance A / Owner B; eligibility = HR A / Owner B.
+--   ca (org A/B) individual=1.0 on pool fb
+--   da/db (org A) eligibility for emp-alpha(a7,team f1) / emp-beta(a8,team f2)
+--   da (org B) eligibility for emp-b(b2) — no team (cross-tenant)
+-- =============================================================================
+insert into public.bonus_pool_components
+  (id, organization_id, bonus_pool_id, component, weight, created_by)
+values
+  ('a0000000-0000-0000-0000-0000000000ca', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-0000000000fb', 'individual', 1.0, 'a0000000-0000-0000-0000-0000000000a4'),
+  ('b0000000-0000-0000-0000-0000000000ca', 'b0000000-0000-0000-0000-000000000002',
+   'b0000000-0000-0000-0000-0000000000fb', 'individual', 1.0, 'b0000000-0000-0000-0000-0000000000b1')
+on conflict (id) do nothing;
+
+insert into public.bonus_pool_eligibility
+  (id, organization_id, bonus_pool_id, employee_id, eligible, days_active, eligibility_factor,
+   proration_factor, primary_team_id, created_by)
+values
+  ('a0000000-0000-0000-0000-0000000000da', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-0000000000fb', 'a0000000-0000-0000-0000-0000000000a7', true, 20, 1,
+   1.0, 'a0000000-0000-0000-0000-0000000000f1', 'a0000000-0000-0000-0000-0000000000a3'),
+  ('a0000000-0000-0000-0000-0000000000db', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-0000000000fb', 'a0000000-0000-0000-0000-0000000000a8', true, 18, 1,
+   1.0, 'a0000000-0000-0000-0000-0000000000f2', 'a0000000-0000-0000-0000-0000000000a3'),
+  ('b0000000-0000-0000-0000-0000000000da', 'b0000000-0000-0000-0000-000000000002',
+   'b0000000-0000-0000-0000-0000000000fb', 'b0000000-0000-0000-0000-0000000000b2', true, 20, 1,
+   1.0, null, 'b0000000-0000-0000-0000-0000000000b1')
+on conflict (id) do nothing;
