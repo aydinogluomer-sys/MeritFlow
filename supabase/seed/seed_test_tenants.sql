@@ -275,3 +275,34 @@ values
    'b0000000-0000-0000-0000-0000000000b2', 6000000, 'TRY', 6000000, date '2026-01-01', 'active',
    'b0000000-0000-0000-0000-0000000000b1')
 on conflict (id) do nothing;
+
+-- =============================================================================
+-- Phase 3 seed — bonus_periods + bonus_pools fixtures (DEV/STAGING ONLY)
+-- Refs: 14/15/16, AD10. One OPEN monthly period + one DRAFT pool per org.
+-- created_by: period = HR A / Owner B (period.manage); pool = Finance A / Owner B.
+-- Writes run as the bypassrls migration role (RLS with_check not evaluated here);
+-- audit triggers fire (bonus_periods.insert / bonus_pools.insert).
+--   fa (org A) OPEN period + fb (org A) DRAFT pool 100k TL
+--   fa (org B) OPEN period + fb (org B) DRAFT pool  50k TL (cross-tenant)
+-- =============================================================================
+insert into public.bonus_periods
+  (id, organization_id, period_type, starts_on, ends_on, status, created_by)
+values
+  ('a0000000-0000-0000-0000-0000000000fa', 'a0000000-0000-0000-0000-000000000001',
+   'monthly', date '2026-06-01', date '2026-06-30', 'open',
+   'a0000000-0000-0000-0000-0000000000a3'),
+  ('b0000000-0000-0000-0000-0000000000fa', 'b0000000-0000-0000-0000-000000000002',
+   'monthly', date '2026-06-01', date '2026-06-30', 'open',
+   'b0000000-0000-0000-0000-0000000000b1')
+on conflict (id) do nothing;
+
+insert into public.bonus_pools
+  (id, organization_id, bonus_period_id, amount_minor, currency, status, created_by)
+values
+  ('a0000000-0000-0000-0000-0000000000fb', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-0000000000fa', 10000000, 'TRY', 'draft',
+   'a0000000-0000-0000-0000-0000000000a4'),
+  ('b0000000-0000-0000-0000-0000000000fb', 'b0000000-0000-0000-0000-000000000002',
+   'b0000000-0000-0000-0000-0000000000fa', 5000000, 'TRY', 'draft',
+   'b0000000-0000-0000-0000-0000000000b1')
+on conflict (id) do nothing;
