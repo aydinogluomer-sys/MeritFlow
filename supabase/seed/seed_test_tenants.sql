@@ -339,3 +339,106 @@ values
    'b0000000-0000-0000-0000-0000000000fb', 'b0000000-0000-0000-0000-0000000000b2', true, 20, 1,
    1.0, null, 'b0000000-0000-0000-0000-0000000000b1')
 on conflict (id) do nothing;
+
+-- =============================================================================
+-- Phase 3 seed — bonus_calculation_runs + bonus_allocations + snapshots (DEV/STAGING)
+-- Refs: 14/15/16 (§4 run machine, §5 allocation machine), D1/D6/AD7/AD9/AD10.
+-- A SEPARATE locked period+pool (30/31) — distinct from the OPEN fa/DRAFT fb fixtures
+-- other suites rely on — carries one COMPLETED run (32) with two allocations (33/34)
+-- and a thin snapshot (35). These are STORED fixtures (no calc engine): the amounts
+-- are hand-set to satisfy Σ(final) + undistributed_remainder = pool (SI-13/INV-4).
+-- Sequence respects the state machines: pool draft->locked, period open->locked (AD10),
+-- allocations inserted while run is running, then run running->completed (freezes them).
+--   Org A: period 30 (locked) + pool 31 (locked, 100k TL, t_org=1) + run 32 (completed)
+--          + alloc 33 (emp-alpha a7/team f1, 60k) + alloc 34 (emp-beta a8/team f2, 40k)
+--          + snapshot 35 (remainder 0). Σfinal 100k = pool.
+--   Org B: period 30 + pool 31 (50k) + run 32 + alloc 33 (emp-b b2, 50k) + snapshot 35.
+-- =============================================================================
+
+-- Locked period + locked pool (open->locked path so INSERT/state-machine triggers pass).
+insert into public.bonus_periods
+  (id, organization_id, period_type, starts_on, ends_on, status, created_by)
+values
+  ('a0000000-0000-0000-0000-000000000030', 'a0000000-0000-0000-0000-000000000001',
+   'monthly', date '2026-05-01', date '2026-05-31', 'open', 'a0000000-0000-0000-0000-0000000000a3'),
+  ('b0000000-0000-0000-0000-000000000030', 'b0000000-0000-0000-0000-000000000002',
+   'monthly', date '2026-05-01', date '2026-05-31', 'open', 'b0000000-0000-0000-0000-0000000000b1')
+on conflict (id) do nothing;
+
+insert into public.bonus_pools
+  (id, organization_id, bonus_period_id, amount_minor, currency, status, created_by)
+values
+  ('a0000000-0000-0000-0000-000000000031', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-000000000030', 10000000, 'TRY', 'draft', 'a0000000-0000-0000-0000-0000000000a4'),
+  ('b0000000-0000-0000-0000-000000000031', 'b0000000-0000-0000-0000-000000000002',
+   'b0000000-0000-0000-0000-000000000030', 5000000, 'TRY', 'draft', 'b0000000-0000-0000-0000-0000000000b1')
+on conflict (id) do nothing;
+
+-- Lock the pools (t_org + lock metadata), then lock the periods (AD10 satisfied).
+update public.bonus_pools set status = 'locked', t_org = 1, locked_at = now(),
+       locked_by = 'a0000000-0000-0000-0000-0000000000a4'
+  where id = 'a0000000-0000-0000-0000-000000000031' and status = 'draft';
+update public.bonus_pools set status = 'locked', t_org = 1, locked_at = now(),
+       locked_by = 'b0000000-0000-0000-0000-0000000000b1'
+  where id = 'b0000000-0000-0000-0000-000000000031' and status = 'draft';
+update public.bonus_periods set status = 'locked', locked_at = now(),
+       locked_by = 'a0000000-0000-0000-0000-0000000000a3'
+  where id = 'a0000000-0000-0000-0000-000000000030' and status = 'open';
+update public.bonus_periods set status = 'locked', locked_at = now(),
+       locked_by = 'b0000000-0000-0000-0000-0000000000b1'
+  where id = 'b0000000-0000-0000-0000-000000000030' and status = 'open';
+
+-- Calculation runs (start 'running').
+insert into public.bonus_calculation_runs
+  (id, organization_id, bonus_period_id, bonus_pool_id, policy_version_id, status,
+   idempotency_key, t_org, top_up_applied, triggered_by)
+values
+  ('a0000000-0000-0000-0000-000000000032', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-000000000030', 'a0000000-0000-0000-0000-000000000031',
+   'a0000000-0000-0000-0000-0000000000d2', 'running', 'seed-run-a-2026-05', 1, false,
+   'a0000000-0000-0000-0000-0000000000a3'),
+  ('b0000000-0000-0000-0000-000000000032', 'b0000000-0000-0000-0000-000000000002',
+   'b0000000-0000-0000-0000-000000000030', 'b0000000-0000-0000-0000-000000000031',
+   'b0000000-0000-0000-0000-0000000000d2', 'running', 'seed-run-b-2026-05', 1, false,
+   'b0000000-0000-0000-0000-0000000000b1')
+on conflict (id) do nothing;
+
+-- Allocations (while run is running). Σ(final) matches pool per org.
+insert into public.bonus_allocations
+  (id, organization_id, calculation_run_id, bonus_period_id, employee_id, primary_team_id,
+   adjusted_score, raw_share_minor, final_amount_minor, cap_applied, status)
+values
+  ('a0000000-0000-0000-0000-000000000033', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-000000000032', 'a0000000-0000-0000-0000-000000000030',
+   'a0000000-0000-0000-0000-0000000000a7', 'a0000000-0000-0000-0000-0000000000f1',
+   1500, 6000000, 6000000, 'no', 'calculated'),
+  ('a0000000-0000-0000-0000-000000000034', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-000000000032', 'a0000000-0000-0000-0000-000000000030',
+   'a0000000-0000-0000-0000-0000000000a8', 'a0000000-0000-0000-0000-0000000000f2',
+   1000, 4000000, 4000000, 'no', 'calculated'),
+  ('b0000000-0000-0000-0000-000000000033', 'b0000000-0000-0000-0000-000000000002',
+   'b0000000-0000-0000-0000-000000000032', 'b0000000-0000-0000-0000-000000000030',
+   'b0000000-0000-0000-0000-0000000000b2', null,
+   1000, 5000000, 5000000, 'no', 'calculated')
+on conflict (id) do nothing;
+
+-- Thin freeze markers (one per run).
+insert into public.bonus_allocation_snapshots
+  (id, organization_id, calculation_run_id, bonus_period_id, bonus_pool_id, policy_version_id,
+   t_org, top_up_applied, undistributed_remainder_minor, calculation_metadata)
+values
+  ('a0000000-0000-0000-0000-000000000035', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-000000000032', 'a0000000-0000-0000-0000-000000000030',
+   'a0000000-0000-0000-0000-000000000031', 'a0000000-0000-0000-0000-0000000000d2',
+   1, false, 0, '{"seed":"org-a"}'::jsonb),
+  ('b0000000-0000-0000-0000-000000000035', 'b0000000-0000-0000-0000-000000000002',
+   'b0000000-0000-0000-0000-000000000032', 'b0000000-0000-0000-0000-000000000030',
+   'b0000000-0000-0000-0000-000000000031', 'b0000000-0000-0000-0000-0000000000d2',
+   1, false, 0, '{"seed":"org-b"}'::jsonb)
+on conflict (id) do nothing;
+
+-- Complete the runs (running->completed) — this FREEZES the allocations above.
+update public.bonus_calculation_runs set status = 'completed', completed_at = now()
+  where id = 'a0000000-0000-0000-0000-000000000032' and status = 'running';
+update public.bonus_calculation_runs set status = 'completed', completed_at = now()
+  where id = 'b0000000-0000-0000-0000-000000000032' and status = 'running';
