@@ -24,24 +24,28 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
 ## Detailed specification
 
 ### Phase 0 — Source & Prompt Audit  [TAMAMLANDI]
+
 - Goal: çelişki/karar netleştirme.
 - Deliverable: planlama paketi + Decision Lock (D1–D12) + Phase-Gate OQ Resolution (AD1–AD10).
 - Acceptance: 22 karar kilitli; faz-gate OQ'lar kapatıldı; çelişkiler çözülmüş.
 - Status: ✅ (PDF kullanılmıyor; context pack tek source of truth).
 
 ### Phase 1 — Product & Risk Framing  [DOKÜMAN AŞAMASI — TAMAMLANDI]
+
 - Goal: PRD + legal/ethical risk haritası + tam ADR gövdeleri.
 - Deliverable: `01_PRD` (kesin), `/docs/adr/ADR-001…020` tam metin, `CLAUDE.md`.
 - Acceptance: non-negotiable'lar net; legal-review item listesi hazır; 20 ADR Accepted/Proposed.
 - Status: ✅ ADR'ler + CLAUDE.md üretildi. Test: yok (doküman). Risk: hukuki belirsizlik. Dep: Phase 0. Difficulty: M.
 
 ### Phase 2 — Domain Model & Permissions
+
 - Goal: entity finalizasyonu + RBAC (primary_role, AD2) + RLS stratejisi somutlanması (DB authz, AD1).
 - Deliverable: `02_DOMAIN_MODEL` + `03_PERMISSION_RLS_STRATEGY` (policy intent → uygulanabilir tasarım).
 - Acceptance: her tablo için RLS policy intent + Finance view + comp audit (AD3) onaylı.
 - Test: RLS test planı. Risk: recursive RLS, primary_role. Dep: Phase 1. Difficulty: M.
 
 ### Phase 3 — Database & Ledger Foundation  [GÜVENLİK TEMELİ]
+
 - Goal: schema + RLS + point/bonus ledger + audit + comp records + seed.
 - Deliverable: tablolar, RLS policy'leri, ledger yapıları, comp audit maskeleme, test tenant seed.
 - Acceptance: RLS negatif suite yeşil; ledger append-only; audit yazıyor (comp maskeli); AD1/AD3 testleri geçer.
@@ -79,52 +83,67 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
     ayrımı. Kod: `migrations/0011_bonus_periods_pools.sql`, `tests/0005_phase3_bonus_periods_pools.test.sql`
     (commit `d04b954`). **Verified 2026-07-24** (`db reset` 0001..0011 + seed; `test db` Files=5 Tests=194
     PASS Failed=0). AD10/SI-4 kanıtlı.
+  - **Phase 3 — bonus_pool_components + bonus_pool_eligibility** [VERIFIED/DONE]: MVP Safe Pro-Rata component
+    model (`individual`=1.0 only — D1); component/eligibility → `bonus_pools` same-org composite FK; eligibility
+    employee **aynı org üyesi** (`(org, employee)` → `memberships` composite FK; cross-tenant employee yapısal
+    olarak imkânsız); `primary_team_id` same-org + AD9 `team_memberships.is_primary` doğrulaması; 15-gün +
+    proration (D10); eligibility yazımı server-only; parent pool draft'tan çıkınca hem component hem eligibility
+    **immutable** (SI-4). Kod: `migrations/0012_bonus_components_eligibility.sql`,
+    `tests/0006_phase3_bonus_components_eligibility.test.sql` (commit `8f74e8d`). **Verified 2026-07-24**
+    (`db reset` 0001..0012 + seed; `test db` Files=6 Tests=238 PASS Failed=0). D1/D10/AD9/AD10/SI-4 kanıtlı.
   - **Phase 3 (kalan) — Ledger & sensitive data** [GATED]: scoring **engine** (final_points math +
-    approve→ledger + `task_approved`/`task_id`), tasks/task_reviews, `bonus_pool_components`,
-    `bonus_pool_eligibility`, `bonus_calculation_runs`, `bonus_allocations`, `bonus_allocation_snapshots`,
-    `bonus_ledger`, disputes, anti-gaming, notifications, exports, UI/API. Her dilim ayrı
-    `implementation authorized` ister (faz-sınırlı — ADR-020).
-    **Sıradaki önerilen DB dilimi:** **bonus_pool_components + bonus_pool_eligibility** (component ağırlıkları
-    MVP `individual`=1.0; eligibility 15 gün + membership + proration; `primary_team_id` `team_memberships.is_primary`'den).
+    approve→ledger + `task_approved`/`task_id`), tasks/task_reviews, `bonus_calculation_runs`,
+    `bonus_allocations`, `bonus_allocation_snapshots`, `bonus_ledger`, disputes, anti-gaming, notifications,
+    exports, UI/API. Her dilim ayrı `implementation authorized` ister (faz-sınırlı — ADR-020).
+    **Sıradaki önerilen DB dilimi:** **bonus_calculation_runs + bonus_allocations + bonus_allocation_snapshots**
+    (hesaplama iskeleti; run idempotency; allocation `pending_missing_cap_basis` — AD6; snapshot immutable —
+    INV-6/AD7; Σfinal + undistributed_remainder = pool — INV-4; hesaplama motoru yine Phase 5–6'da).
     **Henüz yetkili değil.**
 
 ### Phase 4 — Task & Review Core
+
 - Goal: task CRUD → assign → submit → review.
 - Deliverable: task akışı + state machine + self-approval block + submission/revision history (AD4).
 - Acceptance: state machine doğru; self-approval blocked; period-lock guard.
 - Test: state geçişleri, self-approval. Risk: status bug. Dep: Phase 3. Difficulty: M.
 
 ### Phase 5 — Scoring Engine
+
 - Goal: `04` motorunun uygulanması.
 - Deliverable: policy versioning (AD7) + multipliers + timeliness(submitted_at, AD4) + collaboration-no-effect (AD5) + approve→ledger + breakdown.
 - Acceptance: determinizm; quality=poor approve etmez; geç onay cezalandırmaz; idempotent approve.
 - Test: scoring suite (`10` #1, #5). Risk: yanlış puan. Dep: Phase 4. Difficulty: M.
 
 ### Phase 6 — Bonus Engine
+
 - Goal: `05` motorunun uygulanması.
 - Deliverable: period/pool(lock, AD10)/eligibility/proration/T_org(+top-up, AD8)/cap basis(AD6)/calculation run/snapshot(faktörler, AD7).
 - Acceptance: Σ invariant; worked example reproduce; cap basis yoksa pending+export bloğu; T_org=1.2 top-up'suz pool aşmaz; idempotent run; snapshot immutable.
 - Test: bonus calculation suite (`10` #4). Risk: finansal hata. Dep: Phase 5. Difficulty: L.
 
 ### Phase 7 — Anti-Gaming & Disputes
+
 - Goal: 5 flag + dispute workflow.
 - Deliverable: `08` kuralları + `07` dispute akışı (HR atama, 5 iş günü, manager final değil) + recalculation.
 - Acceptance: flag→review (no auto-punish); dispute→adjustment/snapshot; manager final değil.
 - Test: anti-gaming + dispute suite. Risk: false positive. Dep: Phase 6. Difficulty: M.
 
 ### Phase 8 — Dashboards & UX
+
 - Goal: 5 rol ekranları + 2 leaderboard görünümü.
 - Deliverable: `09` IA'ya göre ekranlar + breakdown'lar (cap basis/T_org top-up notları dahil).
 - Acceptance: her puan/prim açıklanabilir; estimated/final ayrımı; privacy-first leaderboard.
 - Test: E2E + erişim + temel a11y. Risk: UX altitude. Dep: Phase 5–7. Difficulty: L.
 
 ### Phase 9 — Testing & Security
+
 - Goal: tam test suite + güvenlik incelemesi.
 - Deliverable: business/RLS/permission/anti-gaming/E2E/security testleri.
 - Acceptance: cross-tenant + self-approval bloklayıcı yeşil; audit coverage tam; AD1–AD10 testleri geçer.
 - Test: tüm suite. Risk: kapsam boşluğu. Dep: Phase 3–8. Difficulty: L.
 
 ### Phase 10 — Production Readiness
+
 - Goal: monitoring, error handling, audit export, docs, deploy checklist, support access.
 - Deliverable: gözlemlenebilirlik + deploy checklist + support workflow.
 - Acceptance: audit export çalışır; deploy checklist geçer; support access audit'li.

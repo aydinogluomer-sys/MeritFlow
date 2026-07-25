@@ -66,32 +66,15 @@ tasks, the scoring engine, or any money/bonus surface.
 
 ## 3. Explicit scope (Phase 3B — Scoring Policy & Point Ledger Foundation)
 
-**Tables (proposed, new migrations only — `0008+`):**
+**Deliverables (proposed; new migrations/files only — `0008+`):**
 
-1. `scoring_policies` — logical scoring policy (1—* versions).
-2. `scoring_policy_versions` — immutable published policy snapshot (multipliers, thresholds, penalty rule).
-3. `point_ledger` — append-only, single-entry point ledger **without** `task_id` / `bonus_period_id` (see §5).
-
-**Helpers (proposed):**
-
-4. `team_of(employee_id) -> uuid` — primary-team resolver, **only** if needed for the manager
-   point-ledger SELECT policy (see §7). Canonical source = `team_memberships.is_primary`.
-
-**RLS / authorization (proposed):**
-
-5. RLS ENABLE + FORCE + policies + least-privilege grants for the three new tables (§6), reusing the
-   3A patterns (`current_org()`, `has_role()`, `has_permission()`, `has_support_grant()`,
-   `prevent_mutation()`, `log_audit()`).
-
-**Seed (proposed, dev/staging only):**
-
-6. Forward-compatible permission-catalog + role-mapping additions (notably `policy.manage` — see §5/§8),
-   one scoring policy + one published version per test tenant, and a few deterministic `point_ledger`
-   rows (manual adjustment + reversal) to exercise visibility and append-only tests.
-
-**Tests (proposed):**
-
-7. A new blocking pgTAP suite for Phase 3B (§9), in the same strict style as the 3A suite.
+1. **Table —** `scoring_policies` — logical scoring policy (1—* versions).
+2. **Table —** `scoring_policy_versions` — immutable published policy snapshot (multipliers, thresholds, penalty rule).
+3. **Table —** `point_ledger` — append-only, single-entry point ledger **without** `task_id` / `bonus_period_id` (see §5).
+4. **Helper —** `team_of(employee_id) -> uuid` — primary-team resolver, **only** if needed for the manager point-ledger SELECT policy (see §7). Canonical source = `team_memberships.is_primary`.
+5. **RLS / authorization —** RLS ENABLE + FORCE + policies + least-privilege grants for the three new tables (§6), reusing the 3A patterns (`current_org()`, `has_role()`, `has_permission()`, `has_support_grant()`, `prevent_mutation()`, `log_audit()`).
+6. **Seed (dev/staging only) —** forward-compatible permission-catalog + role-mapping additions (notably `policy.manage` — see §5/§8), one scoring policy + one published version per test tenant, and a few deterministic `point_ledger` rows (manual adjustment + reversal) to exercise visibility and append-only tests.
+7. **Tests —** a new blocking pgTAP suite for Phase 3B (§9), in the same strict style as the 3A suite.
 
 Everything here is built as **new files** (`migrations/0008..`, a new test file, additive seed blocks).
 **No edits to `0001..0007`, the existing seed beyond additive blocks, the existing test, config, or
@@ -361,7 +344,8 @@ doc 15 and is worth establishing now.
 - **`search_path`:** fixed empty (`set search_path = ''`), fully-qualified table names.
 - **Volatility:** `stable`.
 - **Body (intent):**
-  ```
+
+  ```sql
   select tm.team_id
   from public.team_memberships tm
   where tm.profile_id = p_employee
@@ -369,6 +353,7 @@ doc 15 and is worth establishing now.
     and tm.is_primary = true
   limit 1;
   ```
+
 - **Canonical source:** resolves primary team **only** from `team_memberships.is_primary` (AD9). It
   does **not** read any `memberships.primary_team_id` (which does not and must not exist).
 - **Recursion risk:** none. As a SECURITY DEFINER function owned by the bypassrls migration role, its
@@ -412,8 +397,7 @@ New strict suite (e.g. `supabase/tests/0002_phase3b_scoring_ledger.test.sql`), s
 3A suite: `set local role authenticated` + `set_config('request.jwt.claims', ...)` per actor;
 `throws_ok(sql, errcode, errmsg, description)` strict 4-arg form for negatives. **Blocking** tests:
 
-**Structural / RLS-enabled**
-1. RLS is ENABLED **and** FORCE on `scoring_policies`, `scoring_policy_versions`, `point_ledger`.
+1. **Structural / RLS-enabled —** RLS is ENABLED **and** FORCE on `scoring_policies`, `scoring_policy_versions`, `point_ledger`.
 2. `authenticated` has no DELETE privilege on any of the three (and no INSERT on `point_ledger`).
 
 **Cross-tenant (SI-7) — blocking**
@@ -573,7 +557,7 @@ tests together** and ends green before the next is authorized.
 
 ### 13.A — DRAFT prompt for slice 3B-A (NOT AUTHORIZED YET)
 
-```
+```text
 implementation authorized only for Phase 3B — Scoring Policy tables + RLS + minimal tests
 
 Scope (all in this one slice):
@@ -602,7 +586,7 @@ Report: files created; immutability trigger; RLS+policies in-slice; policy.manag
 
 ### 13.B — DRAFT prompt for slice 3B-B (NOT AUTHORIZED YET)
 
-```
+```text
 implementation authorized only for Phase 3B — Point Ledger table + append-only + team_of + RLS + minimal tests
 
 Scope (all in this one slice):
