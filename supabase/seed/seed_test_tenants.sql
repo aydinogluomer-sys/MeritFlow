@@ -444,6 +444,53 @@ update public.bonus_calculation_runs set status = 'completed', completed_at = no
   where id = 'b0000000-0000-0000-0000-000000000032' and status = 'running';
 
 -- =============================================================================
+-- Phase 3 seed — disputes/dispute_events fixtures (DEV/STAGING)
+-- Refs: 07/14/15/16, D9. Deterministic dispute fixtures. dispute_events are AUTO-written
+-- by the log_dispute_event() trigger, so we set request.jwt.claims (auth.uid()) before
+-- each write to stamp the acting actor. Created via the bypassrls migration role (RLS
+-- with_check not evaluated), but auth.uid() still resolves from the JWT claim GUC — the
+-- auto-event actor is the claim's sub. HR-assign authz is via has_role('hr') (no new
+-- permission — keeps the seeded permission catalog unchanged).
+--   Org A dispute 70: complainant emp-alpha a7; disputed decision owner mgr-alpha a5;
+--                     opened (event actor a7) then HR a3 assigns reviewer mgr-beta a6
+--                     (event actor a3) -> under_review. (a6 <> owner a5 <> complainant a7.)
+--   Org B dispute 70: complainant emp-b b2; owner owner-b b1; open (event actor b2).
+-- =============================================================================
+
+-- Org A dispute (opened by complainant a7). Session-level set_config (is_local=false)
+-- so the JWT claim survives across autocommit statement boundaries during db reset.
+select set_config('request.jwt.claims', '{"sub":"a0000000-0000-0000-0000-0000000000a7"}', false);
+insert into public.disputes
+  (id, organization_id, complainant_id, dispute_type, target_type, target_id, status,
+   decision_owner_id, opened_at, due_at)
+values
+  ('a0000000-0000-0000-0000-000000000070', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-0000000000a7', 'unfair_rejection', 'task',
+   'a0000000-0000-0000-0000-000000000071', 'open',
+   'a0000000-0000-0000-0000-0000000000a5', now(), now() + interval '5 days')
+on conflict (id) do nothing;
+-- HR a3 assigns reviewer mgr-beta a6 -> under_review (auto-event 'assigned', actor a3).
+select set_config('request.jwt.claims', '{"sub":"a0000000-0000-0000-0000-0000000000a3"}', false);
+update public.disputes
+  set status = 'under_review', assigned_reviewer_id = 'a0000000-0000-0000-0000-0000000000a6'
+  where id = 'a0000000-0000-0000-0000-000000000070' and status = 'open';
+
+-- Org B dispute (opened by complainant b2).
+select set_config('request.jwt.claims', '{"sub":"b0000000-0000-0000-0000-0000000000b2"}', false);
+insert into public.disputes
+  (id, organization_id, complainant_id, dispute_type, target_type, target_id, status,
+   decision_owner_id, opened_at, due_at)
+values
+  ('b0000000-0000-0000-0000-000000000070', 'b0000000-0000-0000-0000-000000000002',
+   'b0000000-0000-0000-0000-0000000000b2', 'bonus_calculation_dispute', 'task',
+   'b0000000-0000-0000-0000-000000000071', 'open',
+   'b0000000-0000-0000-0000-0000000000b1', now(), now() + interval '5 days')
+on conflict (id) do nothing;
+
+-- Reset the claim so it does not leak beyond the seed's dispute block.
+select set_config('request.jwt.claims', '', false);
+
+-- =============================================================================
 -- Phase 3 seed — bonus_ledger balanced accrual fixtures (DEV/STAGING ONLY)
 -- Refs: 06 §2, 14/16 (BL-1..4), ADR-017. A single balanced accrual TRANSACTION per org
 -- (one pool debit total + per-employee accrual credits), referencing the completed run
