@@ -1,6 +1,6 @@
-# MeritFlow — Supabase (Database Foundation: Phase 3A–3B + comp + bonus periods/pools + components/eligibility + calc runs/allocations/snapshots)
+# MeritFlow — Supabase (Database Foundation: Phase 3A–3B + comp + bonus periods/pools + components/eligibility + calc runs/allocations/snapshots + ledger)
 
-This directory is the **database foundation**. It currently implements seven verified
+This directory is the **database foundation**. It currently implements eight verified
 slices (each under its own `implementation authorized only for Phase 3X — …`):
 
 - **Phase 3A — Database Foundation & RBAC** (`17_PHASE_3A_...md`): 11 foundation/RBAC
@@ -35,8 +35,16 @@ slices (each under its own `implementation authorized only for Phase 3X — …`
   same-org composite FKs (period/pool/policy_version/run/employee/team); **server-only** writes with
   employee-own allocation read (Finance raw excluded — view-only, SI-12); `Σfinal + undistributed_remainder =
   pool` is **test/fixture-verified only** (no hard trigger — SI-13/INV-4) — RLS + pgTAP.
+- **Phase 3 — bonus_ledger** (`06 §2`, `14`/`15`/`16`, ADR-017): append-only **double-entry** money ledger
+  (`entry_type` debit/credit, `account` pool/accrual/payout/clawback); correction = reversal (UPDATE/DELETE
+  hard-blocked — BL-1); a **DEFERRABLE INITIALLY DEFERRED balance trigger** hard-enforces
+  `Σdebit = Σcredit` per `(organization_id, transaction_id)`; accrual requires `snapshot_id` (structural SI-3;
+  approved-gate deferred to Phase 6); idempotent accrual `unique(snapshot_id, employee_id, account)`; only
+  `bonus_accrual` + `reversal` are writable this slice (payout/clawback/approval events blocked by a guard);
+  raw SELECT is **Finance + Auditor only** (HR/Employee/Manager/Support excluded — SI-12); **server-only**
+  writes; same-org composite FKs (pool/run/snapshot/employee); INSERT audit (BL-4) — RLS + pgTAP.
 
-Migrations `0001..0013` + seed apply cleanly; blocking pgTAP suites (`0001`..`0007`) are green (see
+Migrations `0001..0014` + seed apply cleanly; blocking pgTAP suites (`0001`..`0008`) are green (see
 "Verification"). **Everything downstream is still gated** (see "Out of scope").
 
 ## ⚠️ Environment rule (non-negotiable — ADR-014 / CLAUDE.md)
@@ -81,9 +89,14 @@ supabase/
                                           completed-run allocation freeze (SI-4/SI-14); thin snapshot append-only;
                                           cap-not-exceeded + pending_missing_cap_basis; approved/exported/paid
                                           blocked; server-only writes (Finance raw excluded — SI-12)
+    0014_bonus_ledger.sql                 bonus_ledger (append-only double-entry) — deferred Σdebit=Σcredit
+                                          per (org, transaction_id) balance trigger; accrual⇒snapshot_id;
+                                          idempotent accrual; only bonus_accrual+reversal writable; Finance/
+                                          Auditor raw read only; server-only writes; INSERT audit (BL-4)
   seed/seed_test_tenants.sql              2 tenants, RBAC catalog, teams, support grants,
                                           + Phase 3B (scoring/versions, point_ledger) + comp + bonus fixtures
-                                          (periods/pools + components/eligibility + calc run/allocations/snapshot)
+                                          (periods/pools + components/eligibility + calc run/allocations/snapshot
+                                          + balanced accrual ledger)
   tests/
     0001_phase3a_rls.test.sql             blocking pgTAP — RLS/RBAC (Phase 3A)
     0002_phase3b_scoring_policies.test.sql blocking pgTAP — scoring policy/version (Phase 3B-A)
@@ -92,6 +105,7 @@ supabase/
     0005_phase3_bonus_periods_pools.test.sql blocking pgTAP — bonus periods/pools + AD10/SI-4 (Phase 3)
     0006_phase3_bonus_components_eligibility.test.sql blocking pgTAP — components/eligibility + D1/D10/AD9/SI-4 (Phase 3)
     0007_phase3_bonus_calc_runs_allocations_snapshots.test.sql blocking pgTAP — runs/allocations/snapshots + AD10/SI-4/SI-14 (Phase 3)
+    0008_phase3_bonus_ledger.test.sql     blocking pgTAP — bonus_ledger double-entry/balance/append-only (Phase 3)
 ```
 
 ## Apply & test (local)
@@ -100,8 +114,8 @@ Requires Docker + the Supabase CLI. From the repo root:
 
 ```bash
 supabase start            # boots local dev stack (Docker)
-supabase db reset         # applies migrations 0001..0013 then seed
-supabase test db          # runs the pgTAP suites in tests/ (0001..0007)
+supabase db reset         # applies migrations 0001..0014 then seed
+supabase test db          # runs the pgTAP suites in tests/ (0001..0008)
 ```
 
 If the `supabase` binary is not on PATH (e.g. a fresh install not yet picked up), the project-local
@@ -155,6 +169,18 @@ re-runnable (on-conflict guards).
 > = pool` is asserted on the seed fixture (no hard trigger). One transient `db reset` "container exit 1" flake
 > (vector/analytics/pg_meta unhealthy) cleared on a `--debug` reset — not a code/schema defect.
 >
+> **Phase 3 bonus_ledger: VERIFIED / DONE** (2026-07-26, npx Supabase CLI **2.109.1**; commit `71e68f7`).
+> `db reset` applied migrations **0001..0014** + seed cleanly; `test db` → **Files=8, Tests=328, Result=PASS,
+> Failed=0** (`0001`..`0008` ok). Invariants proven (ADR-017/BL-1..4/SI-3/SI-12): **double-entry** — a
+> **DEFERRABLE INITIALLY DEFERRED** balance trigger rejects any `(organization_id, transaction_id)` where
+> `Σdebit ≠ Σcredit` (`23514`, forced in tests via `set constraints all immediate`); **append-only** (UPDATE/
+> DELETE → `23001`, correction = reversal); accrual requires `snapshot_id` (`23514`) and is idempotent per
+> `(snapshot, employee, account)` (`23505`); only `bonus_accrual` + `reversal` are writable — payout/clawback/
+> approval events rejected (`23514`); raw SELECT is **Finance + Auditor only** (HR/Employee/Manager/Support all
+> read 0 rows); cross-tenant ledger rows rejected by composite FK (`23503`). The deferred balance trigger fires
+> at commit, so the balanced seed accrual (debit pool = Σ credit accruals) applies cleanly. A transient
+> `db reset` container flake (`ENOTFOUND` / "exit 1") cleared on retry — not a code/schema defect.
+>
 > **Later phases remain gated** (ADR-020). **Never run any of this against a production project.**
 
 ### Prerequisites
@@ -171,13 +197,13 @@ re-runnable (on-conflict guards).
 
 ```bash
 supabase start        # 1. boot local stack; note the printed local URLs + dev-default keys
-supabase db reset     # 2. apply 0001..0013 + seed (expect clean apply)
+supabase db reset     # 2. apply 0001..0014 + seed (expect clean apply)
 supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
 ```
 
 ### Expected pass criteria
 
-- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=7, Tests=299, PASS**). Blocking.
+- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=8, Tests=328, PASS**). Blocking.
 - [ ] Green coverage: cross-tenant isolation (SI-7), non-recursive memberships read (§7A), support
   active-vs-expired grant (D4), append-only audit + append-only `point_ledger` (SI-2), helper
   correctness, scoring-policy `policy.manage` gating + published-version immutability (AD7), point_ledger
@@ -188,7 +214,9 @@ supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
   server-only eligibility writes; inputs immutable once parent pool leaves draft — SI-4), and
   **bonus_calculation_runs/allocations/snapshots** (run machine + AD10 locked-period+locked-pool guard;
   idempotency; completed-run allocation freeze; thin snapshot append-only; cap-not-exceeded;
-  approved/exported/paid blocked; Finance raw-allocation excluded — SI-12/SI-14).
+  approved/exported/paid blocked; Finance raw-allocation excluded — SI-12/SI-14), and **bonus_ledger**
+  (double-entry deferred `Σdebit=Σcredit` per (org, transaction_id); append-only; accrual⇒snapshot + idempotent;
+  only bonus_accrual+reversal writable; Finance/Auditor-only raw read — HR/Employee/Manager/Support excluded).
 - [ ] `supabase db reset` then re-running the suite is reproducible (deterministic seed).
 
 ### Failure triage
@@ -232,7 +260,7 @@ supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
 | support_access_grants | yes | audit-critical | time-bounded (D4); audited |
 | audit_logs | yes | audit-critical | append-only; comp payload masked (AD3) |
 
-**Phase 3B / Phase 3 comp + bonus (11):**
+**Phase 3B / Phase 3 comp + bonus (12):**
 
 | Table | org_id? | Class | Notes |
 | --- | :--: | --- | --- |
@@ -247,6 +275,7 @@ supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
 | bonus_calculation_runs | yes | financial-critical, audit-critical | run machine running/completed/superseded; starts only on **locked period + locked pool** (AD10); idempotency `unique(org, key)`; **server-only writes**; HR/Finance/Auditor read; audited; DELETE blocked |
 | bonus_allocations | yes | financial-critical | per (run, employee); cap-not-exceeded + `cap_applied` (pending_missing_cap_basis); same-org employee/team composite FK + AD9; **frozen once run completed** (SI-4/SI-14); **server-only writes**; employee-own + HR/Auditor read (**Finance view-only — SI-12**); DELETE blocked |
 | bonus_allocation_snapshots | yes | financial-critical, audit-critical | **thin** freeze marker, one per run; **append-only immutable** (UPDATE/DELETE blocked — INV-6/SI-14); same-org composite FK; **server-only** insert; HR/Finance/Auditor read; audited |
+| bonus_ledger | yes | financial-critical, audit-critical | **double-entry** (debit/credit; pool/accrual/payout/clawback); **append-only** (correction=reversal); **deferred `Σdebit=Σcredit` per (org, transaction_id)** trigger; accrual⇒snapshot + idempotent; only bonus_accrual+reversal writable; **server-only writes**; **raw read Finance+Auditor only** (HR/Employee/Manager/Support excluded — SI-12); audited (BL-4) |
 
 ## Security guarantees enforced here
 
@@ -278,21 +307,29 @@ supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
   child links are **same-org composite FKs** (cross-tenant impossible); allocation reads exclude Finance (raw
   is view-only, SI-12); `Σfinal + undistributed_remainder = pool` is verified by test/fixture, not a hard
   trigger (SI-13/INV-4).
-- **Support access** (D4): default no access; read only via an **active, unexpired** grant; audited.
+- **Double-entry money integrity** (ADR-017/BL-1..4/SI-3/SI-12): `bonus_ledger` is **append-only** (UPDATE/
+  DELETE hard-blocked; correction = reversal); a **DEFERRABLE INITIALLY DEFERRED** balance trigger rejects any
+  `(organization_id, transaction_id)` where `Σdebit ≠ Σcredit`; accrual requires `snapshot_id` and is
+  idempotent per `(snapshot_id, employee_id, account)`; only `bonus_accrual` + `reversal` are writable in this
+  slice; raw read is **Finance + Auditor only** (HR/Employee/Manager **and support-grant** all excluded);
+  writes are **server-only**; all child links are same-org composite FKs. BL-2/BL-3 are test/fixture-verified.
+- **Support access** (D4): default no access; read only via an **active, unexpired** grant; audited. Support is
+  **not** a raw-read path on the money ledger (`bonus_ledger` is Finance/Auditor only).
 
 ## Out of scope (later slices / phases — still gated, ADR-020)
 
 Scoring **engine** (final_points math + approve→ledger + `task_approved`/`task_id`), tasks & task_reviews,
-`bonus_ledger`, disputes, anti_gaming_flags, notifications, exports, projects, objectives, integrations,
-webhook_events, Finance aggregate views (`v_finance_*`), UI/dashboard, API routes. Each needs its own
-phase-scoped, verbatim authorization (ADR-020).
+the **approve→accrual posting engine** + snapshot-approval workflow, payout/export (`payout_exported`/
+`payout_marked_paid`, exports) + Finance aggregate views (`v_finance_*`), clawback workflow, dispute→reversal
+wiring, disputes, anti_gaming_flags, notifications, projects, objectives, integrations, webhook_events,
+UI/dashboard, API routes. Each needs its own phase-scoped, verbatim authorization (ADR-020).
 
-> **Next recommended slice:** **bonus_ledger + approve→accrual foundation** — the double-entry money ledger
-> (`Σdebit = Σcredit`; `entry_type` debit/credit; `account` pool/accrual/payout/clawback) where **accrual is
-> produced only from an approved snapshot** (`snapshot_id NOT NULL` — AD6/SI-3), rows are **append-only**
-> (UPDATE/DELETE forbidden), and accrual is idempotent per `(snapshot_id, employee_id, account)` — ADR-017.
-> Containers + guarantees only; the real approve/payout/export orchestration stays in Phase 6+. **Not
-> authorized yet.**
+> **Next recommended slice:** **disputes + dispute_events foundation** — the dispute lifecycle state machine
+> (`open → under_review → needs_info → resolved → closed` — doc 16 §6 / D9), `dispute_type` / `target_type` /
+> `target_id`, SLA `due_at` (opened + 5 business days), the **resolver ≠ owner of the disputed decision** guard
+> (a manager cannot be final on their own decision — D9), an append-only `dispute_events` history, and RLS
+> (complainant + assigned reviewer + HR + Auditor). The recalculation/ledger wiring (accepted → point_ledger
+> adjustment / new calc run) is engine work and stays out. **Not authorized yet.**
 
 ## Notes for reviewers
 

@@ -102,12 +102,24 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
     `tests/0007_phase3_bonus_calc_runs_allocations_snapshots.test.sql` (commit `e3bd1a3`). **Verified 2026-07-25**
     (`db reset` 0001..0013 + seed; `test db` Files=7 Tests=299 PASS Failed=0). D1/D6/AD6/AD7/AD9/AD10/SI-4/SI-12/SI-13/SI-14 kanıtlı.
     (Ayrıca `docs/planning/14` idempotency+markdownlint sync — commit `dae4c6b`.)
-  - **Phase 3 (kalan) — Ledger & sensitive data** [GATED]: scoring **engine** (final_points math +
-    approve→ledger + `task_approved`/`task_id`), tasks/task_reviews, `bonus_ledger`, disputes, anti-gaming,
-    notifications, exports, UI/API. Her dilim ayrı `implementation authorized` ister (faz-sınırlı — ADR-020).
-    **Sıradaki önerilen DB dilimi:** **bonus_ledger + approve→accrual foundation** (double-entry money;
-    Σdebit=Σcredit; accrual yalnız approved snapshot'tan — `snapshot_id NOT NULL`, AD6/SI-3; append-only;
-    accrual idempotency `unique(snapshot_id, employee_id, account)` — ADR-017; gerçek approve/payout orkestrasyon Phase 6+).
+  - **Phase 3 — bonus_ledger (double-entry money)** [VERIFIED/DONE]: append-only para defteri (motor YOK).
+    `entry_type` debit/credit, `account` pool/accrual/payout/clawback; düzeltme = reversal (UPDATE/DELETE
+    hard-block — BL-1); **deferred (DEFERRABLE INITIALLY DEFERRED) balance trigger** → `Σdebit=Σcredit` per
+    `(organization_id, transaction_id)` hard-enforce; accrual **yalnız snapshot_id ile** (yapısal — SI-3;
+    approved-gate Phase 6'ya ertelendi); idempotent accrual `unique(snapshot_id, employee_id, account)`; bu
+    dilimde yalnız `bonus_accrual` + `reversal` yazılabilir (payout/clawback/approval event'leri guard'lı);
+    raw SELECT **yalnız Finance + Auditor** (HR/Employee/Manager/**Support** hariç — SI-12); server-only
+    writes; same-org composite FK'ler (pool/run/snapshot/employee); INSERT audit (BL-4). BL-2/BL-3 seed/test-verified.
+    Kod: `migrations/0014_bonus_ledger.sql`, `tests/0008_phase3_bonus_ledger.test.sql` (commit `71e68f7`).
+    **Verified 2026-07-26** (`db reset` 0001..0014 + seed; `test db` Files=8 Tests=328 PASS Failed=0).
+    ADR-005/006/017/018, D2/AD6/BL-1..4/SI-3/SI-12 kanıtlı. (Ayrıca `docs/adr/ADR-020` markdownlint — commit `53d90de`.)
+  - **Phase 3 (kalan) — sensitive data & governance** [GATED]: scoring **engine** (final_points math +
+    approve→ledger + `task_approved`/`task_id`), tasks/task_reviews, disputes, anti-gaming, notifications,
+    exports, UI/API. Her dilim ayrı `implementation authorized` ister (faz-sınırlı — ADR-020).
+    **Sıradaki önerilen DB dilimi:** **disputes + `dispute_events` foundation** (itiraz state machine
+    open→under_review→needs_info→resolved→closed — doc 16 §6, D9; SLA `due_at` = opened + 5 iş günü; resolver ≠
+    ihtilaf kararının sahibi — D9; `dispute_events` append-only history; RLS complainant + reviewer + HR + Auditor;
+    recalculation/ledger bağlantısı motor işi = hariç).
     **Henüz yetkili değil.**
 
 ### Phase 4 — Task & Review Core

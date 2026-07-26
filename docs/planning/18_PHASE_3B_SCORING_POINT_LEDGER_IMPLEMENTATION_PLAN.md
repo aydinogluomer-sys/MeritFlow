@@ -37,12 +37,17 @@
     **bonus_calculation_runs + bonus_allocations + bonus_allocation_snapshots** (commit `e3bd1a3`,
     2026-07-25 — migration `0013`, test `0007`; run machine + AD10 locked-period+locked-pool guard;
     idempotency `unique(organization_id, idempotency_key)`; completed-run allocation freeze; thin snapshot
-    append-only; approved/exported/paid blocked; db reset `0001..0013`, test db Files=7/Tests=299/PASS) are
+    append-only; approved/exported/paid blocked; db reset `0001..0013`, test db Files=7/Tests=299/PASS), and
+    **bonus_ledger** (commit `71e68f7`, 2026-07-26 — migration `0014`, test `0008`; append-only double-entry;
+    deferred `Σdebit=Σcredit` per (org, transaction_id) balance trigger; accrual ⇒ snapshot_id; idempotent
+    accrual; only bonus_accrual+reversal writable; Finance/Auditor raw read only — HR/Employee/Manager/Support
+    excluded; server-only; db reset `0001..0014`, test db Files=8/Tests=328/PASS) are
     now **VERIFIED/DONE** (see `supabase/README.md` / `IMPLEMENTATION.md`). Data dictionary `14` idempotency
-    and markdownlint sync landed as commit `dae4c6b`.
-    **Next recommended DB slice:** bonus_ledger + approve→accrual foundation (double-entry money,
-    Σdebit=Σcredit; accrual only from an approved snapshot — `snapshot_id NOT NULL`, AD6/SI-3; append-only;
-    accrual idempotency `unique(snapshot_id, employee_id, account)` — ADR-017) — not authorized.
+    and markdownlint sync landed as commit `dae4c6b`; ADR-020 markdownlint as commit `53d90de`.
+    **Next recommended DB slice:** disputes + dispute_events foundation (dispute lifecycle
+    open→under_review→needs_info→resolved→closed — doc 16 §6/D9; SLA due_at = opened + 5 business days;
+    resolver ≠ owner of the disputed decision — D9; dispute_events append-only; RLS complainant + reviewer +
+    HR + Auditor; recalculation/ledger wiring is engine work = out) — not authorized.
 
 ---
 
