@@ -3,7 +3,7 @@
 > **Yaşayan durum/todo takip dosyası.** Detaylı "neden/nasıl" için kaynak: `docs/planning/` (00–18),
 > `docs/adr/` (ADR-001…020), `CLAUDE.md`. Çelişki olursa `docs/planning/00_DECISION_LOCK.md` kazanır.
 > Bu dosya **kod değildir**; yalnızca nerede olduğumuzu ve ne yapacağımızı izler.
-> Son güncelleme: 2026-07-26 (bonus_ledger double-entry money foundation runtime verified + committed + docs sync).
+> Son güncelleme: 2026-07-26 (disputes + dispute_events foundation runtime verified + committed + docs sync).
 
 ## 0. Yönetişim kuralı (her şeyden önce)
 
@@ -32,13 +32,14 @@ Decision Lock = D1–D12 + AD1–AD10 (22 karar).
 | Phase 3 bonus P/P | `bonus_periods` + `bonus_pools` (state machine, AD10 pool-lock-before-period-lock, locked t_org+metadata required, locked immutability, period identity immutability, period.manage/pool.create) | `migrations/0011`, `tests/0005` | ✅ verified | commit `d04b954`; 2026-07-24 |
 | Phase 3 bonus C/E | `bonus_pool_components` + `bonus_pool_eligibility` (MVP Safe Pro-Rata individual=1.0; same-org employee via memberships composite FK; AD9 primary_team is_primary; server-only eligibility writes; inputs immutable once parent pool leaves draft) | `migrations/0012`, `tests/0006` | ✅ verified | commit `8f74e8d`; 2026-07-24 |
 | Phase 3 bonus C/R/A/S | `bonus_calculation_runs` + `bonus_allocations` + `bonus_allocation_snapshots` (run state machine running/completed/superseded; AD10 locked-period+locked-pool double guard; idempotency `unique(org, idempotency_key)`; completed-run allocation freeze; thin snapshot append-only; cap-not-exceeded + pending_missing_cap_basis; approved/exported/paid blocked; server-only writes) | `migrations/0013`, `tests/0007` | ✅ verified | commit `e3bd1a3`; 2026-07-25 |
-| Phase 3 bonus ledger | `bonus_ledger` (append-only double-entry money; deferred `Σdebit=Σcredit` per (org, transaction_id) balance trigger; accrual ⇒ snapshot_id; idempotent accrual; only bonus_accrual+reversal writable; Finance/Auditor raw read only, server-only writes) | `migrations/0014`, `tests/0008` | ✅ **verified** | commit `71e68f7`; 2026-07-26 |
+| Phase 3 bonus ledger | `bonus_ledger` (append-only double-entry money; deferred `Σdebit=Σcredit` per (org, transaction_id) balance trigger; accrual ⇒ snapshot_id; idempotent accrual; only bonus_accrual+reversal writable; Finance/Auditor raw read only, server-only writes) | `migrations/0014`, `tests/0008` | ✅ verified | commit `71e68f7`; 2026-07-26 |
+| Phase 3 disputes | `disputes` + `dispute_events` (mutable state machine open→under_review→needs_info→resolved→closed; append-only auto-history trigger; D9 stored decision_owner_id + owns_review_decision; HR-only assign via has_role('hr'); due_at stored + sanity; server-only auto events; Finance/Support excluded) | `migrations/0015`, `tests/0009` | ✅ **verified** | commit `1bf63fe`; 2026-07-26 |
 
 **Runtime verification (2026-07-26, local dev stack, npx Supabase CLI 2.109.1):** `supabase db reset`
-migrations **0001..0014** + seed temiz uyguladı; `supabase test db` → **Files=8, Tests=328, Result=PASS,
-Failed=0** (`0001`·`0002`·`0003`·`0004`·`0005`·`0006`·`0007`·`0008` ok). `db reset`'teki geçici container
-flake'leri (`ENOTFOUND`/"container exit 1" — vector/analytics/pg_meta unhealthy) tekrar koşuda temiz geçti;
-kod/şema sorunu değil.
+migrations **0001..0015** + seed temiz uyguladı; `supabase test db` → **Files=9, Tests=388, Result=PASS,
+Failed=0** (`0001`·`0002`·`0003`·`0004`·`0005`·`0006`·`0007`·`0008`·`0009` ok). `db reset`'teki geçici
+container flake'leri (`ENOTFOUND`/timeout/"exit 1" — vector/analytics unhealthy) `supabase stop/start` +
+retry ile temiz geçti; kod/şema sorunu değil.
 
 **compensation_records güvenlik özelliği (AD3/D7/SI-5):** doğrudan **raw SELECT kapalı** (SELECT policy yok;
 maaş kolonları selectable değil); ham okuma **yalnız** `read_compensation_record(employee, reason)` ile
@@ -81,12 +82,24 @@ raw SELECT **yalnız Finance + Auditor** (HR/Employee/Manager/**Support** hariç
 posting engine / payout-export / clawback workflow yazılmadı; BL-2 (Σaccrual ≤ pool) / BL-3 (payout ≤ accrual)
 yalnız seed/test-verified.
 
+**disputes + dispute_events invariant'ları (D9/SI-6/SI-7 + ADR-006):** `disputes` **mutable state machine**
+(`open→under_review→needs_info→under_review→resolved→closed`) — yasak geçişler + open sonrası kimlik
+immutability (org/complainant/type/target/opened_at); `dispute_events` **append-only** ve **SECURITY DEFINER
+trigger ile otomatik** yazılır (her INSERT/status-transition'da; `actor_id=auth.uid()`), authenticated
+doğrudan yazamaz (UPDATE/DELETE hard-block). **D9:** stored `decision_owner_id` + `owns_review_decision()` +
+CHECK'ler (`reviewer ≠ owner`, `reviewer ≠ complainant`) + resolve RLS `NOT owns_review_decision`. **HR-only
+assign `has_role('hr')` ile** (yeni `dispute.assign` permission **eklenmedi** — test 0001 permission-katalog
+sayımını korumak için, 0001..0008 değiştirilemez). `due_at` **stored** + `due_at > opened_at` sanity CHECK
+(**iş-günü hesabı yok** — OQ-DP-1 ertelendi). RLS: complainant + assigned reviewer + HR + Auditor; **Finance/
+Support hariç**. `target_id` polymorphic (FK yok). **Hariç:** point_ledger `dispute_adjustment`, recalculation
+/ yeni calc run, bonus_ledger reversal/accrual, notification, reopen orkestrasyonu.
+
 **App katmanı (Next.js/API/UI): ⬜ hiç başlanmadı** (repo'da `package.json` yok, sadece `supabase/`).
 
 **✅ Doküman senkron güncel (2026-07-26):** `supabase/README.md`, `docs/planning/12`, `docs/planning/18`,
-bu dosya — 0001..0014 + 3A/3B/comp/bonus-P/P/bonus-C/E/bonus-C/R/A/S/bonus-ledger verified durumunu yansıtıyor.
-Ayrıca `docs/planning/14` idempotency + markdownlint sync commit `dae4c6b`; `docs/adr/ADR-020` markdownlint
-hijyeni commit `53d90de` ile tamamlandı.
+bu dosya — 0001..0015 + 3A/3B/comp/bonus-P/P/bonus-C/E/bonus-C/R/A/S/bonus-ledger/disputes verified durumunu
+yansıtıyor. Ayrıca `docs/planning/14` idempotency + markdownlint sync commit `dae4c6b`; `docs/adr/ADR-020`
+markdownlint hijyeni commit `53d90de` ile tamamlandı.
 
 ---
 
@@ -110,14 +123,14 @@ Kural: güvenlik temeli (RLS/ledger) bitmeden feature fazı ilerlemez.
 - [x] **bonus_pool_components + bonus_pool_eligibility** ✅ (commit `8f74e8d`, verified 2026-07-24; MVP individual=1.0 — D1; same-org employee via memberships composite FK; AD9 is_primary; server-only eligibility writes; inputs immutable once parent pool leaves draft — SI-4).
 - [x] **bonus_calculation_runs + bonus_allocations + bonus_allocation_snapshots** ✅ (commit `e3bd1a3`, verified 2026-07-25; run machine + AD10 locked-period+locked-pool guard; idempotency `unique(org, key)`; completed-run allocation freeze; thin snapshot append-only; cap-not-exceeded + pending_missing_cap_basis; approved/exported/paid blocked; server-only).
 - [x] **bonus_ledger (double-entry money)** ✅ (commit `71e68f7`, verified 2026-07-26; append-only; deferred `Σdebit=Σcredit` per (org, transaction_id) balance trigger; accrual ⇒ snapshot_id; idempotent accrual; only bonus_accrual+reversal writable; Finance/Auditor raw read only — HR/Employee/Manager/Support excluded; server-only; no posting engine / payout-export / clawback).
+- [x] **disputes + dispute_events** ✅ (commit `1bf63fe`, verified 2026-07-26; mutable state machine + open sonrası identity immutability; append-only auto-history trigger; D9 stored decision_owner_id + owns_review_decision + reviewer≠owner/complainant CHECK; HR-only assign via has_role('hr') — no dispute.assign permission; due_at stored + sanity; Finance/Support excluded; no ledger/recalc/notification wiring).
 - [x] Docs/status sync (README + roadmap 12 + doc 18 + bu dosya). Ayrıca `docs/planning/14` idempotency+markdownlint sync (commit `dae4c6b`); `docs/adr/ADR-020` markdownlint (commit `53d90de`).
 
 ### B. Kalan Phase 3 DB-foundation dilimleri (SQL-only, app gerektirmez)  ⛔ her biri ayrı yetki
 
 > Her dilim = tablo(lar) + RLS ENABLE+FORCE + policy + bloklayıcı pgTAP + additive seed, **aynı dilimde**.
 
-- [ ] **disputes + `dispute_events` foundation** — **sıradaki önerilen dilim**: itiraz yaşam döngüsü (open→under_review→needs_info→resolved→closed — doc 16 §6, D9); `dispute_type`/`target_type`/`target_id`; SLA `due_at` (opened + 5 iş günü); **resolver ≠ ihtilaf kararının sahibi** (manager kendi kararına final değil — D9); `dispute_events` append-only history; RLS complainant + assigned reviewer + HR + Auditor. Recalculation/ledger bağlantısı (accepted → point_ledger adjustment / yeni calc run) **motor işi, hariç**. ⛔ henüz yetkili değil.
-- [ ] **anti_gaming_flags** (+ `anomaly_baselines` iskeleti).
+- [ ] **anti_gaming_flags foundation** — **sıradaki önerilen dilim**: 5 deterministik kural flag'i (duplicate_task / tiny_task_splitting / same_reviewer_concentration / period_end_spike / self_approval_attempt); state machine `open→reviewing→confirmed|dismissed` (doc 16 §7); **confirmed otomatik finansal/ceza etkisi ÜRETMEZ** (D5 — insan kararı + ayrı ledger entry); RLS Manager(kendi takım)/HR/Auditor + subject employee kendi flag'ini görür; audit confirm/dismiss. Ceza/ledger bağlantısı ve `anomaly_baselines` **motor/V1 işi, hariç**. ⛔ henüz yetkili değil.
 - [ ] **notifications**, **exports** (export snapshot olmadan üretilemez — AD6/SI-3).
 - [ ] (Ops.) **projects**, **objectives** — minimal.
 
@@ -152,14 +165,15 @@ Kural: güvenlik temeli (RLS/ledger) bitmeden feature fazı ilerlemez.
 
 ## 5. Önerilen ilk adım
 
-Phase 3 bonus_ledger double-entry money foundation **verified + committed + synced** (commit `71e68f7`;
-db reset 0001..0014 + seed, test db Files=8/Tests=328/PASS). Sıradaki mantıklı iş: **disputes + `dispute_events`
-foundation** dilimi — itiraz yaşam döngüsü state machine (open→under_review→needs_info→resolved→closed —
-doc 16 §6, D9); SLA `due_at` (opened + 5 iş günü); **resolver ≠ ihtilaf kararının sahibi** (D9); `dispute_events`
-append-only history; RLS complainant + assigned reviewer + HR + Auditor. Recalculation/ledger bağlantısı
-(accepted → point_ledger adjustment / yeni calc run) **motor işi**, hariç. **Henüz yetkili değil.** Başlatmak
-için yetki cümlesi (örnek, tek dilim):
+Phase 3 disputes + dispute_events foundation **verified + committed + synced** (commit `1bf63fe`;
+db reset 0001..0015 + seed, test db Files=9/Tests=388/PASS). Sıradaki mantıklı iş: **anti_gaming_flags
+foundation** dilimi — 5 deterministik kural flag'i (duplicate_task / tiny_task_splitting /
+same_reviewer_concentration / period_end_spike / self_approval_attempt); state machine
+`open→reviewing→confirmed|dismissed` (doc 16 §7); **confirmed otomatik finansal/ceza etkisi ÜRETMEZ**
+(D5 — insan kararı + ayrı ledger entry, human-in-the-loop); RLS Manager(kendi takım)/HR/Auditor + subject
+employee kendi flag'ini görür (şeffaflık); confirm/dismiss audit. Ceza/ledger bağlantısı ve `anomaly_baselines`
+Z-score iskeleti **motor/V1 işi**, hariç. **Henüz yetkili değil.** Başlatmak için yetki cümlesi (örnek, tek dilim):
 
-`implementation authorized only for Phase 3 — disputes + dispute_events foundation (tables + RLS + tests)`
+`implementation authorized only for Phase 3 — anti_gaming_flags foundation (tables + RLS + tests)`
 
 > Bu cümle gelene kadar hiçbir kod/migration/test yazılmaz; sonraki her dilim ayrı, faz-sınırlı yetki ister (ADR-020).

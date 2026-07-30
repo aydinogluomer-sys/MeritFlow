@@ -41,13 +41,19 @@
     **bonus_ledger** (commit `71e68f7`, 2026-07-26 — migration `0014`, test `0008`; append-only double-entry;
     deferred `Σdebit=Σcredit` per (org, transaction_id) balance trigger; accrual ⇒ snapshot_id; idempotent
     accrual; only bonus_accrual+reversal writable; Finance/Auditor raw read only — HR/Employee/Manager/Support
-    excluded; server-only; db reset `0001..0014`, test db Files=8/Tests=328/PASS) are
+    excluded; server-only; db reset `0001..0014`, test db Files=8/Tests=328/PASS), and **disputes +
+    dispute_events** (commit `1bf63fe`, 2026-07-26 — migration `0015`, test `0009`; mutable state machine +
+    post-open identity immutability; append-only auto-history trigger; D9 stored decision_owner_id +
+    owns_review_decision + reviewer≠owner/complainant CHECK; HR-only assign via has_role('hr') — no
+    dispute.assign permission added; due_at stored + sanity; Finance/Support excluded; db reset `0001..0015`,
+    test db Files=9/Tests=388/PASS) are
     now **VERIFIED/DONE** (see `supabase/README.md` / `IMPLEMENTATION.md`). Data dictionary `14` idempotency
     and markdownlint sync landed as commit `dae4c6b`; ADR-020 markdownlint as commit `53d90de`.
-    **Next recommended DB slice:** disputes + dispute_events foundation (dispute lifecycle
-    open→under_review→needs_info→resolved→closed — doc 16 §6/D9; SLA due_at = opened + 5 business days;
-    resolver ≠ owner of the disputed decision — D9; dispute_events append-only; RLS complainant + reviewer +
-    HR + Auditor; recalculation/ledger wiring is engine work = out) — not authorized.
+    **Next recommended DB slice:** anti_gaming_flags foundation (5 deterministic rule flags —
+    duplicate_task/tiny_task_splitting/same_reviewer_concentration/period_end_spike/self_approval_attempt; state
+    machine open→reviewing→confirmed|dismissed — doc 16 §7; a confirmed flag produces NO automatic financial/
+    penalty effect — D5 human-in-the-loop; RLS Manager(own team)/HR/Auditor + subject employee sees own flag;
+    penalty/ledger wiring and anomaly_baselines are engine/V1 = out) — not authorized.
 
 ---
 

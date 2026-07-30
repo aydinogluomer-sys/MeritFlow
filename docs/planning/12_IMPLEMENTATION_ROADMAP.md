@@ -113,13 +113,26 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
     Kod: `migrations/0014_bonus_ledger.sql`, `tests/0008_phase3_bonus_ledger.test.sql` (commit `71e68f7`).
     **Verified 2026-07-26** (`db reset` 0001..0014 + seed; `test db` Files=8 Tests=328 PASS Failed=0).
     ADR-005/006/017/018, D2/AD6/BL-1..4/SI-3/SI-12 kanıtlı. (Ayrıca `docs/adr/ADR-020` markdownlint — commit `53d90de`.)
-  - **Phase 3 (kalan) — sensitive data & governance** [GATED]: scoring **engine** (final_points math +
-    approve→ledger + `task_approved`/`task_id`), tasks/task_reviews, disputes, anti-gaming, notifications,
-    exports, UI/API. Her dilim ayrı `implementation authorized` ister (faz-sınırlı — ADR-020).
-    **Sıradaki önerilen DB dilimi:** **disputes + `dispute_events` foundation** (itiraz state machine
-    open→under_review→needs_info→resolved→closed — doc 16 §6, D9; SLA `due_at` = opened + 5 iş günü; resolver ≠
-    ihtilaf kararının sahibi — D9; `dispute_events` append-only history; RLS complainant + reviewer + HR + Auditor;
-    recalculation/ledger bağlantısı motor işi = hariç).
+  - **Phase 3 — disputes + dispute_events** [VERIFIED/DONE]: itiraz yaşam döngüsü (container; motor YOK).
+    `disputes` **mutable state machine** (open→under_review→needs_info→under_review→resolved→closed — doc 16 §6);
+    yasak geçişler + open sonrası kimlik immutability; `dispute_events` **append-only** ve **SECURITY DEFINER
+    trigger ile otomatik** yazılır (her INSERT/status-transition'da; `actor_id=auth.uid()`), authenticated
+    doğrudan yazamaz. **D9:** stored `decision_owner_id` + `owns_review_decision()` + CHECK'ler
+    (`reviewer ≠ owner`, `reviewer ≠ complainant`) + resolve RLS `NOT owns_review_decision`. **HR-only assign
+    `has_role('hr')` ile** (yeni `dispute.assign` permission **eklenmedi** — test 0001 permission-katalog sayımı
+    korunacak, 0001..0008 değiştirilemez). `due_at` stored + sanity CHECK (iş-günü hesabı ertelendi — OQ-DP-1).
+    RLS: complainant + assigned reviewer + HR + Auditor; **Finance/Support hariç**. `target_id` polymorphic (FK
+    yok). Kod: `migrations/0015_disputes.sql`, `tests/0009_phase3_disputes.test.sql` (commit `1bf63fe`).
+    **Verified 2026-07-26** (`db reset` 0001..0015 + seed; `test db` Files=9 Tests=388 PASS Failed=0).
+    D9/SI-6/SI-7 ve ADR-006 kanıtlı.
+  - **Phase 3 (kalan) — governance** [GATED]: scoring **engine** (final_points math + approve→ledger +
+    `task_approved`/`task_id`), tasks/task_reviews, anti-gaming, notifications, exports, UI/API. Her dilim ayrı
+    `implementation authorized` ister (faz-sınırlı — ADR-020).
+    **Sıradaki önerilen DB dilimi:** **anti_gaming_flags foundation** (5 deterministik kural flag'i —
+    duplicate_task/tiny_task_splitting/same_reviewer_concentration/period_end_spike/self_approval_attempt; state
+    machine open→reviewing→confirmed|dismissed — doc 16 §7; **confirmed otomatik finansal/ceza etkisi ÜRETMEZ**,
+    D5 human-in-the-loop; RLS Manager(kendi takım)/HR/Auditor + subject employee kendi flag'i; ceza/ledger
+    bağlantısı ve `anomaly_baselines` motor/V1 = hariç).
     **Henüz yetkili değil.**
 
 ### Phase 4 — Task & Review Core
