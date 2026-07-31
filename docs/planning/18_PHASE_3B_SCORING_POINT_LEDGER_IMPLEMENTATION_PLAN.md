@@ -57,14 +57,22 @@
     DELETE and no prevent_delete — retention/TTL deferred to V1; no audit trigger; no new permission/role; no
     type enum — type non-empty only; payload JSON object; same-org composite FK
     `(organization_id, recipient_id)→memberships`; RLS recipient-only SELECT/UPDATE — HR/Auditor/Manager/
-    Finance/Support excluded; db reset `0001..0017`, test db Files=11/Tests=475/PASS) are
-    now **VERIFIED/DONE** (see `supabase/README.md` / `IMPLEMENTATION.md`). Data dictionary `14` idempotency
+    Finance/Support excluded; db reset `0001..0017`, test db Files=11/Tests=475/PASS), and **exports**
+    (commit `b66350d`, 2026-07-31 — migration `0018`, test `0012`; payout export record/container, generation
+    engine NOT built; Finance INSERT via existing `payout.export` with actor integrity `exported_by = auth.uid()`;
+    snapshot_id NOT NULL — SI-3/INV-7; AD6/SI-15 gate via SECURITY DEFINER trigger checking
+    `snapshot.calculation_run_id → bonus_allocations` for `pending_missing_cap_basis` by status OR cap_applied;
+    `exports.bonus_period_id` must match the snapshot period; append-only client posture — no authenticated
+    UPDATE/DELETE; prevent_delete retention; audit on INSERT; RLS Finance + Auditor SELECT — HR/Manager/Employee/
+    Support excluded; no new permission — catalog stays 20; db reset `0001..0018`, test db Files=12/Tests=523/PASS)
+    are now **VERIFIED/DONE** (see `supabase/README.md` / `IMPLEMENTATION.md`). Data dictionary `14` idempotency
     and markdownlint sync landed as commit `dae4c6b`; ADR-020 markdownlint as commit `53d90de`.
-    **Next recommended DB slice:** exports foundation (payout export record; bonus_period_id, snapshot_id
-    NOT NULL — AD6/SI-3, no export without snapshot; format/status/file_path/checksum; export-gate on
-    `pending_missing_cap_basis` is engine work; RLS Finance/Auditor) — the remaining, last DB-foundation slice.
-    It is a more financial/risky surface (snapshot coupling + export-gate), so it is left last and a separate
-    scope-lock is recommended — not authorized.
+    **Phase 3 DB foundation is COMPLETE:** 12 migrations (`0001..0018`) + 12 blocking pgTAP suites
+    (`0001..0012`, Tests=523) verified/committed — no table slice remains.
+    **Next major step (not a DB slice):** app foundation scaffold (Next.js + TypeScript, App Router, Server
+    Actions + Zod, Tailwind + shadcn/ui, Supabase client anon/server split + service-role env-only, Vitest +
+    Playwright, Sentry), then **Phase 4 — Task & Review Core**. Each is a new phase requiring its own
+    phase-scoped `implementation authorized` (ADR-020) — not authorized.
 
 ---
 

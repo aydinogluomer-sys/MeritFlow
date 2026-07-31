@@ -147,14 +147,26 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
     `migrations/0017_notifications.sql`, `tests/0011_phase3_notifications.test.sql` (commit `fe1b81e`).
     **Verified 2026-07-31** (`db reset` 0001..0017 + seed; `test db` Files=11 Tests=475 PASS Failed=0).
     **Hariç:** email/push/realtime delivery motoru, notification preferences, retention job, app/UI/API.
+  - **Phase 3 — exports** [VERIFIED/DONE]: payout export kaydı/container (GENERATION motoru YOK). `exports`
+    **Finance INSERT** mevcut `payout.export` izniyle (yeni izin yok — katalog 20), **actor integrity
+    `exported_by = auth.uid()`** (spoofing yok). **`snapshot_id` NOT NULL** (SI-3/INV-7). **AD6/SI-15 gate:**
+    SECURITY DEFINER trigger `snapshot.calculation_run_id → bonus_allocations` üzerinde
+    `pending_missing_cap_basis` (status **veya** cap_applied) varsa export'u bloklar — yalnız snapshot satırına
+    bakmaz. **E:** `exports.bonus_period_id` = snapshot period. **Append-only client posture** (authenticated
+    UPDATE/DELETE yok) + **`prevent_delete`** retention; **audit on INSERT**. RLS: **Finance + Auditor SELECT** —
+    **HR/Manager/Employee/Support hariç**. Kod: `migrations/0018_exports.sql`, `tests/0012_phase3_exports.test.sql`
+    (commit `b66350d`). **Verified 2026-07-31** (`db reset` 0001..0018 + seed; `test db` Files=12 Tests=523 PASS
+    Failed=0). **Hariç:** export generation motoru, CSV/XLSX/storage, checksum hesabı, status progression motoru,
+    period=`approved` gate (export engine'e ertelendi), bonus_ledger `payout_exported`/`payout_marked_paid`,
+    mark-paid, Finance aggregate `v_finance_*`, notifications, app/API/UI.
+  - **Phase 3 DB foundation TAMAMLANDI** ✅: 12 migration (`0001..0018`) + 12 bloklayıcı pgTAP suite
+    (`0001..0012`, Tests=523) verified/committed. Yeni tablo dilimi kalmadı.
   - **Phase 3 (kalan) — governance** [GATED]: scoring **engine** (final_points math + approve→ledger +
-    `task_approved`/`task_id`), tasks/task_reviews, exports, UI/API. Her dilim ayrı
-    `implementation authorized` ister (faz-sınırlı — ADR-020).
-    **Sıradaki önerilen DB dilimi:** **exports foundation** *(kalan son DB-foundation dilimi)*: payout export
-    kaydı (bonus_period_id, snapshot_id NOT NULL — AD6/SI-3, snapshot'sız export yok), format/status/file_path/
-    checksum; `pending_missing_cap_basis` varsa export bloğu **motor işi**; RLS Finance/Auditor. **Daha
-    finansal/riskli** yüzey (snapshot bağı + export-gate) olduğundan en sona bırakıldı; ayrı scope-lock önerilir.
-    **Henüz yetkili değil.**
+    `task_approved`/`task_id`), tasks/task_reviews, UI/API. Her dilim/faz ayrı `implementation authorized` ister.
+    **Sıradaki büyük adım:** **app foundation scaffold** (Next.js + TypeScript, App Router, Server Actions + Zod,
+    Tailwind + shadcn/ui, Supabase client anon/server + service-role env-only, Vitest + Playwright, Sentry) →
+    ardından **Phase 4 — Task & Review Core** (aşağıda). App scaffold DB dilimi değildir; ayrı faz-sınırlı yetki
+    ister (ADR-020). **Henüz yetkili değil.**
 
 ### Phase 4 — Task & Review Core
 

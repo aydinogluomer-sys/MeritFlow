@@ -1,7 +1,8 @@
-# MeritFlow — Supabase (Database Foundation: Phase 3A–3B + comp + bonus periods/pools + components/eligibility + calc runs/allocations/snapshots + ledger + disputes + anti-gaming + notifications)
+# MeritFlow — Supabase (Database Foundation: Phase 3A–3B + comp + bonus periods/pools + components/eligibility + calc runs/allocations/snapshots + ledger + disputes + anti-gaming + notifications + exports)
 
-This directory is the **database foundation**. It currently implements eleven verified
-slices (each under its own `implementation authorized only for Phase 3X — …`):
+This directory is the **database foundation**. It currently implements twelve verified
+slices (each under its own `implementation authorized only for Phase 3X — …`) — **Phase 3
+DB foundation is now complete**:
 
 - **Phase 3A — Database Foundation & RBAC** (`17_PHASE_3A_...md`): 11 foundation/RBAC
   tables, RLS helpers, RLS (ENABLED + FORCE), constraints, test-tenant seed, blocking pgTAP.
@@ -78,9 +79,21 @@ slices (each under its own `implementation authorized only for Phase 3X — …`
   `(organization_id, recipient_id) → memberships`. RLS is **recipient-only SELECT/UPDATE** — HR / Auditor /
   Manager / Finance / Support cannot read another user's notifications (the audit trail lives in `audit_logs`,
   not here) — RLS + pgTAP.
+- **Phase 3 — exports** (`14` §444-451, `15` §149-152, `16` §8; SI-3/AD6/SI-15): the payout-export
+  **record/container** — the export **generation engine is NOT built** here. **Finance INSERT** via the existing
+  `payout.export` permission (no new permission — catalog stays 20), with **actor integrity**: the INSERT WITH
+  CHECK pins `exported_by = auth.uid()` (Finance cannot record another user as the exporter). **`snapshot_id` is
+  NOT NULL** (SI-3/INV-7 — no export without a snapshot). The **AD6/SI-15 gate** is a SECURITY DEFINER trigger
+  that blocks the export when the snapshot's `calculation_run_id` has any `bonus_allocations` row with
+  `pending_missing_cap_basis` (by `status` **or** `cap_applied`) — checked against the run, not just the snapshot
+  row; it also enforces `exports.bonus_period_id = snapshot.bonus_period_id`. **Append-only client posture**: no
+  authenticated UPDATE/DELETE; a **`prevent_delete`** trigger enforces retention (financial record). **Audit on
+  INSERT** (`exports.insert`). RLS is **Finance + Auditor SELECT** — HR / Manager / Employee / Support excluded —
+  RLS + pgTAP.
 
-Migrations `0001..0017` + seed apply cleanly; blocking pgTAP suites (`0001`..`0011`) are green (see
-"Verification"). **Everything downstream is still gated** (see "Out of scope").
+Migrations `0001..0018` + seed apply cleanly; blocking pgTAP suites (`0001`..`0012`) are green (see
+"Verification"). **Phase 3 DB foundation is complete; everything downstream (app + engines) is still gated**
+(see "Out of scope").
 
 ## ⚠️ Environment rule (non-negotiable — ADR-014 / CLAUDE.md)
 
@@ -143,11 +156,19 @@ supabase/
                                           V1); no audit trigger; no new permission; no type enum (non-empty) +
                                           payload JSON object; same-org FK (org,recipient)→memberships; RLS
                                           recipient-only SELECT/UPDATE (HR/Auditor/Manager/Finance/Support excluded)
+    0018_exports.sql                      exports (payout export record/container; generation engine NONE) —
+                                          Finance INSERT via existing payout.export + actor integrity
+                                          exported_by=auth.uid(); snapshot_id NOT NULL (SI-3); AD6/SI-15 gate
+                                          (SECURITY DEFINER trigger: snapshot.calculation_run_id→bonus_allocations
+                                          pending_missing_cap_basis by status/cap_applied); bonus_period_id=snapshot
+                                          period; append-only client (no UPDATE/DELETE) + prevent_delete; audit on
+                                          INSERT; RLS Finance+Auditor SELECT; no new permission (catalog 20)
   seed/seed_test_tenants.sql              2 tenants, RBAC catalog, teams, support grants,
                                           + Phase 3B (scoring/versions, point_ledger) + comp + bonus fixtures
                                           (periods/pools + components/eligibility + calc run/allocations/snapshot
                                           + balanced accrual ledger) + dispute fixtures (auto-events)
                                           + anti-gaming flag fixtures + notification fixtures
+                                          + export fixtures + AD6-gate pending-cap fixtures
   tests/
     0001_phase3a_rls.test.sql             blocking pgTAP — RLS/RBAC (Phase 3A)
     0002_phase3b_scoring_policies.test.sql blocking pgTAP — scoring policy/version (Phase 3B-A)
@@ -160,6 +181,7 @@ supabase/
     0009_phase3_disputes.test.sql         blocking pgTAP — disputes state machine/D9/auto-events/append-only (Phase 3)
     0010_phase3_anti_gaming_flags.test.sql blocking pgTAP — anti_gaming_flags state machine/D5-no-side-effect (Phase 3)
     0011_phase3_notifications.test.sql    blocking pgTAP — notifications recipient-only RLS/mark-read/one-way lifecycle (Phase 3)
+    0012_phase3_exports.test.sql          blocking pgTAP — exports snapshot/AD6-gate/actor-integrity/append-only/Finance+Auditor RLS (Phase 3)
 ```
 
 ## Apply & test (local)
@@ -168,8 +190,8 @@ Requires Docker + the Supabase CLI. From the repo root:
 
 ```bash
 supabase start            # boots local dev stack (Docker)
-supabase db reset         # applies migrations 0001..0017 then seed
-supabase test db          # runs the pgTAP suites in tests/ (0001..0011)
+supabase db reset         # applies migrations 0001..0018 then seed
+supabase test db          # runs the pgTAP suites in tests/ (0001..0012)
 ```
 
 If the `supabase` binary is not on PATH (e.g. a fresh install not yet picked up), the project-local
@@ -274,7 +296,23 @@ re-runnable (on-conflict guards).
 > Support all read **0 rows**; cross-tenant recipients read 0; and the seeded **permission catalog is unchanged
 > (20)** — no new permission was added.
 >
-> **Later phases remain gated** (ADR-020). **Never run any of this against a production project.**
+> **Phase 3 exports: VERIFIED / DONE** (2026-07-31, npx Supabase CLI **2.109.1**; commit `b66350d`).
+> `db reset` applied migrations **0001..0018** + seed cleanly; `test db` → **Files=12, Tests=523, Result=PASS,
+> Failed=0** (`0001`..`0012` ok). Invariants proven (14 §444-451 / 15 §149-152 / 16 §8; SI-3/AD6/SI-15): a null
+> `snapshot_id` is rejected (`23502`); `status`/`format`/`row_count`/`checksum`/`file_path` CHECKs (`23514`);
+> same-org composite FKs reject a cross-org snapshot / exporter (`23503`); `exports.bonus_period_id` must equal
+> the snapshot period (`23514`); the **AD6/SI-15 gate blocks export by allocation `status` and by `cap_applied`**
+> (via `snapshot.calculation_run_id → bonus_allocations`, not just the snapshot row) while a clean-snapshot insert
+> succeeds; `prevent_delete` blocks DELETE (`23001`, retention); INSERT audited (`exports.insert`); **Finance
+> INSERT** via the existing `payout.export` permission, with **actor integrity** — Finance cannot record another
+> user as `exported_by` (`42501`); Finance and Auditor SELECT while HR / Manager / Employee / Support read **0
+> rows**; Finance cannot UPDATE or DELETE (`42501`, append-only); cross-tenant reads 0; and the **permission
+> catalog is unchanged (20)** — no new permission was added. One in-slice review fix hardened the INSERT WITH
+> CHECK to pin `exported_by = auth.uid()`.
+>
+> **Phase 3 DB foundation is COMPLETE** — 12 migrations (`0001..0018`) + 12 blocking pgTAP suites
+> (`0001..0012`, Tests=523) verified. **Later phases (app + engines) remain gated** (ADR-020). **Never run any of
+> this against a production project.**
 
 ### Prerequisites
 
@@ -290,13 +328,13 @@ re-runnable (on-conflict guards).
 
 ```bash
 supabase start        # 1. boot local stack; note the printed local URLs + dev-default keys
-supabase db reset     # 2. apply 0001..0017 + seed (expect clean apply)
+supabase db reset     # 2. apply 0001..0018 + seed (expect clean apply)
 supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
 ```
 
 ### Expected pass criteria
 
-- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=11, Tests=475, PASS**). Blocking.
+- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=12, Tests=523, PASS**). Blocking.
 - [ ] Green coverage: cross-tenant isolation (SI-7), non-recursive memberships read (§7A), support
   active-vs-expired grant (D4), append-only audit + append-only `point_ledger` (SI-2), helper
   correctness, scoring-policy `policy.manage` gating + published-version immutability (AD7), point_ledger
@@ -315,10 +353,14 @@ supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
   due_at sanity; Finance/Support excluded from reads — D9/SI-6/SI-7), **anti_gaming_flags** (review state
   machine + terminal immutability; review consistency + reviewer≠subject; D5 no-side-effect — confirming a flag
   leaves point_ledger/bonus_ledger counts unchanged; server-only INSERT; HR/own-team-manager review; Finance/
-  Support excluded — D5/SI-6/SI-7), and **notifications** (recipient-only RLS — HR/Auditor/Manager/Finance/
+  Support excluded — D5/SI-6/SI-7), **notifications** (recipient-only RLS — HR/Auditor/Manager/Finance/
   Support read 0 rows; one-way unread→read with server-stamped read_at + read→unread rejected; identity
   immutable; server-only INSERT + no client DELETE; no new permission — catalog stays 20; cross-tenant recipient
-  rejected via memberships composite FK — SI-7).
+  rejected via memberships composite FK — SI-7), and **exports** (Finance INSERT via existing payout.export +
+  actor integrity exported_by=auth.uid(); snapshot_id NOT NULL; AD6/SI-15 gate blocks by allocation status or
+  cap_applied via snapshot.calculation_run_id→bonus_allocations; bonus_period_id=snapshot period; append-only
+  client posture + prevent_delete; audit on INSERT; Finance+Auditor SELECT — HR/Manager/Employee/Support read 0
+  rows; no new permission — catalog stays 20; cross-tenant reads 0 — SI-3/AD6/SI-7).
 - [ ] `supabase db reset` then re-running the suite is reproducible (deterministic seed).
 
 ### Failure triage
@@ -441,18 +483,20 @@ supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
 ## Out of scope (later slices / phases — still gated, ADR-020)
 
 Scoring **engine** (final_points math + approve→ledger + `task_approved`/`task_id`), tasks & task_reviews,
-the **approve→accrual posting engine** + snapshot-approval workflow, payout/export (`payout_exported`/
-`payout_marked_paid`, exports) + Finance aggregate views (`v_finance_*`), clawback workflow, dispute
-post-decision effects (point_ledger `dispute_adjustment` / recalculation / bonus_ledger reversal), the
-anti-gaming rule **detection engine** + `anomaly_baselines`, the notification **delivery engine**
-(email/push/realtime) + notification preferences + retention job, projects, objectives, integrations,
-webhook_events, UI/dashboard, API routes. Each needs its own phase-scoped, verbatim authorization (ADR-020).
+the **approve→accrual posting engine** + snapshot-approval workflow, the **export generation engine**
+(CSV/XLSX/storage write, checksum/row_count, status progression `requested→generated→downloaded`, the
+period=`approved` gate) + `payout_exported`/`payout_marked_paid` ledger wiring + mark-paid + Finance aggregate
+views (`v_finance_*`), clawback workflow, dispute post-decision effects (point_ledger `dispute_adjustment` /
+recalculation / bonus_ledger reversal), the anti-gaming rule **detection engine** + `anomaly_baselines`, the
+notification **delivery engine** (email/push/realtime) + notification preferences + retention job, projects,
+objectives, integrations, webhook_events, UI/dashboard, API routes. Each needs its own phase-scoped, verbatim
+authorization (ADR-020).
 
-> **Next recommended slice:** **exports foundation** *(the remaining, last DB-foundation slice)* — a
-> payout-export record with **`snapshot_id` NOT NULL** (AD6/SI-3 — no export without a snapshot), plus
-> `bonus_period_id`, `format`/`status`/`file_path`/`checksum`; the `pending_missing_cap_basis` export-gate is
-> engine work; RLS Finance/Auditor. It is a more **financial/risky** surface (snapshot link + export gate), so it
-> is left last and a separate scope-lock is recommended. **Not authorized yet.**
+> **Phase 3 DB foundation is complete** — all twelve table slices (`0001..0018`) are verified/committed; no DB
+> table slice remains. **Next major step (a new phase, not a DB slice):** the **app foundation scaffold**
+> (Next.js + TypeScript, App Router, Server Actions + Zod, Tailwind + shadcn/ui, a Supabase client with an
+> anon/server split and service-role kept env-only, a Vitest + Playwright harness, Sentry), then **Phase 4 —
+> Task & Review Core**. A scope-lock is recommended before either. **Not authorized yet.**
 
 ## Notes for reviewers
 

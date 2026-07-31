@@ -3,7 +3,7 @@
 > **Yaşayan durum/todo takip dosyası.** Detaylı "neden/nasıl" için kaynak: `docs/planning/` (00–18),
 > `docs/adr/` (ADR-001…020), `CLAUDE.md`. Çelişki olursa `docs/planning/00_DECISION_LOCK.md` kazanır.
 > Bu dosya **kod değildir**; yalnızca nerede olduğumuzu ve ne yapacağımızı izler.
-> Son güncelleme: 2026-07-31 (notifications foundation runtime verified + committed + docs sync).
+> Son güncelleme: 2026-07-31 (exports foundation runtime verified + committed + docs sync — **Phase 3 DB foundation tamamlandı**).
 
 ## 0. Yönetişim kuralı (her şeyden önce)
 
@@ -35,12 +35,14 @@ Decision Lock = D1–D12 + AD1–AD10 (22 karar).
 | Phase 3 bonus ledger | `bonus_ledger` (append-only double-entry money; deferred `Σdebit=Σcredit` per (org, transaction_id) balance trigger; accrual ⇒ snapshot_id; idempotent accrual; only bonus_accrual+reversal writable; Finance/Auditor raw read only, server-only writes) | `migrations/0014`, `tests/0008` | ✅ verified | commit `71e68f7`; 2026-07-26 |
 | Phase 3 disputes | `disputes` + `dispute_events` (mutable state machine open→under_review→needs_info→resolved→closed; append-only auto-history trigger; D9 stored decision_owner_id + owns_review_decision; HR-only assign via has_role('hr'); due_at stored + sanity; server-only auto events; Finance/Support excluded) | `migrations/0015`, `tests/0009` | ✅ verified | commit `1bf63fe`; 2026-07-26 |
 | Phase 3 anti-gaming | `anti_gaming_flags` (mutable review lifecycle open→reviewing→confirmed/dismissed; D5 no-auto-punish — isolated from all ledgers, no FK/write to point_ledger/bonus_ledger/bonus_*/compensation; review consistency + reviewer≠subject; server-only INSERT; review via has_role('hr') OR manages_team(team_of(subject)); Finance/Support excluded) | `migrations/0016`, `tests/0010` | ✅ verified | commit `0c813e9`; 2026-07-31 |
-| Phase 3 notifications | `notifications` (recipient-only delivery sink; unread→read one-way lifecycle, recipient marks own read + read_at server-stamped; INSERT server-only; no client DELETE and no prevent_delete — retention/TTL V1; no audit trigger; no new permission/role; no type enum — type non-empty only; payload JSON object; same-org composite FK `(organization_id, recipient_id)→memberships`; RLS recipient-only SELECT/UPDATE — HR/Auditor/Manager/Finance/Support excluded) | `migrations/0017`, `tests/0011` | ✅ **verified** | commit `fe1b81e`; 2026-07-31 |
+| Phase 3 notifications | `notifications` (recipient-only delivery sink; unread→read one-way lifecycle, recipient marks own read + read_at server-stamped; INSERT server-only; no client DELETE and no prevent_delete — retention/TTL V1; no audit trigger; no new permission/role; no type enum — type non-empty only; payload JSON object; same-org composite FK `(organization_id, recipient_id)→memberships`; RLS recipient-only SELECT/UPDATE — HR/Auditor/Manager/Finance/Support excluded) | `migrations/0017`, `tests/0011` | ✅ verified | commit `fe1b81e`; 2026-07-31 |
+| Phase 3 exports | `exports` (payout export record/container — generation engine YOK; Finance INSERT via existing `payout.export`, actor integrity `exported_by = auth.uid()`; snapshot_id NOT NULL — SI-3; AD6/SI-15 gate via SECURITY DEFINER trigger checks `snapshot.calculation_run_id → bonus_allocations` for pending_missing_cap_basis by status OR cap_applied; `exports.bonus_period_id` = snapshot period; append-only client posture — no authenticated UPDATE/DELETE; prevent_delete retention; audit on INSERT; RLS Finance + Auditor SELECT, HR/Manager/Employee/Support excluded; no new permission — catalog stays 20) | `migrations/0018`, `tests/0012` | ✅ **verified** | commit `b66350d`; 2026-07-31 |
 
 **Runtime verification (2026-07-31, local dev stack, npx Supabase CLI 2.109.1):** `supabase db reset`
-migrations **0001..0017** + seed temiz uyguladı; `supabase test db` → **Files=11, Tests=475, Result=PASS,
-Failed=0** (`0001`..`0011` ok). `db reset`'teki geçici container flake'leri (`ENOTFOUND`/timeout/"exit 1" —
-vector/analytics unhealthy) `supabase stop/start` + retry ile temiz geçti; kod/şema sorunu değil.
+migrations **0001..0018** + seed temiz uyguladı; `supabase test db` → **Files=12, Tests=523, Result=PASS,
+Failed=0** (`0001`..`0012` ok). `db reset`'teki geçici container flake'leri (`ENOTFOUND`/timeout/"exit 1" —
+vector/analytics/storage unhealthy) `supabase stop/start` (gerekirse aux servisleri `-x` ile hariç bırakıp
+yalnız Postgres) + retry ile temiz geçti; kod/şema sorunu değil.
 
 **compensation_records güvenlik özelliği (AD3/D7/SI-5):** doğrudan **raw SELECT kapalı** (SELECT policy yok;
 maaş kolonları selectable değil); ham okuma **yalnız** `read_compensation_record(employee, reason)` ile
@@ -121,11 +123,25 @@ memberships`. RLS: **recipient-only SELECT/UPDATE** — **HR/Auditor/Manager/Fin
 `audit_logs`'ta, burada değil). **Hariç:** email/push/realtime delivery motoru, notification preferences,
 retention job, app/UI/API.
 
+**exports invariant'ları (14 §444-451 / 15 §149-152 / 16 §8; SI-3/AD6/SI-15):** `exports` **payout export
+kaydı/container** — üretim (generation) motoru YOK. **Finance INSERT** mevcut `payout.export` izniyle (yeni izin
+yok — katalog 20); **actor integrity: `exported_by = auth.uid()`** (Finance başka kullanıcıyı exporter olarak
+kaydedemez). **`snapshot_id` NOT NULL** (SI-3/INV-7 — snapshot'sız export yok). **AD6/SI-15 gate:** SECURITY
+DEFINER trigger `snapshot.calculation_run_id → bonus_allocations` üzerinde `pending_missing_cap_basis` var mı
+diye bakar (status **veya** cap_applied) — yalnız snapshot satırına bakmaz; varsa export **bloklanır**. **E:**
+`exports.bonus_period_id` = snapshot'ın period'u. **Append-only client posture:** authenticated **UPDATE/DELETE
+yok**; **`prevent_delete`** retention (finansal iz, silinmez). **Audit on INSERT** (`exports.insert`). RLS:
+**Finance + Auditor SELECT** — **HR/Manager/Employee/Support hariç**. **Hariç:** export generation motoru,
+CSV/XLSX/storage yazımı, checksum hesabı, status progression motoru, **period=`approved` gate** (export
+engine'e ertelendi), bonus_ledger `payout_exported`/`payout_marked_paid` wiring, mark-paid, Finance aggregate
+`v_finance_*` view'ları, notifications, app/API/UI.
+
 **App katmanı (Next.js/API/UI): ⬜ hiç başlanmadı** (repo'da `package.json` yok, sadece `supabase/`).
 
 **✅ Doküman senkron güncel (2026-07-31):** `supabase/README.md`, `docs/planning/12`, `docs/planning/18`,
-bu dosya — 0001..0017 + 3A/3B/comp/bonus-P/P/bonus-C/E/bonus-C/R/A/S/bonus-ledger/disputes/anti-gaming/
-notifications verified durumunu yansıtıyor. Ayrıca `docs/planning/14` idempotency + markdownlint sync commit `dae4c6b`;
+bu dosya — 0001..0018 + 3A/3B/comp/bonus-P/P/bonus-C/E/bonus-C/R/A/S/bonus-ledger/disputes/anti-gaming/
+notifications/exports verified durumunu yansıtıyor. **Phase 3 DB foundation tamamlandı.** Ayrıca `docs/planning/14`
+idempotency + markdownlint sync commit `dae4c6b`;
 `docs/adr/ADR-020` markdownlint hijyeni commit `53d90de` ile tamamlandı.
 
 ---
@@ -153,14 +169,15 @@ Kural: güvenlik temeli (RLS/ledger) bitmeden feature fazı ilerlemez.
 - [x] **disputes + dispute_events** ✅ (commit `1bf63fe`, verified 2026-07-26; mutable state machine + open sonrası identity immutability; append-only auto-history trigger; D9 stored decision_owner_id + owns_review_decision + reviewer≠owner/complainant CHECK; HR-only assign via has_role('hr') — no dispute.assign permission; due_at stored + sanity; Finance/Support excluded; no ledger/recalc/notification wiring).
 - [x] **anti_gaming_flags** ✅ (commit `0c813e9`, verified 2026-07-31; mutable review lifecycle open→reviewing→confirmed/dismissed; D5 no-auto-punish — isolated from all ledgers, no FK/write to point_ledger/bonus_ledger/bonus_*/compensation, confirm inert & test-proven; review consistency + reviewer≠subject; server-only INSERT; review via has_role('hr') OR manages_team(team_of(subject)) — no flag.review permission; no bonus_period_id; related_task_id FK-less; Finance/Support excluded).
 - [x] **notifications** ✅ (commit `fe1b81e`, verified 2026-07-31; recipient-only delivery sink; unread→read one-way lifecycle, recipient marks own read + read_at server-stamped; INSERT server-only; no client DELETE and no prevent_delete — retention/TTL V1; no audit trigger; no new permission/role; no type enum — type non-empty only; payload JSON object; same-org composite FK `(organization_id, recipient_id)→memberships`; RLS recipient-only SELECT/UPDATE — HR/Auditor/Manager/Finance/Support excluded).
+- [x] **exports** ✅ (commit `b66350d`, verified 2026-07-31; payout export record/container — generation engine YOK; Finance INSERT via existing `payout.export`, actor integrity `exported_by = auth.uid()`; snapshot_id NOT NULL — SI-3; AD6/SI-15 gate via SECURITY DEFINER trigger on `snapshot.calculation_run_id → bonus_allocations` (pending_missing_cap_basis by status OR cap_applied); `exports.bonus_period_id` = snapshot period; append-only client posture — no authenticated UPDATE/DELETE; prevent_delete retention; audit on INSERT; RLS Finance + Auditor SELECT — HR/Manager/Employee/Support excluded; no new permission — catalog 20).
 - [x] Docs/status sync (README + roadmap 12 + doc 18 + bu dosya). Ayrıca `docs/planning/14` idempotency+markdownlint sync (commit `dae4c6b`); `docs/adr/ADR-020` markdownlint (commit `53d90de`).
 
-### B. Kalan Phase 3 DB-foundation dilimleri (SQL-only, app gerektirmez)  ⛔ her biri ayrı yetki
+### B. Kalan Phase 3 DB-foundation dilimleri (SQL-only, app gerektirmez)  ✅ tamamlandı
 
 > Her dilim = tablo(lar) + RLS ENABLE+FORCE + policy + bloklayıcı pgTAP + additive seed, **aynı dilimde**.
 
-- [ ] **exports foundation** — **sıradaki önerilen dilim**: payout export kaydı (bonus_period_id, **snapshot_id NOT NULL** — AD6/SI-3, snapshot'sız export yok), format/status/file_path/checksum; `pending_missing_cap_basis` varsa export bloğu **motor işi**; RLS Finance/Auditor. Notifications sonrası kalan son DB-foundation dilimi; **daha finansal/riskli yüzey** (snapshot bağı + export-gate) — bu nedenle en sona bırakıldı, ayrı scope-lock önerilir.
-- [ ] (Ops.) **projects**, **objectives** — minimal.
+- [x] **Phase 3 DB foundation tamamlandı** — `exports` (commit `b66350d`) son dilimdi; 12 migration (`0001..0018`) + 12 bloklayıcı pgTAP suite (`0001..0012`, Tests=523) verified. Yeni tablo dilimi kalmadı; sıradaki büyük adım **app scaffold / Phase 4** (aşağıda C/D).
+- [ ] (Ops., ileride) **projects**, **objectives** — minimal; yalnız ilgili feature fazı gerektirdiğinde, ayrı yetkiyle.
 
 ### C. App foundation (feature fazlarının ön koşulu)  ⛔/⬜
 
@@ -193,19 +210,24 @@ Kural: güvenlik temeli (RLS/ledger) bitmeden feature fazı ilerlemez.
 
 ## 5. Önerilen ilk adım
 
-Phase 3 notifications foundation **verified + committed + synced** (commit `fe1b81e`;
-db reset 0001..0017 + seed, test db Files=11/Tests=475/PASS). Recipient-only delivery sink; tek-yön
-`unread→read` (recipient kendi bildirimini read yapar); INSERT server-only; client DELETE yok ve
-`prevent_delete` yok (retention/TTL V1); audit trigger yok; yeni permission/rol yok; type enum yok
-(non-empty), payload JSON object; same-org composite FK `(organization_id, recipient_id)→memberships`; RLS
-recipient-only — HR/Auditor/Manager/Finance/Support hariç. Sıradaki mantıklı iş: **exports foundation**
-dilimi — payout export kaydı (bonus_period_id, `snapshot_id NOT NULL` — AD6/SI-3, snapshot'sız export yok),
-format/status/file_path/checksum; `pending_missing_cap_basis` varsa export bloğu **motor işi**; RLS
-Finance/Auditor. Kalan **son DB-foundation** dilimi; **daha finansal/riskli** bir yüzey (snapshot bağı +
-export-gate) olduğundan en sona bırakıldı — ayrı scope-lock önerilir.
+Phase 3 exports foundation **verified + committed + synced** (commit `b66350d`;
+db reset 0001..0018 + seed, test db Files=12/Tests=523/PASS). Payout export record/container — generation
+engine YOK; Finance INSERT via existing `payout.export` + actor integrity `exported_by = auth.uid()`;
+snapshot_id NOT NULL; AD6/SI-15 gate via SECURITY DEFINER trigger on `snapshot.calculation_run_id →
+bonus_allocations` (pending_missing_cap_basis by status OR cap_applied); `exports.bonus_period_id` = snapshot
+period; append-only client posture (no authenticated UPDATE/DELETE) + prevent_delete retention; audit on INSERT;
+RLS Finance + Auditor SELECT — HR/Manager/Employee/Support hariç. **Bununla Phase 3 DB foundation TAMAMLANDI**
+(12 migration `0001..0018`, 12 pgTAP suite `0001..0012`, Tests=523).
 
-**Henüz yetkili değil.** Başlatmak için (önce scope-lock önerilir) yetki cümlesi (örnek, tek dilim):
+**Sıradaki büyük adım = uygulama katmanı.** Yeni tablo dilimi kalmadı; doğal ilerleme:
+**App foundation scaffold** (Next.js + TypeScript, App Router, Server Actions + Zod, Tailwind + shadcn/ui,
+Supabase client anon/server ayrımı + service-role env-only, Vitest + Playwright iskeleti, Sentry) ve ardından
+**Phase 4 — Task & Review Core**. Her ikisi de **kod-yazmadan-önce scope-lock** ister; app scaffold DB dilimi
+değildir (yeni faz), bu yüzden ayrı, faz-sınırlı yetki gerekir (ADR-020).
 
-`implementation authorized only for Phase 3 — exports foundation (tables + RLS + tests)`
+**Henüz yetkili değil.** Başlatmak için (önce scope-lock önerilir) yetki cümlesi (örnek):
 
-> Bu cümle gelene kadar hiçbir kod/migration/test yazılmaz; sonraki her dilim ayrı, faz-sınırlı yetki ister (ADR-020).
+`implementation authorized only for Phase 3.5 — app foundation scaffold`  (veya)
+`implementation authorized only for Phase 4 — task & review core`
+
+> Bu cümle gelene kadar hiçbir kod/migration/test yazılmaz; sonraki her faz/dilim ayrı, faz-sınırlı yetki ister (ADR-020).
