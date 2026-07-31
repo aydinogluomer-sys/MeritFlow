@@ -1,6 +1,6 @@
-# MeritFlow — Supabase (Database Foundation: Phase 3A–3B + comp + bonus periods/pools + components/eligibility + calc runs/allocations/snapshots + ledger + disputes)
+# MeritFlow — Supabase (Database Foundation: Phase 3A–3B + comp + bonus periods/pools + components/eligibility + calc runs/allocations/snapshots + ledger + disputes + anti-gaming)
 
-This directory is the **database foundation**. It currently implements nine verified
+This directory is the **database foundation**. It currently implements ten verified
 slices (each under its own `implementation authorized only for Phase 3X — …`):
 
 - **Phase 3A — Database Foundation & RBAC** (`17_PHASE_3A_...md`): 11 foundation/RBAC
@@ -53,8 +53,20 @@ slices (each under its own `implementation authorized only for Phase 3X — …`
   `dispute.assign` permission added — that would change the seeded catalog count asserted by test 0001);
   `due_at` is stored + a sanity CHECK (business-day calc deferred); RLS read = complainant, assigned reviewer,
   HR and Auditor (Finance/Support excluded); `target_id` is polymorphic (no FK) — RLS + pgTAP.
+- **Phase 3 — anti_gaming_flags** (`08`, `14`/`15`/`16` §7, D5): the 5 deterministic anti-gaming flags. A
+  **mutable review lifecycle** (`open → reviewing → confirmed | dismissed`) with a validate trigger
+  (forbidden skip / `reviewing→open` / terminal transitions + post-insert identity immutability), review
+  consistency (`confirmed|dismissed ⇒ reviewed_by + review_note`) and `reviewed_by <> subject_employee_id`.
+  **D5 (no automatic punishment) is guaranteed by construction**: the table is **isolated** — it has NO FK,
+  trigger or write path to `point_ledger` / `bonus_ledger` / any `bonus_*` table / `compensation_records`;
+  confirming a flag is inert (a test asserts `point_ledger` / `bonus_ledger` row counts do not change).
+  INSERT is **server-only** (the rule engine); review (confirm/dismiss) is `has_role('hr') OR
+  manages_team(team_of(subject_employee_id))` (**no `flag.review` permission added** — it would change the
+  seeded catalog count asserted by test 0001); read = subject-own + own-team manager + HR + Auditor
+  (Finance/Support excluded); `related_task_id` is FK-less (tasks gated), no `bonus_period_id` column; DELETE
+  forbidden — RLS + pgTAP.
 
-Migrations `0001..0015` + seed apply cleanly; blocking pgTAP suites (`0001`..`0009`) are green (see
+Migrations `0001..0016` + seed apply cleanly; blocking pgTAP suites (`0001`..`0010`) are green (see
 "Verification"). **Everything downstream is still gated** (see "Out of scope").
 
 ## ⚠️ Environment rule (non-negotiable — ADR-014 / CLAUDE.md)
@@ -107,10 +119,16 @@ supabase/
                                           auto-written by trigger) — D9 stored decision_owner_id +
                                           owns_review_decision; HR-only assign via has_role('hr'); due_at stored
                                           + sanity; Finance/Support excluded; target_id polymorphic (no FK)
+    0016_anti_gaming_flags.sql            anti_gaming_flags (mutable review lifecycle open/reviewing/confirmed/
+                                          dismissed) — D5 no-auto-punish (isolated; no FK/write to point_ledger/
+                                          bonus_ledger/bonus_*/compensation); review consistency + reviewer≠subject;
+                                          server-only INSERT; review has_role('hr') OR manages_team(team_of(subject));
+                                          Finance/Support excluded; related_task_id FK-less; DELETE forbidden
   seed/seed_test_tenants.sql              2 tenants, RBAC catalog, teams, support grants,
                                           + Phase 3B (scoring/versions, point_ledger) + comp + bonus fixtures
                                           (periods/pools + components/eligibility + calc run/allocations/snapshot
                                           + balanced accrual ledger) + dispute fixtures (auto-events)
+                                          + anti-gaming flag fixtures
   tests/
     0001_phase3a_rls.test.sql             blocking pgTAP — RLS/RBAC (Phase 3A)
     0002_phase3b_scoring_policies.test.sql blocking pgTAP — scoring policy/version (Phase 3B-A)
@@ -121,6 +139,7 @@ supabase/
     0007_phase3_bonus_calc_runs_allocations_snapshots.test.sql blocking pgTAP — runs/allocations/snapshots + AD10/SI-4/SI-14 (Phase 3)
     0008_phase3_bonus_ledger.test.sql     blocking pgTAP — bonus_ledger double-entry/balance/append-only (Phase 3)
     0009_phase3_disputes.test.sql         blocking pgTAP — disputes state machine/D9/auto-events/append-only (Phase 3)
+    0010_phase3_anti_gaming_flags.test.sql blocking pgTAP — anti_gaming_flags state machine/D5-no-side-effect (Phase 3)
 ```
 
 ## Apply & test (local)
@@ -129,8 +148,8 @@ Requires Docker + the Supabase CLI. From the repo root:
 
 ```bash
 supabase start            # boots local dev stack (Docker)
-supabase db reset         # applies migrations 0001..0015 then seed
-supabase test db          # runs the pgTAP suites in tests/ (0001..0009)
+supabase db reset         # applies migrations 0001..0016 then seed
+supabase test db          # runs the pgTAP suites in tests/ (0001..0010)
 ```
 
 If the `supabase` binary is not on PATH (e.g. a fresh install not yet picked up), the project-local
@@ -210,6 +229,19 @@ re-runnable (on-conflict guards).
 > stop/start` + retry — not a code/schema defect. (One in-slice fix: `owns_review_decision` moved from
 > `language sql` to `plpgsql` so its body's `disputes` reference resolves at call time, not at CREATE time.)
 >
+> **Phase 3 anti_gaming_flags: VERIFIED / DONE** (2026-07-31, npx Supabase CLI **2.109.1**; commit `0c813e9`).
+> `db reset` applied migrations **0001..0016** + seed cleanly; `test db` → **Files=10, Tests=427, Result=PASS,
+> Failed=0** (`0001`..`0010` ok). Invariants proven (D5/SI-6/SI-7 + ADR-006): the **review state machine**
+> rejects skip / `reviewing→open` / terminal transitions (`23514`) and a terminal no-op is immutable (`23001`);
+> post-insert identity is immutable (`23001`); review consistency (`23514`) and `reviewed_by <> subject`
+> (`23514`); **D5 no-auto-punish** — after confirming a flag, `point_ledger` and `bonus_ledger` row counts are
+> **unchanged** (the table is isolated: no FK/write to any financial table); INSERT is server-only (`42501` for
+> authenticated); review is HR / own-team manager (`manages_team(team_of(subject))`), and the recorded
+> `reviewed_by` must equal the actor (`42501` otherwise); cross-tenant subject/reviewer rejected by composite FK
+> (`23503`); RLS read = subject-own + own-team manager + HR + Auditor (Finance, Support, other-team manager and
+> unrelated employees read 0 rows). One in-slice test fix: `confirmed→dismissed` surfaces the transition error
+> (`23514`), while a terminal no-op surfaces the immutability error (`23001`).
+>
 > **Later phases remain gated** (ADR-020). **Never run any of this against a production project.**
 
 ### Prerequisites
@@ -226,13 +258,13 @@ re-runnable (on-conflict guards).
 
 ```bash
 supabase start        # 1. boot local stack; note the printed local URLs + dev-default keys
-supabase db reset     # 2. apply 0001..0015 + seed (expect clean apply)
+supabase db reset     # 2. apply 0001..0016 + seed (expect clean apply)
 supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
 ```
 
 ### Expected pass criteria
 
-- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=9, Tests=388, PASS**). Blocking.
+- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=10, Tests=427, PASS**). Blocking.
 - [ ] Green coverage: cross-tenant isolation (SI-7), non-recursive memberships read (§7A), support
   active-vs-expired grant (D4), append-only audit + append-only `point_ledger` (SI-2), helper
   correctness, scoring-policy `policy.manage` gating + published-version immutability (AD7), point_ledger
@@ -246,9 +278,12 @@ supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
   approved/exported/paid blocked; Finance raw-allocation excluded — SI-12/SI-14), **bonus_ledger**
   (double-entry deferred `Σdebit=Σcredit` per (org, transaction_id); append-only; accrual⇒snapshot + idempotent;
   only bonus_accrual+reversal writable; Finance/Auditor-only raw read — HR/Employee/Manager/Support excluded),
-  and **disputes/dispute_events** (state machine + forbidden transitions + post-open identity immutability;
+  **disputes/dispute_events** (state machine + forbidden transitions + post-open identity immutability;
   auto-written append-only events; D9 reviewer≠owner/complainant + owns_review_decision; HR-only assign;
-  due_at sanity; Finance/Support excluded from reads — D9/SI-6/SI-7).
+  due_at sanity; Finance/Support excluded from reads — D9/SI-6/SI-7), and **anti_gaming_flags** (review state
+  machine + terminal immutability; review consistency + reviewer≠subject; D5 no-side-effect — confirming a flag
+  leaves point_ledger/bonus_ledger counts unchanged; server-only INSERT; HR/own-team-manager review; Finance/
+  Support excluded — D5/SI-6/SI-7).
 - [ ] `supabase db reset` then re-running the suite is reproducible (deterministic seed).
 
 ### Failure triage
@@ -292,7 +327,7 @@ supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
 | support_access_grants | yes | audit-critical | time-bounded (D4); audited |
 | audit_logs | yes | audit-critical | append-only; comp payload masked (AD3) |
 
-**Phase 3B / Phase 3 comp + bonus + governance (14):**
+**Phase 3B / Phase 3 comp + bonus + governance (15):**
 
 | Table | org_id? | Class | Notes |
 | --- | :--: | --- | --- |
@@ -310,6 +345,7 @@ supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
 | bonus_ledger | yes | financial-critical, audit-critical | **double-entry** (debit/credit; pool/accrual/payout/clawback); **append-only** (correction=reversal); **deferred `Σdebit=Σcredit` per (org, transaction_id)** trigger; accrual⇒snapshot + idempotent; only bonus_accrual+reversal writable; **server-only writes**; **raw read Finance+Auditor only** (HR/Employee/Manager/Support excluded — SI-12); audited (BL-4) |
 | disputes | yes | confidential, personal-data | **mutable state machine** (open→under_review→needs_info→resolved→closed); post-open identity immutable; **D9** reviewer≠owner/complainant + `owns_review_decision`; HR-only assign (`has_role('hr')`); `due_at` stored + sanity; read complainant/reviewer/HR/Auditor (**Finance/Support excluded**); `target_id` polymorphic (no FK); DELETE blocked; audited |
 | dispute_events | yes | audit-critical | **append-only** history **auto-written** by a definer trigger on each dispute transition (`actor_id=auth.uid()`); no authenticated write; UPDATE/DELETE blocked; read follows parent-dispute visibility (+ Auditor) |
+| anti_gaming_flags | yes | confidential | **mutable review lifecycle** (open→reviewing→confirmed\|dismissed); post-insert identity immutable; **D5 no-auto-punish** — isolated (no FK/write to point_ledger/bonus_ledger/bonus_*/compensation); review consistency + `reviewed_by≠subject`; **server-only INSERT**; review `has_role('hr')` OR `manages_team(team_of(subject))` (no `flag.review` permission); read subject-own + own-team manager + HR + Auditor (**Finance/Support excluded**); DELETE blocked; audited |
 
 ## Security guarantees enforced here
 
@@ -354,25 +390,36 @@ supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
   resolver cannot be the owner of the disputed decision (`owns_review_decision`); assign is **HR-only**
   (`has_role('hr')`, no new permission). Reads are complainant / assigned reviewer / HR / Auditor only
   (**Finance and support-grant excluded**); all actor links are same-org composite FKs.
+- **Anti-gaming no-auto-punish** (D5/SI-6/SI-7 + ADR-006): `anti_gaming_flags` is a mutable review lifecycle
+  with a validate trigger (forbidden skip/`reviewing→open`/terminal transitions + post-insert identity
+  immutability). **D5 is guaranteed BY CONSTRUCTION**: the table is fully **isolated** — it has NO FK, trigger
+  or write path to `point_ledger` / `bonus_ledger` / any `bonus_*` table / `compensation_records`, so a
+  `confirmed` flag has **no automatic financial/penalty effect** (proven: ledger row counts are unchanged on
+  confirm). INSERT is server-only (rule engine); review (confirm/dismiss) is HR or the subject's own-team
+  manager (`manages_team(team_of(subject))`) with the recorded `reviewed_by` = the actor and `≠` the subject; no
+  `flag.review` permission is added. Reads are subject-own / own-team manager / HR / Auditor (**Finance and
+  support-grant excluded**); all actor links are same-org composite FKs.
 - **Support access** (D4): default no access; read only via an **active, unexpired** grant; audited. Support is
-  **not** a raw-read path on the money ledger (`bonus_ledger`) or on disputes (both are role-scoped).
+  **not** a raw-read path on sensitive governance data — `bonus_ledger`, `disputes`/`dispute_events` and
+  `anti_gaming_flags` are all role-scoped (support-grant excluded).
 
 ## Out of scope (later slices / phases — still gated, ADR-020)
 
 Scoring **engine** (final_points math + approve→ledger + `task_approved`/`task_id`), tasks & task_reviews,
 the **approve→accrual posting engine** + snapshot-approval workflow, payout/export (`payout_exported`/
 `payout_marked_paid`, exports) + Finance aggregate views (`v_finance_*`), clawback workflow, dispute
-post-decision effects (point_ledger `dispute_adjustment` / recalculation / bonus_ledger reversal),
-anti_gaming_flags, notifications, projects, objectives, integrations, webhook_events, UI/dashboard, API routes.
-Each needs its own phase-scoped, verbatim authorization (ADR-020).
+post-decision effects (point_ledger `dispute_adjustment` / recalculation / bonus_ledger reversal), the
+anti-gaming rule **detection engine** + `anomaly_baselines`, notifications, projects, objectives, integrations,
+webhook_events, UI/dashboard, API routes. Each needs its own phase-scoped, verbatim authorization (ADR-020).
 
-> **Next recommended slice:** **anti_gaming_flags foundation** — the 5 deterministic rule flags
-> (`duplicate_task` / `tiny_task_splitting` / `same_reviewer_concentration` / `period_end_spike` /
-> `self_approval_attempt`) with a `open → reviewing → confirmed | dismissed` state machine (doc 16 §7). A
-> **confirmed flag produces NO automatic financial/penalty effect** (D5 — human-in-the-loop; any effect is a
-> separate manual adjustment/dispute). RLS: Manager (own team) / HR / Auditor + the subject employee sees their
-> own flag (transparency); confirm/dismiss audited. The penalty/ledger wiring and the `anomaly_baselines`
-> Z-score scaffold are engine/V1 and stay out. **Not authorized yet.**
+> **Next recommended slice:** **notifications foundation** *(smallest/isolated, lowest-risk)* — a
+> user-notification table (`recipient_id`, `type`, `payload jsonb`, `status` unread/read, `read_at`, `link`);
+> RLS is **recipient-only**; INSERT is server-only (event production is engine/app work = out); retention TTL is
+> V1. No financial or engine coupling — the natural low-risk step after disputes + anti-gaming. **exports
+> foundation** — a payout-export record with **`snapshot_id` NOT NULL** (AD6/SI-3 — no export without a
+> snapshot), `format`/`status`/`file_path`/`checksum`; the `pending_missing_cap_basis` export-gate is engine
+> work; RLS Finance/Auditor — is a more financial/risky surface (snapshot link + export gate) and is deferred
+> until after notifications. **Not authorized yet.**
 
 ## Notes for reviewers
 

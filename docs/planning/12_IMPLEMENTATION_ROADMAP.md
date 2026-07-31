@@ -125,14 +125,25 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
     yok). Kod: `migrations/0015_disputes.sql`, `tests/0009_phase3_disputes.test.sql` (commit `1bf63fe`).
     **Verified 2026-07-26** (`db reset` 0001..0015 + seed; `test db` Files=9 Tests=388 PASS Failed=0).
     D9/SI-6/SI-7 ve ADR-006 kanıtlı.
+  - **Phase 3 — anti_gaming_flags** [VERIFIED/DONE]: 5 deterministik kural flag'i (container; DETECTION motoru
+    YOK). `anti_gaming_flags` **mutable review lifecycle** (open→reviewing→confirmed|dismissed — doc 16 §7);
+    yasak geçişler (skip/reviewing→open/terminal) + oluşturma sonrası kimlik immutability; review-consistency +
+    `reviewed_by ≠ subject`. **D5 "otomatik ceza yok" yapıyla:** tablo tüm ledger'lardan izole — point_ledger/
+    bonus_ledger/bonus_*/compensation'a FK/trigger/yazım **yok**; `confirmed` yan-etkisiz (test: ledger satır
+    sayısı değişmez). **INSERT server-only**; review = `has_role('hr') OR manages_team(team_of(subject))`
+    (**`flag.review` permission eklenmedi** — test 0001 permissions=20 korunacak, 0001..0009 değiştirilemez);
+    `related_task_id` FK'sız; **`bonus_period_id` yok**. RLS: subject-own + own-team Manager + HR + Auditor;
+    **Finance/Support hariç**. Kod: `migrations/0016_anti_gaming_flags.sql`, `tests/0010_phase3_anti_gaming_flags.test.sql`
+    (commit `0c813e9`). **Verified 2026-07-31** (`db reset` 0001..0016 + seed; `test db` Files=10 Tests=427 PASS
+    Failed=0). D5/SI-6/SI-7 ve ADR-006 kanıtlı.
   - **Phase 3 (kalan) — governance** [GATED]: scoring **engine** (final_points math + approve→ledger +
-    `task_approved`/`task_id`), tasks/task_reviews, anti-gaming, notifications, exports, UI/API. Her dilim ayrı
+    `task_approved`/`task_id`), tasks/task_reviews, notifications, exports, UI/API. Her dilim ayrı
     `implementation authorized` ister (faz-sınırlı — ADR-020).
-    **Sıradaki önerilen DB dilimi:** **anti_gaming_flags foundation** (5 deterministik kural flag'i —
-    duplicate_task/tiny_task_splitting/same_reviewer_concentration/period_end_spike/self_approval_attempt; state
-    machine open→reviewing→confirmed|dismissed — doc 16 §7; **confirmed otomatik finansal/ceza etkisi ÜRETMEZ**,
-    D5 human-in-the-loop; RLS Manager(kendi takım)/HR/Auditor + subject employee kendi flag'i; ceza/ledger
-    bağlantısı ve `anomaly_baselines` motor/V1 = hariç).
+    **Sıradaki önerilen DB dilimi:** **notifications foundation** *(en küçük/izole/düşük-risk)*: kullanıcı
+    bildirimi (recipient_id/type/payload/status unread|read/read_at/link); RLS yalnız recipient; server-only
+    INSERT (event üretimi motor/uygulama işi = hariç); retention TTL V1; finansal/motor bağı yok. **exports**
+    (payout export kaydı; snapshot_id NOT NULL — AD6/SI-3; export-gate motor işi; RLS Finance/Auditor) **daha
+    finansal/riskli** yüzey olduğundan notifications'tan **sonraya** bırakılır.
     **Henüz yetkili değil.**
 
 ### Phase 4 — Task & Review Core

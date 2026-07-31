@@ -46,14 +46,19 @@
     post-open identity immutability; append-only auto-history trigger; D9 stored decision_owner_id +
     owns_review_decision + reviewer≠owner/complainant CHECK; HR-only assign via has_role('hr') — no
     dispute.assign permission added; due_at stored + sanity; Finance/Support excluded; db reset `0001..0015`,
-    test db Files=9/Tests=388/PASS) are
+    test db Files=9/Tests=388/PASS), and **anti_gaming_flags** (commit `0c813e9`, 2026-07-31 — migration `0016`,
+    test `0010`; mutable review lifecycle open→reviewing→confirmed|dismissed; D5 no-auto-punish — isolated from
+    all ledgers, no FK/write to point_ledger/bonus_ledger/bonus_*/compensation, confirm inert & test-proven;
+    review consistency + reviewer≠subject; server-only INSERT; review via has_role('hr') OR
+    manages_team(team_of(subject)) — no flag.review permission; no bonus_period_id; related_task_id FK-less;
+    Finance/Support excluded; db reset `0001..0016`, test db Files=10/Tests=427/PASS) are
     now **VERIFIED/DONE** (see `supabase/README.md` / `IMPLEMENTATION.md`). Data dictionary `14` idempotency
     and markdownlint sync landed as commit `dae4c6b`; ADR-020 markdownlint as commit `53d90de`.
-    **Next recommended DB slice:** anti_gaming_flags foundation (5 deterministic rule flags —
-    duplicate_task/tiny_task_splitting/same_reviewer_concentration/period_end_spike/self_approval_attempt; state
-    machine open→reviewing→confirmed|dismissed — doc 16 §7; a confirmed flag produces NO automatic financial/
-    penalty effect — D5 human-in-the-loop; RLS Manager(own team)/HR/Auditor + subject employee sees own flag;
-    penalty/ledger wiring and anomaly_baselines are engine/V1 = out) — not authorized.
+    **Next recommended DB slice:** notifications foundation (recipient_id/type/payload/status
+    unread|read/read_at/link; RLS recipient-only; server-only INSERT; retention TTL V1) — the
+    smallest/isolated, lowest-risk foundation step after disputes + anti-gaming (no financial/engine coupling).
+    exports (payout export record; snapshot_id NOT NULL — AD6/SI-3; export-gate is engine work; RLS
+    Finance/Auditor) is a more financial/risky surface and is deferred until after notifications — not authorized.
 
 ---
 
