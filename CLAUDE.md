@@ -15,6 +15,7 @@ açıklanabilir ve itiraz edilebilir prim dağıtan; çalışanı gözetlemeyen,
 2. `/docs/context/` — 13 context dosyası (ürün kaynağı).
 3. `/docs/planning/` — spec'ler (PRD, domain, RLS, scoring, bonus, ledger/audit, dispute, anti-gaming, UX, test, roadmap).
 4. `/docs/adr/` — ADR-001…020.
+
 - Çelişki olursa Decision Lock kazanır.
 - PDF kullanılmaz; aranmaz; gap/open-question sayılmaz.
 
