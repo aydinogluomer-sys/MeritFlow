@@ -136,14 +136,24 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
     **Finance/Support hariç**. Kod: `migrations/0016_anti_gaming_flags.sql`, `tests/0010_phase3_anti_gaming_flags.test.sql`
     (commit `0c813e9`). **Verified 2026-07-31** (`db reset` 0001..0016 + seed; `test db` Files=10 Tests=427 PASS
     Failed=0). D5/SI-6/SI-7 ve ADR-006 kanıtlı.
+  - **Phase 3 — notifications** [VERIFIED/DONE]: kullanıcı bildirim kutusu (delivery sink; DELIVERY motoru YOK).
+    `notifications` **recipient-only** — tek-yön `unread→read` yaşam döngüsü (`read` terminal, `read→unread`
+    reddedilir); recipient **kendi** bildirimini read yapar, `read_at` **server-stamp**; oluşturma sonrası kimlik
+    (org/recipient/type/payload/link/created_at) immutable. **INSERT server-only** (service_role); **client DELETE
+    yok ve `prevent_delete` yok** — kişisel-veri, **retention/TTL V1'e ertelendi** (OQ-DD-3). **Audit trigger yok**
+    (§429). **Yeni permission/rol yok** (permission-katalog 20 korunur). **type enum yok** (non-empty CHECK);
+    `payload` JSON object; read-consistency CHECK; same-org composite FK `(organization_id, recipient_id) →
+    memberships`. RLS: **recipient-only SELECT/UPDATE** — **HR/Auditor/Manager/Finance/Support hariç**. Kod:
+    `migrations/0017_notifications.sql`, `tests/0011_phase3_notifications.test.sql` (commit `fe1b81e`).
+    **Verified 2026-07-31** (`db reset` 0001..0017 + seed; `test db` Files=11 Tests=475 PASS Failed=0).
+    **Hariç:** email/push/realtime delivery motoru, notification preferences, retention job, app/UI/API.
   - **Phase 3 (kalan) — governance** [GATED]: scoring **engine** (final_points math + approve→ledger +
-    `task_approved`/`task_id`), tasks/task_reviews, notifications, exports, UI/API. Her dilim ayrı
+    `task_approved`/`task_id`), tasks/task_reviews, exports, UI/API. Her dilim ayrı
     `implementation authorized` ister (faz-sınırlı — ADR-020).
-    **Sıradaki önerilen DB dilimi:** **notifications foundation** *(en küçük/izole/düşük-risk)*: kullanıcı
-    bildirimi (recipient_id/type/payload/status unread|read/read_at/link); RLS yalnız recipient; server-only
-    INSERT (event üretimi motor/uygulama işi = hariç); retention TTL V1; finansal/motor bağı yok. **exports**
-    (payout export kaydı; snapshot_id NOT NULL — AD6/SI-3; export-gate motor işi; RLS Finance/Auditor) **daha
-    finansal/riskli** yüzey olduğundan notifications'tan **sonraya** bırakılır.
+    **Sıradaki önerilen DB dilimi:** **exports foundation** *(kalan son DB-foundation dilimi)*: payout export
+    kaydı (bonus_period_id, snapshot_id NOT NULL — AD6/SI-3, snapshot'sız export yok), format/status/file_path/
+    checksum; `pending_missing_cap_basis` varsa export bloğu **motor işi**; RLS Finance/Auditor. **Daha
+    finansal/riskli** yüzey (snapshot bağı + export-gate) olduğundan en sona bırakıldı; ayrı scope-lock önerilir.
     **Henüz yetkili değil.**
 
 ### Phase 4 — Task & Review Core

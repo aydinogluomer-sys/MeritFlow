@@ -51,14 +51,20 @@
     all ledgers, no FK/write to point_ledger/bonus_ledger/bonus_*/compensation, confirm inert & test-proven;
     review consistency + reviewer≠subject; server-only INSERT; review via has_role('hr') OR
     manages_team(team_of(subject)) — no flag.review permission; no bonus_period_id; related_task_id FK-less;
-    Finance/Support excluded; db reset `0001..0016`, test db Files=10/Tests=427/PASS) are
+    Finance/Support excluded; db reset `0001..0016`, test db Files=10/Tests=427/PASS), and **notifications**
+    (commit `fe1b81e`, 2026-07-31 — migration `0017`, test `0011`; recipient-only delivery sink; one-way
+    unread→read lifecycle, recipient marks own read + read_at server-stamped; INSERT server-only; no client
+    DELETE and no prevent_delete — retention/TTL deferred to V1; no audit trigger; no new permission/role; no
+    type enum — type non-empty only; payload JSON object; same-org composite FK
+    `(organization_id, recipient_id)→memberships`; RLS recipient-only SELECT/UPDATE — HR/Auditor/Manager/
+    Finance/Support excluded; db reset `0001..0017`, test db Files=11/Tests=475/PASS) are
     now **VERIFIED/DONE** (see `supabase/README.md` / `IMPLEMENTATION.md`). Data dictionary `14` idempotency
     and markdownlint sync landed as commit `dae4c6b`; ADR-020 markdownlint as commit `53d90de`.
-    **Next recommended DB slice:** notifications foundation (recipient_id/type/payload/status
-    unread|read/read_at/link; RLS recipient-only; server-only INSERT; retention TTL V1) — the
-    smallest/isolated, lowest-risk foundation step after disputes + anti-gaming (no financial/engine coupling).
-    exports (payout export record; snapshot_id NOT NULL — AD6/SI-3; export-gate is engine work; RLS
-    Finance/Auditor) is a more financial/risky surface and is deferred until after notifications — not authorized.
+    **Next recommended DB slice:** exports foundation (payout export record; bonus_period_id, snapshot_id
+    NOT NULL — AD6/SI-3, no export without snapshot; format/status/file_path/checksum; export-gate on
+    `pending_missing_cap_basis` is engine work; RLS Finance/Auditor) — the remaining, last DB-foundation slice.
+    It is a more financial/risky surface (snapshot coupling + export-gate), so it is left last and a separate
+    scope-lock is recommended — not authorized.
 
 ---
 

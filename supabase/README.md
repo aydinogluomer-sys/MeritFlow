@@ -1,6 +1,6 @@
-# MeritFlow — Supabase (Database Foundation: Phase 3A–3B + comp + bonus periods/pools + components/eligibility + calc runs/allocations/snapshots + ledger + disputes + anti-gaming)
+# MeritFlow — Supabase (Database Foundation: Phase 3A–3B + comp + bonus periods/pools + components/eligibility + calc runs/allocations/snapshots + ledger + disputes + anti-gaming + notifications)
 
-This directory is the **database foundation**. It currently implements ten verified
+This directory is the **database foundation**. It currently implements eleven verified
 slices (each under its own `implementation authorized only for Phase 3X — …`):
 
 - **Phase 3A — Database Foundation & RBAC** (`17_PHASE_3A_...md`): 11 foundation/RBAC
@@ -65,8 +65,21 @@ slices (each under its own `implementation authorized only for Phase 3X — …`
   seeded catalog count asserted by test 0001); read = subject-own + own-team manager + HR + Auditor
   (Finance/Support excluded); `related_task_id` is FK-less (tasks gated), no `bonus_period_id` column; DELETE
   forbidden — RLS + pgTAP.
+- **Phase 3 — notifications** (`14` §424-429, `15` §139-142): a **recipient-only** notification delivery sink.
+  One-way `unread → read` lifecycle (a validate trigger keeps `read` terminal — `read → unread` rejected — and
+  makes the identity fields org/recipient/type/payload/link/created_at immutable after insert); the recipient
+  marks **their own** notification read and `read_at` is **server-stamped** on the transition. INSERT is
+  **server-only** (service_role — emission is future engine/app work); there is **no client DELETE and no
+  `prevent_delete`** — notifications are personal data with a planned **V1 TTL** (OQ-DD-3), not a legal-retention
+  surface, so a future service-role retention job stays possible. **No audit trigger** (data dict §429). **No
+  new permission or role** — RLS keys off `current_org()` + `auth.uid()` only, so the seeded permission catalog
+  (20) is unchanged. **No `type` enum** (non-empty CHECK only); `payload` must be a JSON object; a read-
+  consistency CHECK ties `read_at` to `status`. Recipient is a **same-org composite FK**
+  `(organization_id, recipient_id) → memberships`. RLS is **recipient-only SELECT/UPDATE** — HR / Auditor /
+  Manager / Finance / Support cannot read another user's notifications (the audit trail lives in `audit_logs`,
+  not here) — RLS + pgTAP.
 
-Migrations `0001..0016` + seed apply cleanly; blocking pgTAP suites (`0001`..`0010`) are green (see
+Migrations `0001..0017` + seed apply cleanly; blocking pgTAP suites (`0001`..`0011`) are green (see
 "Verification"). **Everything downstream is still gated** (see "Out of scope").
 
 ## ⚠️ Environment rule (non-negotiable — ADR-014 / CLAUDE.md)
@@ -124,11 +137,17 @@ supabase/
                                           bonus_ledger/bonus_*/compensation); review consistency + reviewer≠subject;
                                           server-only INSERT; review has_role('hr') OR manages_team(team_of(subject));
                                           Finance/Support excluded; related_task_id FK-less; DELETE forbidden
+    0017_notifications.sql                notifications (recipient-only delivery sink) — one-way unread→read
+                                          lifecycle (read terminal; identity immutable; read_at server-stamped);
+                                          server-only INSERT; no client DELETE & no prevent_delete (retention/TTL
+                                          V1); no audit trigger; no new permission; no type enum (non-empty) +
+                                          payload JSON object; same-org FK (org,recipient)→memberships; RLS
+                                          recipient-only SELECT/UPDATE (HR/Auditor/Manager/Finance/Support excluded)
   seed/seed_test_tenants.sql              2 tenants, RBAC catalog, teams, support grants,
                                           + Phase 3B (scoring/versions, point_ledger) + comp + bonus fixtures
                                           (periods/pools + components/eligibility + calc run/allocations/snapshot
                                           + balanced accrual ledger) + dispute fixtures (auto-events)
-                                          + anti-gaming flag fixtures
+                                          + anti-gaming flag fixtures + notification fixtures
   tests/
     0001_phase3a_rls.test.sql             blocking pgTAP — RLS/RBAC (Phase 3A)
     0002_phase3b_scoring_policies.test.sql blocking pgTAP — scoring policy/version (Phase 3B-A)
@@ -140,6 +159,7 @@ supabase/
     0008_phase3_bonus_ledger.test.sql     blocking pgTAP — bonus_ledger double-entry/balance/append-only (Phase 3)
     0009_phase3_disputes.test.sql         blocking pgTAP — disputes state machine/D9/auto-events/append-only (Phase 3)
     0010_phase3_anti_gaming_flags.test.sql blocking pgTAP — anti_gaming_flags state machine/D5-no-side-effect (Phase 3)
+    0011_phase3_notifications.test.sql    blocking pgTAP — notifications recipient-only RLS/mark-read/one-way lifecycle (Phase 3)
 ```
 
 ## Apply & test (local)
@@ -148,8 +168,8 @@ Requires Docker + the Supabase CLI. From the repo root:
 
 ```bash
 supabase start            # boots local dev stack (Docker)
-supabase db reset         # applies migrations 0001..0016 then seed
-supabase test db          # runs the pgTAP suites in tests/ (0001..0010)
+supabase db reset         # applies migrations 0001..0017 then seed
+supabase test db          # runs the pgTAP suites in tests/ (0001..0011)
 ```
 
 If the `supabase` binary is not on PATH (e.g. a fresh install not yet picked up), the project-local
@@ -242,6 +262,18 @@ re-runnable (on-conflict guards).
 > unrelated employees read 0 rows). One in-slice test fix: `confirmed→dismissed` surfaces the transition error
 > (`23514`), while a terminal no-op surfaces the immutability error (`23001`).
 >
+> **Phase 3 notifications: VERIFIED / DONE** (2026-07-31, npx Supabase CLI **2.109.1**; commit `fe1b81e`).
+> `db reset` applied migrations **0001..0017** + seed cleanly; `test db` → **Files=11, Tests=475, Result=PASS,
+> Failed=0** (`0001`..`0011` ok). Invariants proven (14 §424-429 / 15 §139-142): the **mark-read guard** stamps
+> `read_at` on `unread→read` (recipient marks their own read) and rejects `read→unread` (`23514`, read is
+> terminal); post-insert identity (org/recipient/type/payload/link/created_at) is immutable (`23001`); CHECKs
+> reject an invalid `status`, an empty/whitespace `type`, a non-object `payload`, and read-consistency
+> violations (`23514`); the same-org composite FK rejects a cross-org recipient (`23503`); INSERT and DELETE are
+> **denied for authenticated** (`42501` — server-only, no client delete); RLS read is **recipient-only** — the
+> recipient reads their own row while an unrelated employee, HR, Auditor, the own-team Manager, Finance and
+> Support all read **0 rows**; cross-tenant recipients read 0; and the seeded **permission catalog is unchanged
+> (20)** — no new permission was added.
+>
 > **Later phases remain gated** (ADR-020). **Never run any of this against a production project.**
 
 ### Prerequisites
@@ -258,13 +290,13 @@ re-runnable (on-conflict guards).
 
 ```bash
 supabase start        # 1. boot local stack; note the printed local URLs + dev-default keys
-supabase db reset     # 2. apply 0001..0016 + seed (expect clean apply)
+supabase db reset     # 2. apply 0001..0017 + seed (expect clean apply)
 supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
 ```
 
 ### Expected pass criteria
 
-- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=10, Tests=427, PASS**). Blocking.
+- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=11, Tests=475, PASS**). Blocking.
 - [ ] Green coverage: cross-tenant isolation (SI-7), non-recursive memberships read (§7A), support
   active-vs-expired grant (D4), append-only audit + append-only `point_ledger` (SI-2), helper
   correctness, scoring-policy `policy.manage` gating + published-version immutability (AD7), point_ledger
@@ -280,10 +312,13 @@ supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
   only bonus_accrual+reversal writable; Finance/Auditor-only raw read — HR/Employee/Manager/Support excluded),
   **disputes/dispute_events** (state machine + forbidden transitions + post-open identity immutability;
   auto-written append-only events; D9 reviewer≠owner/complainant + owns_review_decision; HR-only assign;
-  due_at sanity; Finance/Support excluded from reads — D9/SI-6/SI-7), and **anti_gaming_flags** (review state
+  due_at sanity; Finance/Support excluded from reads — D9/SI-6/SI-7), **anti_gaming_flags** (review state
   machine + terminal immutability; review consistency + reviewer≠subject; D5 no-side-effect — confirming a flag
   leaves point_ledger/bonus_ledger counts unchanged; server-only INSERT; HR/own-team-manager review; Finance/
-  Support excluded — D5/SI-6/SI-7).
+  Support excluded — D5/SI-6/SI-7), and **notifications** (recipient-only RLS — HR/Auditor/Manager/Finance/
+  Support read 0 rows; one-way unread→read with server-stamped read_at + read→unread rejected; identity
+  immutable; server-only INSERT + no client DELETE; no new permission — catalog stays 20; cross-tenant recipient
+  rejected via memberships composite FK — SI-7).
 - [ ] `supabase db reset` then re-running the suite is reproducible (deterministic seed).
 
 ### Failure triage
@@ -409,17 +444,15 @@ Scoring **engine** (final_points math + approve→ledger + `task_approved`/`task
 the **approve→accrual posting engine** + snapshot-approval workflow, payout/export (`payout_exported`/
 `payout_marked_paid`, exports) + Finance aggregate views (`v_finance_*`), clawback workflow, dispute
 post-decision effects (point_ledger `dispute_adjustment` / recalculation / bonus_ledger reversal), the
-anti-gaming rule **detection engine** + `anomaly_baselines`, notifications, projects, objectives, integrations,
+anti-gaming rule **detection engine** + `anomaly_baselines`, the notification **delivery engine**
+(email/push/realtime) + notification preferences + retention job, projects, objectives, integrations,
 webhook_events, UI/dashboard, API routes. Each needs its own phase-scoped, verbatim authorization (ADR-020).
 
-> **Next recommended slice:** **notifications foundation** *(smallest/isolated, lowest-risk)* — a
-> user-notification table (`recipient_id`, `type`, `payload jsonb`, `status` unread/read, `read_at`, `link`);
-> RLS is **recipient-only**; INSERT is server-only (event production is engine/app work = out); retention TTL is
-> V1. No financial or engine coupling — the natural low-risk step after disputes + anti-gaming. **exports
-> foundation** — a payout-export record with **`snapshot_id` NOT NULL** (AD6/SI-3 — no export without a
-> snapshot), `format`/`status`/`file_path`/`checksum`; the `pending_missing_cap_basis` export-gate is engine
-> work; RLS Finance/Auditor — is a more financial/risky surface (snapshot link + export gate) and is deferred
-> until after notifications. **Not authorized yet.**
+> **Next recommended slice:** **exports foundation** *(the remaining, last DB-foundation slice)* — a
+> payout-export record with **`snapshot_id` NOT NULL** (AD6/SI-3 — no export without a snapshot), plus
+> `bonus_period_id`, `format`/`status`/`file_path`/`checksum`; the `pending_missing_cap_basis` export-gate is
+> engine work; RLS Finance/Auditor. It is a more **financial/risky** surface (snapshot link + export gate), so it
+> is left last and a separate scope-lock is recommended. **Not authorized yet.**
 
 ## Notes for reviewers
 
