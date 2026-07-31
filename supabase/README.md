@@ -493,10 +493,14 @@ objectives, integrations, webhook_events, UI/dashboard, API routes. Each needs i
 authorization (ADR-020).
 
 > **Phase 3 DB foundation is complete** — all twelve table slices (`0001..0018`) are verified/committed; no DB
-> table slice remains. **Next major step (a new phase, not a DB slice):** the **app foundation scaffold**
-> (Next.js + TypeScript, App Router, Server Actions + Zod, Tailwind + shadcn/ui, a Supabase client with an
-> anon/server split and service-role kept env-only, a Vitest + Playwright harness, Sentry), then **Phase 4 —
-> Task & Review Core**. A scope-lock is recommended before either. **Not authorized yet.**
+> table slice remains. The **app foundation scaffold** (Phase 3.5) is also **done** (commit `a8b05ac`): a
+> Next.js 16.2.12 + React 19 + TS-strict App Router app with browser/server Supabase clients and a guarded,
+> unused `server-only` service-role admin client, `@supabase/ssr` auth + DB/RLS-sourced RBAC (JWT identity only,
+> AD1), `proxy.ts` (Next 16), Tailwind + shadcn base UI, a Zod Server Action wrapper, Vitest + Playwright, and CI
+> (typecheck/lint/unit) — typecheck/lint/test/build all PASS. Sentry is a gated placeholder (SDK deferred pending
+> Next 16 support). **Next major step:** **Phase 4 — Task & Review Core** (tasks/task_reviews tables with RLS +
+> submit→review + self-approval hard block + submission/revision history). A scope-lock is recommended.
+> **Not authorized yet.**
 
 ## Notes for reviewers
 

@@ -3,7 +3,7 @@
 > **Yaşayan durum/todo takip dosyası.** Detaylı "neden/nasıl" için kaynak: `docs/planning/` (00–18),
 > `docs/adr/` (ADR-001…020), `CLAUDE.md`. Çelişki olursa `docs/planning/00_DECISION_LOCK.md` kazanır.
 > Bu dosya **kod değildir**; yalnızca nerede olduğumuzu ve ne yapacağımızı izler.
-> Son güncelleme: 2026-07-31 (exports foundation runtime verified + committed + docs sync — **Phase 3 DB foundation tamamlandı**).
+> Son güncelleme: 2026-07-31 (Phase 3.5 app foundation scaffold verified + committed + docs sync — **Phase 3 DB foundation + app scaffold tamamlandı**).
 
 ## 0. Yönetişim kuralı (her şeyden önce)
 
@@ -136,12 +136,32 @@ CSV/XLSX/storage yazımı, checksum hesabı, status progression motoru, **period
 engine'e ertelendi), bonus_ledger `payout_exported`/`payout_marked_paid` wiring, mark-paid, Finance aggregate
 `v_finance_*` view'ları, notifications, app/API/UI.
 
-**App katmanı (Next.js/API/UI): ⬜ hiç başlanmadı** (repo'da `package.json` yok, sadece `supabase/`).
+**App katmanı (Next.js/API/UI): ✅ foundation scaffold done** (commit `a8b05ac`, verified 2026-07-31).
+
+**Phase 3.5 app foundation scaffold invariant'ları:** **Next.js 16.2.12 + React 19 + TypeScript strict + App
+Router**. npm package stratejisi: mevcut **Supabase CLI devDependency korundu**, `package-lock` yeniden üretildi
+(merge, replace değil). **Supabase clients:** browser anon (`client.ts`), server anon cookie client
+(`server.ts` — RLS-enforced varsayılan yol), **guarded + unused service_role admin client** (`admin.ts`).
+**service_role boundary (SI-11):** `import 'server-only'` ilk satır; **client/browser modülünden import yok**;
+`SUPABASE_SERVICE_ROLE_KEY` yalnız throw-eden guard'da (env.ts) — **NEXT_PUBLIC ile sızıntı yok**. **Auth/session:**
+`@supabase/ssr` + `auth.getUser()` (identity server-side doğrulanır). **Authorization DB/RLS kaynaklı** —
+`role_permissions`; **JWT yalnız identity** (AD1). **Single active org** DB membership/cookie ile; multi-org
+switcher ertelendi (Decision F). **Next 16:** `proxy.ts`, deprecated `middleware.ts`'in yerine (session refresh +
+`/dashboard` guard). **`turbopack.root`/`outputFileTracingRoot`** proje köküne pinlendi (parent-lockfile
+workspace-root uyarısı yok). **Tailwind (v3.4) + shadcn-uyumlu base UI primitives** (button/card/badge/skeleton).
+**Zod Server Action validation wrapper** (`validatedAction`). **App shell rotaları:** login, auth callback,
+guarded dashboard, unauthorized (403), health, error/not-found. **Vitest baseline** (env, service_role boundary,
+validation wrapper, RBAC — 13 test) + **Playwright config** (E2E CI dışı). **CI:** `npm ci` + typecheck + lint +
+unit; **E2E/pgTAP CI ertelendi** (Phase 9). **Sentry placeholder only** — env + `instrumentation.ts` no-op;
+**`@sentry/nextjs` SDK ertelendi** (Next 16 uyumsuz, peer Next 15'e kadar). **Hariç:** Phase 4 domain logic,
+scoring/bonus/export/notification engine'leri, production deploy. **Doğrulama:** `npm run typecheck → PASS`,
+`npm run lint → PASS`, `npm run test → PASS (4 files, 13 tests)`, `npm run build → PASS` (workspace-root ve
+deprecated-middleware uyarısı yok).
 
 **✅ Doküman senkron güncel (2026-07-31):** `supabase/README.md`, `docs/planning/12`, `docs/planning/18`,
 bu dosya — 0001..0018 + 3A/3B/comp/bonus-P/P/bonus-C/E/bonus-C/R/A/S/bonus-ledger/disputes/anti-gaming/
-notifications/exports verified durumunu yansıtıyor. **Phase 3 DB foundation tamamlandı.** Ayrıca `docs/planning/14`
-idempotency + markdownlint sync commit `dae4c6b`;
+notifications/exports verified + **Phase 3.5 app scaffold** (commit `a8b05ac`) durumunu yansıtıyor. **Phase 3 DB
+foundation + app scaffold tamamlandı.** Ayrıca `docs/planning/14` idempotency + markdownlint sync commit `dae4c6b`;
 `docs/adr/ADR-020` markdownlint hijyeni commit `53d90de` ile tamamlandı.
 
 ---
@@ -176,13 +196,13 @@ Kural: güvenlik temeli (RLS/ledger) bitmeden feature fazı ilerlemez.
 
 > Her dilim = tablo(lar) + RLS ENABLE+FORCE + policy + bloklayıcı pgTAP + additive seed, **aynı dilimde**.
 
-- [x] **Phase 3 DB foundation tamamlandı** — `exports` (commit `b66350d`) son dilimdi; 12 migration (`0001..0018`) + 12 bloklayıcı pgTAP suite (`0001..0012`, Tests=523) verified. Yeni tablo dilimi kalmadı; sıradaki büyük adım **app scaffold / Phase 4** (aşağıda C/D).
+- [x] **Phase 3 DB foundation tamamlandı** — `exports` (commit `b66350d`) son dilimdi; 12 migration (`0001..0018`) + 12 bloklayıcı pgTAP suite (`0001..0012`, Tests=523) verified. Yeni tablo dilimi kalmadı; **app scaffold done**, sıradaki **Phase 4** (aşağıda C/D).
 - [ ] (Ops., ileride) **projects**, **objectives** — minimal; yalnız ilgili feature fazı gerektirdiğinde, ayrı yetkiyle.
 
-### C. App foundation (feature fazlarının ön koşulu)  ⛔/⬜
+### C. App foundation (feature fazlarının ön koşulu)  ✅ tamamlandı
 
-- [ ] **Next.js + TypeScript scaffold** — `package.json`, App Router, Server Actions, Zod, Tailwind + shadcn/ui, Supabase client (anon/server ayrımı, service-role env-only), Vitest + Playwright iskeleti, Sentry.
-- [ ] Auth akışı (Supabase Auth) + org bağlamı (`current_org`) + RBAC okuması DB'den (AD1).
+- [x] **Next.js + TypeScript scaffold** ✅ (commit `a8b05ac`, verified 2026-07-31; Next.js 16.2.12 + React 19 + TS strict + App Router; Supabase CLI devDep korundu + package-lock regenerated; browser anon / server anon cookie / guarded+unused service_role admin clients; `proxy.ts` (Next 16); `turbopack.root`/`outputFileTracingRoot` pinlendi; Tailwind + shadcn base UI; Zod `validatedAction`; Vitest 13 test + Playwright config; CI typecheck/lint/unit; Sentry placeholder — SDK Next 16 uyumsuzluğu nedeniyle ertelendi; typecheck/lint/test/build PASS).
+- [x] **Auth akışı** (Supabase Auth `@supabase/ssr` + `auth.getUser()`) + org bağlamı (single active org via membership/cookie) + **RBAC okuması DB'den** (`role_permissions`, JWT identity-only — AD1) ✅. (DB `current_org()` ile RLS'e bağlama Phase 4 entegrasyon adımı.)
 
 ### D. Feature fazları (roadmap 4–10)  ⛔ her faz ayrı yetki
 
@@ -210,24 +230,24 @@ Kural: güvenlik temeli (RLS/ledger) bitmeden feature fazı ilerlemez.
 
 ## 5. Önerilen ilk adım
 
-Phase 3 exports foundation **verified + committed + synced** (commit `b66350d`;
-db reset 0001..0018 + seed, test db Files=12/Tests=523/PASS). Payout export record/container — generation
-engine YOK; Finance INSERT via existing `payout.export` + actor integrity `exported_by = auth.uid()`;
-snapshot_id NOT NULL; AD6/SI-15 gate via SECURITY DEFINER trigger on `snapshot.calculation_run_id →
-bonus_allocations` (pending_missing_cap_basis by status OR cap_applied); `exports.bonus_period_id` = snapshot
-period; append-only client posture (no authenticated UPDATE/DELETE) + prevent_delete retention; audit on INSERT;
-RLS Finance + Auditor SELECT — HR/Manager/Employee/Support hariç. **Bununla Phase 3 DB foundation TAMAMLANDI**
-(12 migration `0001..0018`, 12 pgTAP suite `0001..0012`, Tests=523).
+Phase 3.5 app foundation scaffold **verified + committed + synced** (commit `a8b05ac`). Next.js 16.2.12 +
+React 19 + TS strict + App Router; Supabase CLI devDep korundu + package-lock regenerated; browser anon /
+server anon cookie / **guarded+unused service_role admin** clients (`import 'server-only'`, sızıntı yok — SI-11);
+auth `@supabase/ssr` + `auth.getUser()`; **authz DB/RLS kaynaklı, JWT identity-only** (AD1); single active org
+(membership/cookie); `proxy.ts` (Next 16, deprecated `middleware.ts` yerine); `turbopack.root`/
+`outputFileTracingRoot` pinlendi; Tailwind + shadcn base UI; Zod `validatedAction`; shell rotaları (login/auth
+callback/guarded dashboard/unauthorized/health/error/not-found); Vitest 13 test + Playwright config; CI
+typecheck/lint/unit (E2E/pgTAP ertelendi); **Sentry placeholder — `@sentry/nextjs` Next 16 uyumsuzluğu nedeniyle
+ertelendi**. **Doğrulama:** `npm run typecheck → PASS`, `npm run lint → PASS`, `npm run test → PASS (4 files,
+13 tests)`, `npm run build → PASS` (workspace-root + deprecated-middleware uyarısı yok). **Bununla Phase 3 DB
+foundation (0001..0018 / 0001..0012, Tests=523) + app scaffold TAMAMLANDI.**
 
-**Sıradaki büyük adım = uygulama katmanı.** Yeni tablo dilimi kalmadı; doğal ilerleme:
-**App foundation scaffold** (Next.js + TypeScript, App Router, Server Actions + Zod, Tailwind + shadcn/ui,
-Supabase client anon/server ayrımı + service-role env-only, Vitest + Playwright iskeleti, Sentry) ve ardından
-**Phase 4 — Task & Review Core**. Her ikisi de **kod-yazmadan-önce scope-lock** ister; app scaffold DB dilimi
-değildir (yeni faz), bu yüzden ayrı, faz-sınırlı yetki gerekir (ADR-020).
+**Sıradaki büyük adım = Phase 4 — Task & Review Core** (tasks/task_reviews tabloları RLS'li + submit→review +
+self-approval hard block + submission/revision history — AD4). **Kod-yazmadan-önce scope-lock** önerilir; yeni
+faz, ayrı faz-sınırlı yetki gerektirir (ADR-020).
 
 **Henüz yetkili değil.** Başlatmak için (önce scope-lock önerilir) yetki cümlesi (örnek):
 
-`implementation authorized only for Phase 3.5 — app foundation scaffold`  (veya)
 `implementation authorized only for Phase 4 — task & review core`
 
 > Bu cümle gelene kadar hiçbir kod/migration/test yazılmaz; sonraki her faz/dilim ayrı, faz-sınırlı yetki ister (ADR-020).

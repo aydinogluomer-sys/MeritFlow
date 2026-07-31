@@ -161,12 +161,24 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
     mark-paid, Finance aggregate `v_finance_*`, notifications, app/API/UI.
   - **Phase 3 DB foundation TAMAMLANDI** ✅: 12 migration (`0001..0018`) + 12 bloklayıcı pgTAP suite
     (`0001..0012`, Tests=523) verified/committed. Yeni tablo dilimi kalmadı.
+  - **Phase 3.5 — App foundation scaffold** [VERIFIED/DONE] (commit `a8b05ac`, 2026-07-31): Next.js 16.2.12 +
+    React 19 + TS strict + App Router. Supabase CLI devDep korundu, `package-lock` regenerated (merge).
+    Supabase clients: browser anon, server anon cookie (RLS-enforced), **guarded+unused service_role admin**
+    (`import 'server-only'`; client import yok; NEXT_PUBLIC sızıntı yok — SI-11). Auth `@supabase/ssr` +
+    `auth.getUser()`; **authz DB/RLS kaynaklı, JWT identity-only** (AD1); single active org (membership/cookie,
+    switcher ertelendi). `proxy.ts` (Next 16, deprecated `middleware.ts` yerine); `turbopack.root`/
+    `outputFileTracingRoot` proje köküne pinlendi. Tailwind + shadcn base UI; Zod `validatedAction`; shell
+    rotaları (login/auth callback/guarded dashboard/unauthorized/health/error/not-found). Vitest 13 test +
+    Playwright config; CI `npm ci`+typecheck+lint+unit (**E2E/pgTAP CI ertelendi**). **Sentry placeholder only** —
+    env + `instrumentation.ts` no-op; **`@sentry/nextjs` SDK Next 16 uyumsuzluğu nedeniyle ertelendi**.
+    **Doğrulama:** typecheck → PASS, lint → PASS, test → PASS (4 files, 13 tests), build → PASS (workspace-root +
+    deprecated-middleware uyarısı yok). **Hariç:** Phase 4 domain logic, scoring/bonus/export/notification
+    engine'leri, production deploy.
   - **Phase 3 (kalan) — governance** [GATED]: scoring **engine** (final_points math + approve→ledger +
     `task_approved`/`task_id`), tasks/task_reviews, UI/API. Her dilim/faz ayrı `implementation authorized` ister.
-    **Sıradaki büyük adım:** **app foundation scaffold** (Next.js + TypeScript, App Router, Server Actions + Zod,
-    Tailwind + shadcn/ui, Supabase client anon/server + service-role env-only, Vitest + Playwright, Sentry) →
-    ardından **Phase 4 — Task & Review Core** (aşağıda). App scaffold DB dilimi değildir; ayrı faz-sınırlı yetki
-    ister (ADR-020). **Henüz yetkili değil.**
+    **Sıradaki büyük adım:** **Phase 4 — Task & Review Core** (aşağıda) — tasks/task_reviews tabloları (RLS'li) +
+    submit→review + self-approval hard block + submission/revision history (AD4). **Kod-yazmadan-önce scope-lock**
+    önerilir; ayrı faz-sınırlı yetki ister (ADR-020). **Henüz yetkili değil.**
 
 ### Phase 4 — Task & Review Core
 
