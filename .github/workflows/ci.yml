@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Decision E: CI runs typecheck + lint + unit tests only.
+# E2E (Playwright) and pgTAP (supabase test db) CI wiring is deferred to Phase 9.
+jobs:
+  app:
+    name: typecheck / lint / unit
+    runs-on: ubuntu-latest
+    env:
+      # Dummy public env so any import that reads it at load succeeds; no secrets here.
+      NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-anon-key
+      SUPABASE_SERVICE_ROLE_KEY: ci-service-role-key
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run test

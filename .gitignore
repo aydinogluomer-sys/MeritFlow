@@ -20,6 +20,22 @@ supabase/.temp/
 # --- Dependencies ---
 node_modules/
 
+# --- Next.js / build ---
+.next/
+/out/
+/build/
+next-env.d.ts
+*.tsbuildinfo
+
+# --- Test / coverage artifacts ---
+/coverage/
+/playwright-report/
+/test-results/
+/.playwright/
+
+# --- Sentry ---
+.sentryclirc
+
 # --- OS cruft ---
 .DS_Store
 Thumbs.db
