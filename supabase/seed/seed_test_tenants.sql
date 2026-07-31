@@ -491,6 +491,36 @@ on conflict (id) do nothing;
 select set_config('request.jwt.claims', '', false);
 
 -- =============================================================================
+-- Phase 3 seed — anti_gaming_flags fixtures (DEV/STAGING ONLY)
+-- Refs: 08/14/15/16 §7, D5. Deterministic flag fixtures. INSERT is server-only (the
+-- rule engine); here we write via the bypassrls migration role. NO auto-event trigger
+-- and no financial side effect — a confirmed flag is inert (D5). log_audit stamps the
+-- flag creation / review (actor null under the migration role is fine).
+--   Org A flag 90: rule duplicate_task, subject emp-alpha a7 (team f1, mgr a5), OPEN.
+--   Org A flag 91: rule period_end_spike, subject emp-beta a8 (team f2, mgr a6),
+--                  walked open->reviewing->confirmed (reviewed_by a6, note). (a6 <> a8.)
+--   Org B flag 90: rule self_approval_attempt, subject emp-b b2, OPEN (cross-tenant).
+-- =============================================================================
+insert into public.anti_gaming_flags
+  (id, organization_id, rule, subject_employee_id, status, evidence)
+values
+  ('a0000000-0000-0000-0000-000000000090', 'a0000000-0000-0000-0000-000000000001',
+   'duplicate_task', 'a0000000-0000-0000-0000-0000000000a7', 'open', '{"seed":"dup"}'::jsonb),
+  ('a0000000-0000-0000-0000-000000000091', 'a0000000-0000-0000-0000-000000000001',
+   'period_end_spike', 'a0000000-0000-0000-0000-0000000000a8', 'open', '{"seed":"spike"}'::jsonb),
+  ('b0000000-0000-0000-0000-000000000090', 'b0000000-0000-0000-0000-000000000002',
+   'self_approval_attempt', 'b0000000-0000-0000-0000-0000000000b2', 'open', '{"seed":"self"}'::jsonb)
+on conflict (id) do nothing;
+
+-- Walk flag 91 to confirmed (open -> reviewing -> confirmed) by mgr-beta a6.
+update public.anti_gaming_flags set status = 'reviewing'
+  where id = 'a0000000-0000-0000-0000-000000000091' and status = 'open';
+update public.anti_gaming_flags
+  set status = 'confirmed', reviewed_by = 'a0000000-0000-0000-0000-0000000000a6',
+      review_note = 'seed: confirmed after review'
+  where id = 'a0000000-0000-0000-0000-000000000091' and status = 'reviewing';
+
+-- =============================================================================
 -- Phase 3 seed — bonus_ledger balanced accrual fixtures (DEV/STAGING ONLY)
 -- Refs: 06 §2, 14/16 (BL-1..4), ADR-017. A single balanced accrual TRANSACTION per org
 -- (one pool debit total + per-employee accrual credits), referencing the completed run
