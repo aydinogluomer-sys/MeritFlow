@@ -586,3 +586,104 @@ values
    'b0000000-0000-0000-0000-0000000000b2', 'task.approved', '{"task":"seed-org-b"}'::jsonb,
    '/tasks/seed-org-b', 'unread', null)
 on conflict (id) do nothing;
+
+-- =============================================================================
+-- Phase 3 seed — exports + AD6-gate fixtures (DEV/STAGING ONLY)
+-- Refs: 14 §444-451, 15 §149-152, 16 §8, AD6/SI-3/SI-15. Finance creates export
+-- records (payout.export); here we write via the bypassrls migration role. The
+-- validate_export() trigger runs on these inserts (snapshot same-org + period match +
+-- AD6). audit fires (exports.insert). Two dedicated AD6-gate fixtures (org A) carry a
+-- pending_missing_cap_basis allocation so a negative export insert is blocked — one via
+-- allocation status, one via cap_applied only (isolating both OR branches of the gate).
+--   Clean export 48 (org A, snapshot 35 — clean run 32) + b48 (org B, snapshot 35).
+--   AD6 fixture 1: period 60/pool 61/run 62 + alloc 63 (status=pending) + snapshot 64.
+--   AD6 fixture 2: period 60/pool 61/run 65 + alloc 66 (cap_applied=pending, status
+--                  calculated) + snapshot 67.  (both runs share the locked period+pool)
+-- =============================================================================
+
+-- Locked period + locked pool for the AD6-gate runs (open->locked so triggers pass).
+insert into public.bonus_periods
+  (id, organization_id, period_type, starts_on, ends_on, status, created_by)
+values
+  ('a0000000-0000-0000-0000-000000000060', 'a0000000-0000-0000-0000-000000000001',
+   'monthly', date '2026-03-01', date '2026-03-31', 'open', 'a0000000-0000-0000-0000-0000000000a3')
+on conflict (id) do nothing;
+
+insert into public.bonus_pools
+  (id, organization_id, bonus_period_id, amount_minor, currency, status, created_by)
+values
+  ('a0000000-0000-0000-0000-000000000061', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-000000000060', 10000000, 'TRY', 'draft', 'a0000000-0000-0000-0000-0000000000a4')
+on conflict (id) do nothing;
+
+update public.bonus_pools set status = 'locked', t_org = 1, locked_at = now(),
+       locked_by = 'a0000000-0000-0000-0000-0000000000a4'
+  where id = 'a0000000-0000-0000-0000-000000000061' and status = 'draft';
+update public.bonus_periods set status = 'locked', locked_at = now(),
+       locked_by = 'a0000000-0000-0000-0000-0000000000a3'
+  where id = 'a0000000-0000-0000-0000-000000000060' and status = 'open';
+
+-- Two runs (start 'running' so allocations may be written before freeze).
+insert into public.bonus_calculation_runs
+  (id, organization_id, bonus_period_id, bonus_pool_id, policy_version_id, status,
+   idempotency_key, t_org, top_up_applied, triggered_by)
+values
+  ('a0000000-0000-0000-0000-000000000062', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-000000000060', 'a0000000-0000-0000-0000-000000000061',
+   'a0000000-0000-0000-0000-0000000000d2', 'running', 'seed-export-ad6-a1', 1, false,
+   'a0000000-0000-0000-0000-0000000000a3'),
+  ('a0000000-0000-0000-0000-000000000065', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-000000000060', 'a0000000-0000-0000-0000-000000000061',
+   'a0000000-0000-0000-0000-0000000000d2', 'running', 'seed-export-ad6-a2', 1, false,
+   'a0000000-0000-0000-0000-0000000000a3')
+on conflict (id) do nothing;
+
+-- Pending-cap allocations (primary_team_id null to skip the AD9 is_primary validator).
+--   alloc 43: status=pending_missing_cap_basis (mirror ⇒ cap_applied=pending) — status branch.
+--   alloc 46: status=calculated, cap_applied=pending_missing_cap_basis — cap_applied-only branch.
+insert into public.bonus_allocations
+  (id, organization_id, calculation_run_id, bonus_period_id, employee_id, primary_team_id,
+   adjusted_score, raw_share_minor, final_amount_minor, cap_applied, status)
+values
+  ('a0000000-0000-0000-0000-000000000063', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-000000000062', 'a0000000-0000-0000-0000-000000000060',
+   'a0000000-0000-0000-0000-0000000000a7', null,
+   0, 0, 0, 'pending_missing_cap_basis', 'pending_missing_cap_basis'),
+  ('a0000000-0000-0000-0000-000000000066', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-000000000065', 'a0000000-0000-0000-0000-000000000060',
+   'a0000000-0000-0000-0000-0000000000a8', null,
+   0, 0, 0, 'pending_missing_cap_basis', 'calculated')
+on conflict (id) do nothing;
+
+-- Snapshots (one per run) + complete the runs (freezes the allocations).
+insert into public.bonus_allocation_snapshots
+  (id, organization_id, calculation_run_id, bonus_period_id, bonus_pool_id, policy_version_id,
+   t_org, top_up_applied, undistributed_remainder_minor, calculation_metadata)
+values
+  ('a0000000-0000-0000-0000-000000000064', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-000000000062', 'a0000000-0000-0000-0000-000000000060',
+   'a0000000-0000-0000-0000-000000000061', 'a0000000-0000-0000-0000-0000000000d2',
+   1, false, 10000000, '{"seed":"ad6-status"}'::jsonb),
+  ('a0000000-0000-0000-0000-000000000067', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-000000000065', 'a0000000-0000-0000-0000-000000000060',
+   'a0000000-0000-0000-0000-000000000061', 'a0000000-0000-0000-0000-0000000000d2',
+   1, false, 10000000, '{"seed":"ad6-cap"}'::jsonb)
+on conflict (id) do nothing;
+
+update public.bonus_calculation_runs set status = 'completed', completed_at = now()
+  where id = 'a0000000-0000-0000-0000-000000000062' and status = 'running';
+update public.bonus_calculation_runs set status = 'completed', completed_at = now()
+  where id = 'a0000000-0000-0000-0000-000000000065' and status = 'running';
+
+-- Clean export records (snapshot 35 is the completed clean run 32; period matches).
+--   org A export 48 (exported_by Finance a4); org B export b48 (exported_by owner b1).
+insert into public.exports
+  (id, organization_id, bonus_period_id, snapshot_id, exported_by, format, status)
+values
+  ('a0000000-0000-0000-0000-000000000048', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-000000000030', 'a0000000-0000-0000-0000-000000000035',
+   'a0000000-0000-0000-0000-0000000000a4', 'csv', 'requested'),
+  ('b0000000-0000-0000-0000-000000000048', 'b0000000-0000-0000-0000-000000000002',
+   'b0000000-0000-0000-0000-000000000030', 'b0000000-0000-0000-0000-000000000035',
+   'b0000000-0000-0000-0000-0000000000b1', 'csv', 'requested')
+on conflict (id) do nothing;
