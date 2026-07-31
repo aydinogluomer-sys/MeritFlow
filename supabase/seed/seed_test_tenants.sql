@@ -561,3 +561,28 @@ values
    'b0000000-0000-0000-0000-000000000035', 'b0000000-0000-0000-0000-000000000050',
    'credit', 'accrual', 'bonus_accrual', 5000000, 'TRY', 'seed: accrual emp-b', 'b0000000-0000-0000-0000-0000000000b1')
 on conflict (id) do nothing;
+
+-- =============================================================================
+-- Phase 3 seed — notifications fixtures (DEV/STAGING ONLY)
+-- Refs: 14 §424-429, 15 §139-142, D-none. Per-recipient delivery sink. INSERT is
+-- server-only (service_role); here we write via the bypassrls migration role. NO
+-- audit trigger and NO prevent_delete (retention/TTL is a V1 item). recipient_id
+-- stores the profile_id (== auth.uid()). The 'read' fixture sets read_at explicitly
+-- to satisfy the read-consistency CHECK.
+--   Org A n80: recipient emp-alpha a7, UNREAD (mark-read + recipient-only RLS tests).
+--   Org A n81: recipient emp-alpha a7, READ   (read->unread reject + read-state tests).
+--   Org B n80: recipient emp-b b2,     UNREAD (cross-tenant negative).
+-- =============================================================================
+insert into public.notifications
+  (id, organization_id, recipient_id, type, payload, link, status, read_at)
+values
+  ('a0000000-0000-0000-0000-000000000080', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-0000000000a7', 'task.approved', '{"task":"seed-approved"}'::jsonb,
+   '/tasks/seed-approved', 'unread', null),
+  ('a0000000-0000-0000-0000-000000000081', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-0000000000a7', 'dispute.assigned', '{"dispute":"seed-assigned"}'::jsonb,
+   '/disputes/seed-assigned', 'read', now()),
+  ('b0000000-0000-0000-0000-000000000080', 'b0000000-0000-0000-0000-000000000002',
+   'b0000000-0000-0000-0000-0000000000b2', 'task.approved', '{"task":"seed-org-b"}'::jsonb,
+   '/tasks/seed-org-b', 'unread', null)
+on conflict (id) do nothing;
