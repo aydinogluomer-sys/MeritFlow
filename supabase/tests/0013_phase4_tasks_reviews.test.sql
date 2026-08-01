@@ -6,17 +6,15 @@
 --
 -- Section A = privileged (bypassrls, trusted context). Section B = RLS as authenticated.
 -- Review-driven transitions (Decision A): a task_reviews INSERT applies the tasks status
--- change; a direct client UPDATE into approved/rejected/needs_revision is rejected.
--- Approve writes NO point_ledger row in this slice (scoring = Phase 5).
+-- change; a direct client UPDATE into approved/rejected/needs_revision is rejected. This
+-- suite covers the Phase-4 lifecycle; Phase 5 scoring (0020) now writes exactly one
+-- task_approved point_ledger row when task 100 is approved (asserted below).
 --
 -- Seed: tasks 100 (f1/a7, submitted), 101 (f2/a8, in_progress), 102 (f1/a7, submitted),
 -- 103 (f1/a5-assignee, submitted).
 -- =============================================================================
 begin;
 select no_plan();
-
--- point_ledger baseline for the Phase-5 boundary assertion (captured before any review).
-create temp table _p4_pl as select count(*)::bigint as c from public.point_ledger;
 
 -- =============================================================================
 -- SECTION A — privileged (bypassrls, trusted)
@@ -182,7 +180,7 @@ select throws_ok(
   '23514', 'task approved is review-driven (insert a task_review, not a direct update)',
   'manager cannot approve via direct UPDATE (must review)');
 
--- ---- review-driven approve: valid review changes task status; writes NO point_ledger ----
+-- ---- review-driven approve: valid review changes task status (Phase 5 scores it) ----
 select set_config('request.jwt.claims','{"sub":"a0000000-0000-0000-0000-0000000000a5"}', true);
 select lives_ok(
   $$ insert into public.task_reviews (organization_id, task_id, reviewer_id, decision, quality, timeliness)
@@ -220,12 +218,15 @@ select lives_ok(
 select is((select status from public.tasks where id='a0000000-0000-0000-0000-000000000102'), 'needs_revision', 'needs_revision review drove task -> needs_revision');
 select is((select revision_count from public.tasks where id='a0000000-0000-0000-0000-000000000102'), 1, 'needs_revision review incremented revision_count');
 
--- ---- audit + point_ledger boundary ----
+-- ---- audit + point_ledger (Phase 5 scoring now writes exactly one earning row) ----
 reset role;
 select ok(exists(select 1 from public.audit_logs where target_id='a0000000-0000-0000-0000-000000000100' and action='tasks.update'), 'approve produced a tasks audit row');
 select ok(exists(select 1 from public.audit_logs where action='task_reviews.insert'), 'review INSERT produced an audit row');
-select is((select count(*) from public.point_ledger), (select c from _p4_pl),
-  'approve wrote NO point_ledger row (Phase 5 boundary — F)');
+-- Phase 5 scoring: approving task 100 (via task_reviews INSERT) writes exactly one
+-- point_ledger task_approved row for that task (SI-1). (Was a Phase-4 "no ledger" boundary.)
+select is((select count(*) from public.point_ledger
+           where task_id='a0000000-0000-0000-0000-000000000100' and event_type='task_approved'),
+  1::bigint, 'approve writes exactly one task_approved ledger row (Phase 5 scoring — SI-1)');
 
 select * from finish();
 rollback;

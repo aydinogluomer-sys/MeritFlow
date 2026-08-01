@@ -212,7 +212,10 @@ insert into public.scoring_policy_versions
 values
   ('a0000000-0000-0000-0000-0000000000d2', 'a0000000-0000-0000-0000-000000000001',
    'a0000000-0000-0000-0000-0000000000d1', 1, 'published',
-   '{"complexity":{},"impact":{},"quality":{},"timeliness":{}}'::jsonb, '{}'::jsonb, '{}'::jsonb,
+   -- doc 04 §50-53 multipliers + §57 revision penalty (Phase 5 scoring). timeliness_thresholds
+   -- stay {} (derivation is reviewer/app-side; the engine uses the review's timeliness — E).
+   '{"complexity":{"low":1.0,"medium":1.25,"high":1.5,"critical":2.0},"impact":{"low":1.0,"medium":1.2,"high":1.5,"strategic":2.0},"quality":{"acceptable":0.75,"good":1.0,"excellent":1.25,"poor":0},"timeliness":{"early":1.1,"on_time":1.0,"late_minor":0.85,"late_major":0.5}}'::jsonb,
+   '{"rate_per_revision":0.05,"cap":0.25}'::jsonb, '{}'::jsonb,
    now(), 'a0000000-0000-0000-0000-0000000000a3', 'a0000000-0000-0000-0000-0000000000a3'),
   ('a0000000-0000-0000-0000-0000000000d3', 'a0000000-0000-0000-0000-000000000001',
    'a0000000-0000-0000-0000-0000000000d1', 2, 'draft',
@@ -220,7 +223,8 @@ values
    null, null, 'a0000000-0000-0000-0000-0000000000a3'),
   ('b0000000-0000-0000-0000-0000000000d2', 'b0000000-0000-0000-0000-000000000002',
    'b0000000-0000-0000-0000-0000000000d1', 1, 'published',
-   '{"complexity":{},"impact":{},"quality":{},"timeliness":{}}'::jsonb, '{}'::jsonb, '{}'::jsonb,
+   '{"complexity":{"low":1.0,"medium":1.25,"high":1.5,"critical":2.0},"impact":{"low":1.0,"medium":1.2,"high":1.5,"strategic":2.0},"quality":{"acceptable":0.75,"good":1.0,"excellent":1.25,"poor":0},"timeliness":{"early":1.1,"on_time":1.0,"late_minor":0.85,"late_major":0.5}}'::jsonb,
+   '{"rate_per_revision":0.05,"cap":0.25}'::jsonb, '{}'::jsonb,
    now(), 'b0000000-0000-0000-0000-0000000000b1', 'b0000000-0000-0000-0000-0000000000b1')
 on conflict (id) do nothing;
 
