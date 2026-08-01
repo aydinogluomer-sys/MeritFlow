@@ -186,17 +186,31 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
     (team/assignee/creator/reviewer/policy-version; events/reviews→tasks; actor→memberships). RLS: assignee/
     creator/reviewer/`manages_team`/HR/Auditor + **support-grant top-level OR** (support üyeliksiz → ayrı OR);
     events/reviews task görünürlüğünü miras alır; **Finance ham task/review/event göremez** (SI-12). **Yeni
-    permission yok** (task.create/assign/submit/review; katalog 20). **Approve point_ledger üretmez — Phase 5
-    sınırı** (test: ledger değişmez). Kod: `migrations/0019_tasks_events_reviews.sql`,
-    `tests/0013_phase4_tasks_reviews.test.sql`. **Verified 2026-08-01** (`db reset` 0001..0019 + seed; `test db`
-    Files=13 Tests=591 PASS Failed=0). **Ertelenen:** `task_assignments`/`task_comments`/`task_attachments`
-    (+storage), submit/review **Server Actions + UI** (ayrı yetki), scoring/final_points (Phase 5).
-  - **Phase 3 (kalan) — governance** [GATED]: scoring **engine** (final_points math + approve→ledger +
-    `task_approved`/`task_id` idempotency), UI/API. Her dilim/faz ayrı `implementation authorized` ister.
-    **Sıradaki büyük adım:** **Phase 5 — Scoring Engine** (aşağıda) — `04` motoru: approve→point_ledger
-    `task_approved` (idempotent, `task_id` + index), `final_points` math, timeliness `submitted_at` (AD4),
-    collaboration puanı etkilemez (AD5), breakdown. **Kod-yazmadan-önce scope-lock** önerilir; ayrı faz-sınırlı
-    yetki ister (ADR-020). **Henüz yetkili değil.**
+    permission yok** (task.create/assign/submit/review; katalog 20). Phase 4'te approve ledger yazmazdı; **Phase 5
+    (0020) artık approve'da tek `task_approved` satırı yazar** (0013 bu doğruyu test eder). Kod:
+    `migrations/0019_tasks_events_reviews.sql`, `tests/0013_phase4_tasks_reviews.test.sql`. **Verified 2026-08-01**
+    (`db reset` 0001..0019 + seed; `test db` Files=13 Tests=591 PASS Failed=0). **Ertelenen:**
+    `task_assignments`/`task_comments`/`task_attachments` (+storage), submit/review **Server Actions + UI** (ayrı yetki).
+  - **Phase 5 — Scoring Engine** [VERIFIED/DONE] (commit `aa47e40`, 2026-08-01): görev `approved` olunca
+    **deterministik server-side scoring**. `point_ledger`'a `task_id` (nullable) + `task_approved` event;
+    `tasks.final_points`→**numeric**. **SECURITY DEFINER BEFORE UPDATE** trigger (`score_task_on_approve`,
+    validate'ten sonra) approved geçişinde kilitli **published** policy version multipliers + `revision_penalty_rule`'dan
+    `final_points = base·complexity·impact·quality·timeliness·(1−min(rev·0.05,0.25))` hesaplar (doc 04),
+    `NEW.final_points`'i set eder, tek `task_approved` kazanç satırını yazar (breakdown `metadata`'da). **SI-1:**
+    partial unique index — task başına tek satır. **Raw numeric, yuvarlama yok.** **AD4:** timeliness onaylayan
+    review'dan (geç onay cezalandırmaz). **AD5:** collaboration yalnız metadata. **D3:** approve+poor scoring'den
+    önce reddedilir. **AD7:** draft version score edemez. Güvenilir direct-approve (review'suz) **atlar**;
+    review-driven approve'lar score eder. Seed'de published `d2`/`b-d2` multipliers + penalty rule doc-04
+    değerleriyle dolduruldu (INSERT'te; published-immutability UPDATE'i engeller). **Finance ham point_ledger'dan
+    hariç** (SI-12); **server-only** (SI-11); **yeni permission yok** (katalog 20); **bonus değişikliği yok**. Kod:
+    `migrations/0020_scoring_engine.sql`, `tests/0014_phase5_scoring.test.sql`. **Verified 2026-08-01** (`db reset`
+    0001..0020 + seed; `test db` Files=14 Tests=626 PASS Failed=0). **Ertelenen (5-b):** manual override/adjustment
+    (`point.override` 2-step → `manual_adjustment`); breakdown UI.
+  - **Phase 3 (kalan) — governance** [GATED]: bonus **engine** (accrual/allocation/snapshot→bonus_ledger), UI/API.
+    Her dilim/faz ayrı `implementation authorized` ister. **Sıradaki büyük adım:** **Phase 6 — Bonus Engine**
+    (aşağıda) — `05` motoru: approved point'lerden Safe Pro-Rata, cap, T_org (+top-up AD8), kuruş/largest-remainder,
+    Σ invariant (SI-13), immutable snapshot'tan double-entry `bonus_ledger` accrual; `09` worked example.
+    **Kod-yazmadan-önce scope-lock** önerilir; ayrı faz-sınırlı yetki ister (ADR-020). **Henüz yetkili değil.**
 
 ### Phase 4 — Task & Review Core
 

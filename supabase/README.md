@@ -1,8 +1,9 @@
 # MeritFlow — Supabase (Database Foundation: Phase 3A–3B + comp + bonus periods/pools + components/eligibility + calc runs/allocations/snapshots + ledger + disputes + anti-gaming + notifications + exports)
 
-This directory is the **database foundation**. It currently implements thirteen verified
-slices — the twelve Phase 3 DB slices (**Phase 3 DB foundation complete**) plus the
-**Phase 4 task/review core** (`tasks` + `task_events` + `task_reviews`):
+This directory is the **database foundation**. It currently implements fourteen verified
+slices — the twelve Phase 3 DB slices (**Phase 3 DB foundation complete**), the
+**Phase 4 task/review core** (`tasks` + `task_events` + `task_reviews`), and the
+**Phase 5 scoring engine** (approve → `point_ledger task_approved`):
 
 - **Phase 3A — Database Foundation & RBAC** (`17_PHASE_3A_...md`): 11 foundation/RBAC
   tables, RLS helpers, RLS (ENABLED + FORCE), constraints, test-tenant seed, blocking pgTAP.
@@ -102,9 +103,11 @@ slices — the twelve Phase 3 DB slices (**Phase 3 DB foundation complete**) plu
   `complexity/impact/quality/timeliness` enums come from `04`. Same-org composite FKs throughout. RLS read =
   assignee / creator / reviewer / own-team manager / HR / Auditor + **support-grant (top-level OR)**;
   task_events/task_reviews inherit task visibility; **Finance has NO raw task/review/event SELECT** (SI-12). No
-  new permission (catalog 20); **approve writes NO point_ledger row** (Phase 5 boundary) — RLS + pgTAP.
+  new permission (catalog 20). This slice is the lifecycle container; **scoring/point_ledger is wired in `0020`
+  (Phase 5)** — approving a task now writes exactly one `task_approved` point_ledger row (see the Phase 5 slice) —
+  RLS + pgTAP.
 
-Migrations `0001..0019` + seed apply cleanly; blocking pgTAP suites (`0001`..`0013`) are green (see
+Migrations `0001..0020` + seed apply cleanly; blocking pgTAP suites (`0001`..`0014`) are green (see
 "Verification"). **Phase 3 DB foundation is complete; everything downstream (app + engines) is still gated**
 (see "Out of scope").
 
@@ -183,7 +186,16 @@ supabase/
                                           needs_revision blocked; self-approval hard block (AD4); D3 approve⇒
                                           quality≠poor; doc-04 enums; same-org FKs; RLS assignee/creator/reviewer/
                                           team-manager/HR/Auditor + support-grant, Finance excluded; no new
-                                          permission (catalog 20); NO point_ledger on approve (Phase 5 boundary)
+                                          permission (catalog 20); scoring/point_ledger wired in 0020 (Phase 5)
+    0020_scoring_engine.sql               scoring engine (Phase 5; approve -> point_ledger task_approved) —
+                                          ALTER point_ledger +task_id/task_approved + task_approved CHECKs +
+                                          same-org FK to tasks + SI-1 partial unique idempotency; tasks.final_points
+                                          integer->numeric; SECURITY DEFINER BEFORE UPDATE trigger on approved
+                                          transition computes doc-04 formula from published policy multipliers/
+                                          revision_penalty_rule, sets final_points, writes one task_approved earning
+                                          row (breakdown metadata); raw numeric no rounding; AD4 review timeliness;
+                                          AD5 collaboration non-scoring; D3/AD7 guards; direct-approve w/o review
+                                          skips; Finance excluded; no new permission (catalog 20); no bonus changes
   seed/seed_test_tenants.sql              2 tenants, RBAC catalog, teams, support grants,
                                           + Phase 3B (scoring/versions, point_ledger) + comp + bonus fixtures
                                           (periods/pools + components/eligibility + calc run/allocations/snapshot
@@ -191,6 +203,7 @@ supabase/
                                           + anti-gaming flag fixtures + notification fixtures
                                           + export fixtures + AD6-gate pending-cap fixtures
                                           + Phase 4 task fixtures (walked to submitted/in_progress)
+                                          + Phase 5 policy multipliers/penalty rule (doc-04 values on d2/b-d2)
   tests/
     0001_phase3a_rls.test.sql             blocking pgTAP — RLS/RBAC (Phase 3A)
     0002_phase3b_scoring_policies.test.sql blocking pgTAP — scoring policy/version (Phase 3B-A)
@@ -205,6 +218,7 @@ supabase/
     0011_phase3_notifications.test.sql    blocking pgTAP — notifications recipient-only RLS/mark-read/one-way lifecycle (Phase 3)
     0012_phase3_exports.test.sql          blocking pgTAP — exports snapshot/AD6-gate/actor-integrity/append-only/Finance+Auditor RLS (Phase 3)
     0013_phase4_tasks_reviews.test.sql    blocking pgTAP — tasks state machine/review-driven transition/self-approval/D3/AD4 timing/append-only/RLS (Phase 4)
+    0014_phase5_scoring.test.sql          blocking pgTAP — scoring determinism (187.5)/SI-1 idempotency/AD4/AD5/D3/AD7/Finance-excluded/no-bonus (Phase 5)
 ```
 
 ## Apply & test (local)
@@ -345,12 +359,32 @@ re-runnable (on-conflict guards).
 > resubmit refreshes it; cross-org assignee / policy-version → `23503`; **RLS** — assignee, own-team manager,
 > reviewer, HR, Auditor and a **support-grant (top-level OR)** see the task while **Finance and other-team and
 > cross-tenant read 0** (task_events/task_reviews inherit task visibility); the **permission catalog is unchanged
-> (20)**; and **approve writes NO point_ledger row** (Phase 5 boundary). One in-slice fix restructured the tasks
-> SELECT so `has_support_grant()` is a top-level OR (support users have no membership → `current_org()` is null).
+> (20)**. One in-slice fix restructured the tasks SELECT so `has_support_grant()` is a top-level OR (support users
+> have no membership → `current_org()` is null). (Phase 5 note: approving task 100 now writes exactly one
+> `task_approved` row; the 0013 boundary assertion was amended accordingly.)
 >
-> **Phase 3 DB foundation is COMPLETE** (12 migrations `0001..0018` / 12 suites `0001..0012`, Tests=523); the
-> **Phase 4 task/review core** (`0019`/`0013`) is also done (Tests=591 total). **Later phases (scoring/bonus
-> engines + app UI) remain gated** (ADR-020). **Never run any of this against a production project.**
+> **Phase 5 scoring engine: VERIFIED / DONE** (2026-08-01, npx Supabase CLI **2.109.1**; commit `aa47e40`).
+> `db reset` applied migrations **0001..0020** + seed cleanly; `test db` → **Files=14, Tests=626, Result=PASS,
+> Failed=0** (`0001`..`0014` ok). Invariants proven (04; D3/AD4/AD5/AD7/SI-1/SI-11/SI-12): when a task becomes
+> `approved` (review-driven), a **SECURITY DEFINER BEFORE UPDATE trigger** reads the locked **published** policy
+> version's multipliers + `revision_penalty_rule`, computes `final = base·complexity·impact·quality·timeliness·
+> (1-min(rev·0.05,0.25))` (doc 04), sets `tasks.final_points` (now `numeric`), and writes **exactly one**
+> `point_ledger` `task_approved` earning row (breakdown in `metadata`). **Determinism:** task 100 = 187.5, and
+> `tasks.final_points = points_delta`. **SI-1 idempotency:** a partial unique index — a second `task_approved` for
+> the same task → `23505`. **AD5:** a different `collaboration_score` yields the same `final_points` (it is
+> metadata-only). **AD4:** the earning row's timeliness is the approving review's value (a late approval never
+> re-penalizes). **Revision cap:** rev-6 → rate `0.25` → `140.625`. **AD7:** a draft/non-published policy version
+> cannot score (`23514`, no row). **D3:** approve+`quality=poor` is rejected before scoring (`23514`, no row). A
+> **trusted direct-approve without a review skips** scoring; review-driven approves score. **Finance is excluded**
+> from raw `point_ledger` (`SI-12`); the earning row is **server-written** (`SI-11`); the **catalog stays 20**; and
+> **no `bonus_ledger`/bonus rows** are written. Seed populated `d2`/`b-d2` policy multipliers + penalty rule with
+> doc-04 values. In-slice fix: scoring **skips** (rather than errors) when a trusted approve has no review; and the
+> 0013 obsolete "no ledger" boundary assertion was amended (authorized).
+>
+> **Phase 3 DB foundation is COMPLETE** (12 migrations `0001..0018` / 12 suites, Tests=523); the **Phase 4 task/
+> review core** (`0019`/`0013`) and **Phase 5 scoring engine** (`0020`/`0014`) are also done (Tests=626 total).
+> **Later phases (bonus engine + app UI) remain gated** (ADR-020). **Never run any of this against a production
+> project.**
 
 ### Prerequisites
 
@@ -366,13 +400,13 @@ re-runnable (on-conflict guards).
 
 ```bash
 supabase start        # 1. boot local stack; note the printed local URLs + dev-default keys
-supabase db reset     # 2. apply 0001..0019 + seed (expect clean apply)
+supabase db reset     # 2. apply 0001..0020 + seed (expect clean apply)
 supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
 ```
 
 ### Expected pass criteria
 
-- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=13, Tests=591, PASS**). Blocking.
+- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=14, Tests=626, PASS**). Blocking.
 - [ ] Green coverage: cross-tenant isolation (SI-7), non-recursive memberships read (§7A), support
   active-vs-expired grant (D4), append-only audit + append-only `point_ledger` (SI-2), helper
   correctness, scoring-policy `policy.manage` gating + published-version immutability (AD7), point_ledger
@@ -402,8 +436,12 @@ supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
   task_reviews** (status machine + forbidden transitions + DELETE forbidden; auto-written append-only task_events
   — AD4; review-driven transition via task_reviews INSERT + direct client approve/reject/needs_revision blocked;
   self-approval hard block — AD4; D3 approve⇒quality≠poor; AD4 submitted_at/revision timing; same-org FKs; RLS
-  assignee/creator/reviewer/team-manager/HR/Auditor/support-grant — Finance excluded; approve writes no
-  point_ledger — Phase 5 boundary; catalog stays 20 — D3/AD4/AD5/SI-7/SI-12).
+  assignee/creator/reviewer/team-manager/HR/Auditor/support-grant — Finance excluded; catalog stays 20 —
+  D3/AD4/AD5/SI-7/SI-12), and **scoring engine** (approve→one task_approved point_ledger row = 187.5 deterministic;
+  tasks.final_points numeric = points_delta; SI-1 partial-unique idempotency; AD4 review timeliness; AD5
+  collaboration non-scoring; revision cap 25%; AD7 draft-policy cannot score; D3 blocked pre-scoring; direct-approve
+  w/o review skips; Finance excluded from raw point_ledger; server-only; no bonus writes; catalog 20 —
+  SI-1/SI-11/SI-12/AD4/AD5/AD7/D3).
 - [ ] `supabase db reset` then re-running the suite is reproducible (deterministic seed).
 
 ### Failure triage
@@ -525,8 +563,9 @@ supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
 
 ## Out of scope (later slices / phases — still gated, ADR-020)
 
-Scoring **engine** (final_points math + approve→ledger + `task_approved`/`task_id`), tasks & task_reviews,
-the **approve→accrual posting engine** + snapshot-approval workflow, the **export generation engine**
+The **bonus engine** (approved-points → Safe Pro-Rata allocation + cap + T_org + largest-remainder + Σ invariant),
+the **approve→accrual posting engine** + snapshot-approval workflow, manual point override/adjustment
+(`point.override` 2-step → `manual_adjustment`), the **export generation engine**
 (CSV/XLSX/storage write, checksum/row_count, status progression `requested→generated→downloaded`, the
 period=`approved` gate) + `payout_exported`/`payout_marked_paid` ledger wiring + mark-paid + Finance aggregate
 views (`v_finance_*`), clawback workflow, dispute post-decision effects (point_ledger `dispute_adjustment` /
@@ -546,11 +585,16 @@ authorization (ADR-020).
 > `task_events` history (AD4); append-only `task_reviews` whose INSERT drives the task transition via a SECURITY
 > DEFINER trigger (a direct client approve/reject/needs_revision is blocked); self-approval hard block (AD4); D3
 > approve⇒quality≠poor; AD4 timing tested; same-org composite FKs; RLS with assignee/creator/reviewer/team-manager/
-> HR/Auditor and support-grant (top-level OR) visibility, Finance excluded; no new permission (catalog 20); and NO
-> point_ledger row on approve (Phase 5 boundary). `db reset` `0001..0019` + seed; `test db` → **Files=13,
-> Tests=591, PASS, Failed=0**. **Next major step:** **Phase 5 — Scoring Engine** (approve→point_ledger
-> `task_approved` idempotent, `task_id` index; `final_points` math; timeliness from `submitted_at` — AD4;
-> collaboration non-scoring — AD5; breakdown). A scope-lock is recommended. **Not authorized yet.**
+> HR/Auditor and support-grant (top-level OR) visibility, Finance excluded; no new permission (catalog 20). The
+> **Phase 5 scoring engine** (`0020`/`0014`) is also **done** (commit `aa47e40`): on the approved transition a
+> SECURITY DEFINER trigger computes the doc-04 formula from the locked published policy version and writes exactly
+> one `point_ledger task_approved` earning row (breakdown metadata) + the `tasks.final_points` numeric cache;
+> SI-1 partial-unique idempotency; AD4 (review timeliness), AD5 (collaboration non-scoring), D3/AD7 guards; a
+> trusted direct-approve without a review skips scoring; Finance excluded; no new permission; no bonus writes.
+> `db reset` `0001..0020` + seed; `test db` → **Files=14, Tests=626, PASS, Failed=0**. **Next major step:**
+> **Phase 6 — Bonus Engine** (approved points → Safe Pro-Rata allocation + cap + T_org (+top-up AD8) +
+> kuruş/largest-remainder + Σ invariant (SI-13) + immutable snapshot → double-entry `bonus_ledger` accrual;
+> `09` worked example). A scope-lock is recommended. **Not authorized yet.**
 
 ## Notes for reviewers
 
