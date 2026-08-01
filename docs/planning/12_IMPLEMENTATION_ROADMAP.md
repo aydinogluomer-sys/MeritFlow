@@ -174,11 +174,29 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
     **Doğrulama:** typecheck → PASS, lint → PASS, test → PASS (4 files, 13 tests), build → PASS (workspace-root +
     deprecated-middleware uyarısı yok). **Hariç:** Phase 4 domain logic, scoring/bonus/export/notification
     engine'leri, production deploy.
+  - **Phase 4 — Task & Review Core (DB çekirdeği)** [VERIFIED/DONE] (commit `148667e`, 2026-08-01): `tasks` +
+    `task_events` + `task_reviews`. `tasks` **status machine** (draft→…→approved|rejected; cancelled/archived) —
+    yasak geçişler (skip-state/`approved→in_progress`/mid-state insert) + **DELETE yasak**. `task_events`
+    **auto-written append-only history** (`log_task_event`; AD4; UPDATE/DELETE yasak). `task_reviews`
+    **append-only karar** — **review-driven transition**: task_reviews INSERT, SECURITY DEFINER
+    `apply_review_to_task` ile task status'unu uygular; **doğrudan client approve/reject/needs_revision
+    reddedilir**. **Self-approval hard block (AD4):** reviewer_id<>assignee (review INSERT + tasks CHECK + belt).
+    **D3:** approve⇒quality<>poor (CHECK). **AD4 timing** (submitted_at/`revision_count`) test-kanıtlı.
+    `complexity/impact/quality/timeliness` enum'ları doc 04'ten. Same-org composite FK'ler
+    (team/assignee/creator/reviewer/policy-version; events/reviews→tasks; actor→memberships). RLS: assignee/
+    creator/reviewer/`manages_team`/HR/Auditor + **support-grant top-level OR** (support üyeliksiz → ayrı OR);
+    events/reviews task görünürlüğünü miras alır; **Finance ham task/review/event göremez** (SI-12). **Yeni
+    permission yok** (task.create/assign/submit/review; katalog 20). **Approve point_ledger üretmez — Phase 5
+    sınırı** (test: ledger değişmez). Kod: `migrations/0019_tasks_events_reviews.sql`,
+    `tests/0013_phase4_tasks_reviews.test.sql`. **Verified 2026-08-01** (`db reset` 0001..0019 + seed; `test db`
+    Files=13 Tests=591 PASS Failed=0). **Ertelenen:** `task_assignments`/`task_comments`/`task_attachments`
+    (+storage), submit/review **Server Actions + UI** (ayrı yetki), scoring/final_points (Phase 5).
   - **Phase 3 (kalan) — governance** [GATED]: scoring **engine** (final_points math + approve→ledger +
-    `task_approved`/`task_id`), tasks/task_reviews, UI/API. Her dilim/faz ayrı `implementation authorized` ister.
-    **Sıradaki büyük adım:** **Phase 4 — Task & Review Core** (aşağıda) — tasks/task_reviews tabloları (RLS'li) +
-    submit→review + self-approval hard block + submission/revision history (AD4). **Kod-yazmadan-önce scope-lock**
-    önerilir; ayrı faz-sınırlı yetki ister (ADR-020). **Henüz yetkili değil.**
+    `task_approved`/`task_id` idempotency), UI/API. Her dilim/faz ayrı `implementation authorized` ister.
+    **Sıradaki büyük adım:** **Phase 5 — Scoring Engine** (aşağıda) — `04` motoru: approve→point_ledger
+    `task_approved` (idempotent, `task_id` + index), `final_points` math, timeliness `submitted_at` (AD4),
+    collaboration puanı etkilemez (AD5), breakdown. **Kod-yazmadan-önce scope-lock** önerilir; ayrı faz-sınırlı
+    yetki ister (ADR-020). **Henüz yetkili değil.**
 
 ### Phase 4 — Task & Review Core
 

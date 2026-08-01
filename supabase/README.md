@@ -1,8 +1,8 @@
 # MeritFlow — Supabase (Database Foundation: Phase 3A–3B + comp + bonus periods/pools + components/eligibility + calc runs/allocations/snapshots + ledger + disputes + anti-gaming + notifications + exports)
 
-This directory is the **database foundation**. It currently implements twelve verified
-slices (each under its own `implementation authorized only for Phase 3X — …`) — **Phase 3
-DB foundation is now complete**:
+This directory is the **database foundation**. It currently implements thirteen verified
+slices — the twelve Phase 3 DB slices (**Phase 3 DB foundation complete**) plus the
+**Phase 4 task/review core** (`tasks` + `task_events` + `task_reviews`):
 
 - **Phase 3A — Database Foundation & RBAC** (`17_PHASE_3A_...md`): 11 foundation/RBAC
   tables, RLS helpers, RLS (ENABLED + FORCE), constraints, test-tenant seed, blocking pgTAP.
@@ -90,8 +90,21 @@ DB foundation is now complete**:
   authenticated UPDATE/DELETE; a **`prevent_delete`** trigger enforces retention (financial record). **Audit on
   INSERT** (`exports.insert`). RLS is **Finance + Auditor SELECT** — HR / Manager / Employee / Support excluded —
   RLS + pgTAP.
+- **Phase 4 — tasks + task_events + task_reviews** (`04`, `14`/`15`/`16` §1-2; D3/AD4/AD5): the submit→review
+  **lifecycle container** — NOT the scoring engine. `tasks` is a **status machine**
+  (`draft→assigned→in_progress→submitted→needs_revision↺→approved|rejected`; cancelled/archived) with a validate
+  trigger (forbidden skip-state / `approved→in_progress` / mid-state insert) and **DELETE forbidden** (cancel/
+  archive = status). `task_events` is **auto-written append-only** history (AD4 source; UPDATE/DELETE blocked).
+  `task_reviews` is **append-only**, and its INSERT is the authoritative review action: a **SECURITY DEFINER
+  trigger applies the tasks status transition** (Decision A), so a **direct client approve/reject/needs_revision
+  is rejected** — only a valid review (or trusted server) drives it. **Self-approval is hard-blocked** (AD4:
+  `reviewer_id <> assignee` at review INSERT + a tasks CHECK + a transition belt); **D3** approve⇒`quality<>poor`;
+  `complexity/impact/quality/timeliness` enums come from `04`. Same-org composite FKs throughout. RLS read =
+  assignee / creator / reviewer / own-team manager / HR / Auditor + **support-grant (top-level OR)**;
+  task_events/task_reviews inherit task visibility; **Finance has NO raw task/review/event SELECT** (SI-12). No
+  new permission (catalog 20); **approve writes NO point_ledger row** (Phase 5 boundary) — RLS + pgTAP.
 
-Migrations `0001..0018` + seed apply cleanly; blocking pgTAP suites (`0001`..`0012`) are green (see
+Migrations `0001..0019` + seed apply cleanly; blocking pgTAP suites (`0001`..`0013`) are green (see
 "Verification"). **Phase 3 DB foundation is complete; everything downstream (app + engines) is still gated**
 (see "Out of scope").
 
@@ -163,12 +176,21 @@ supabase/
                                           pending_missing_cap_basis by status/cap_applied); bonus_period_id=snapshot
                                           period; append-only client (no UPDATE/DELETE) + prevent_delete; audit on
                                           INSERT; RLS Finance+Auditor SELECT; no new permission (catalog 20)
+    0019_tasks_events_reviews.sql         tasks + task_events + task_reviews (Phase 4; submit->review lifecycle) —
+                                          status machine + DELETE forbidden; task_events auto-written append-only
+                                          history (AD4); task_reviews append-only, INSERT drives task transition
+                                          (SECURITY DEFINER apply_review_to_task); direct client approve/reject/
+                                          needs_revision blocked; self-approval hard block (AD4); D3 approve⇒
+                                          quality≠poor; doc-04 enums; same-org FKs; RLS assignee/creator/reviewer/
+                                          team-manager/HR/Auditor + support-grant, Finance excluded; no new
+                                          permission (catalog 20); NO point_ledger on approve (Phase 5 boundary)
   seed/seed_test_tenants.sql              2 tenants, RBAC catalog, teams, support grants,
                                           + Phase 3B (scoring/versions, point_ledger) + comp + bonus fixtures
                                           (periods/pools + components/eligibility + calc run/allocations/snapshot
                                           + balanced accrual ledger) + dispute fixtures (auto-events)
                                           + anti-gaming flag fixtures + notification fixtures
                                           + export fixtures + AD6-gate pending-cap fixtures
+                                          + Phase 4 task fixtures (walked to submitted/in_progress)
   tests/
     0001_phase3a_rls.test.sql             blocking pgTAP — RLS/RBAC (Phase 3A)
     0002_phase3b_scoring_policies.test.sql blocking pgTAP — scoring policy/version (Phase 3B-A)
@@ -182,6 +204,7 @@ supabase/
     0010_phase3_anti_gaming_flags.test.sql blocking pgTAP — anti_gaming_flags state machine/D5-no-side-effect (Phase 3)
     0011_phase3_notifications.test.sql    blocking pgTAP — notifications recipient-only RLS/mark-read/one-way lifecycle (Phase 3)
     0012_phase3_exports.test.sql          blocking pgTAP — exports snapshot/AD6-gate/actor-integrity/append-only/Finance+Auditor RLS (Phase 3)
+    0013_phase4_tasks_reviews.test.sql    blocking pgTAP — tasks state machine/review-driven transition/self-approval/D3/AD4 timing/append-only/RLS (Phase 4)
 ```
 
 ## Apply & test (local)
@@ -310,9 +333,24 @@ re-runnable (on-conflict guards).
 > catalog is unchanged (20)** — no new permission was added. One in-slice review fix hardened the INSERT WITH
 > CHECK to pin `exported_by = auth.uid()`.
 >
-> **Phase 3 DB foundation is COMPLETE** — 12 migrations (`0001..0018`) + 12 blocking pgTAP suites
-> (`0001..0012`, Tests=523) verified. **Later phases (app + engines) remain gated** (ADR-020). **Never run any of
-> this against a production project.**
+> **Phase 4 task/review core: VERIFIED / DONE** (2026-08-01, npx Supabase CLI **2.109.1**; commit `148667e`).
+> `db reset` applied migrations **0001..0019** + seed cleanly; `test db` → **Files=13, Tests=591, Result=PASS,
+> Failed=0** (`0001`..`0013` ok). Invariants proven (04/14/15/16; D3/AD4/AD5): the **status machine** rejects
+> mid-state creation, skip-state (`draft→approved`) and `approved→in_progress` (`23514`); **DELETE is forbidden**
+> (`23001`); `task_events` is auto-written and **append-only** (UPDATE/DELETE → `23001`); a **review INSERT drives
+> the task transition** (approve → task `approved`, needs_revision → `needs_revision` + `revision_count`++), while
+> a **direct client approve/reject/needs_revision is blocked** (`23514`, review-driven) — including the assignee
+> and the manager; **self-approval is hard-blocked** (`23514`, AD4); **D3** approve+`quality=poor` → `23514`;
+> **AD4 timing** — submit stamps `submitted_at`, `needs_revision` preserves it and increments `revision_count`,
+> resubmit refreshes it; cross-org assignee / policy-version → `23503`; **RLS** — assignee, own-team manager,
+> reviewer, HR, Auditor and a **support-grant (top-level OR)** see the task while **Finance and other-team and
+> cross-tenant read 0** (task_events/task_reviews inherit task visibility); the **permission catalog is unchanged
+> (20)**; and **approve writes NO point_ledger row** (Phase 5 boundary). One in-slice fix restructured the tasks
+> SELECT so `has_support_grant()` is a top-level OR (support users have no membership → `current_org()` is null).
+>
+> **Phase 3 DB foundation is COMPLETE** (12 migrations `0001..0018` / 12 suites `0001..0012`, Tests=523); the
+> **Phase 4 task/review core** (`0019`/`0013`) is also done (Tests=591 total). **Later phases (scoring/bonus
+> engines + app UI) remain gated** (ADR-020). **Never run any of this against a production project.**
 
 ### Prerequisites
 
@@ -328,13 +366,13 @@ re-runnable (on-conflict guards).
 
 ```bash
 supabase start        # 1. boot local stack; note the printed local URLs + dev-default keys
-supabase db reset     # 2. apply 0001..0018 + seed (expect clean apply)
+supabase db reset     # 2. apply 0001..0019 + seed (expect clean apply)
 supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
 ```
 
 ### Expected pass criteria
 
-- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=12, Tests=523, PASS**). Blocking.
+- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=13, Tests=591, PASS**). Blocking.
 - [ ] Green coverage: cross-tenant isolation (SI-7), non-recursive memberships read (§7A), support
   active-vs-expired grant (D4), append-only audit + append-only `point_ledger` (SI-2), helper
   correctness, scoring-policy `policy.manage` gating + published-version immutability (AD7), point_ledger
@@ -360,7 +398,12 @@ supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
   actor integrity exported_by=auth.uid(); snapshot_id NOT NULL; AD6/SI-15 gate blocks by allocation status or
   cap_applied via snapshot.calculation_run_id→bonus_allocations; bonus_period_id=snapshot period; append-only
   client posture + prevent_delete; audit on INSERT; Finance+Auditor SELECT — HR/Manager/Employee/Support read 0
-  rows; no new permission — catalog stays 20; cross-tenant reads 0 — SI-3/AD6/SI-7).
+  rows; no new permission — catalog stays 20; cross-tenant reads 0 — SI-3/AD6/SI-7), and **tasks/task_events/
+  task_reviews** (status machine + forbidden transitions + DELETE forbidden; auto-written append-only task_events
+  — AD4; review-driven transition via task_reviews INSERT + direct client approve/reject/needs_revision blocked;
+  self-approval hard block — AD4; D3 approve⇒quality≠poor; AD4 submitted_at/revision timing; same-org FKs; RLS
+  assignee/creator/reviewer/team-manager/HR/Auditor/support-grant — Finance excluded; approve writes no
+  point_ledger — Phase 5 boundary; catalog stays 20 — D3/AD4/AD5/SI-7/SI-12).
 - [ ] `supabase db reset` then re-running the suite is reproducible (deterministic seed).
 
 ### Failure triage
@@ -498,9 +541,16 @@ authorization (ADR-020).
 > unused `server-only` service-role admin client, `@supabase/ssr` auth + DB/RLS-sourced RBAC (JWT identity only,
 > AD1), `proxy.ts` (Next 16), Tailwind + shadcn base UI, a Zod Server Action wrapper, Vitest + Playwright, and CI
 > (typecheck/lint/unit) — typecheck/lint/test/build all PASS. Sentry is a gated placeholder (SDK deferred pending
-> Next 16 support). **Next major step:** **Phase 4 — Task & Review Core** (tasks/task_reviews tables with RLS +
-> submit→review + self-approval hard block + submission/revision history). A scope-lock is recommended.
-> **Not authorized yet.**
+> Next 16 support). The **Phase 4 task/review core** (`0019`/`0013`) is also **done** (commit `148667e`):
+> `tasks`, `task_events` and `task_reviews` — status machine + DELETE forbidden; auto-written append-only
+> `task_events` history (AD4); append-only `task_reviews` whose INSERT drives the task transition via a SECURITY
+> DEFINER trigger (a direct client approve/reject/needs_revision is blocked); self-approval hard block (AD4); D3
+> approve⇒quality≠poor; AD4 timing tested; same-org composite FKs; RLS with assignee/creator/reviewer/team-manager/
+> HR/Auditor and support-grant (top-level OR) visibility, Finance excluded; no new permission (catalog 20); and NO
+> point_ledger row on approve (Phase 5 boundary). `db reset` `0001..0019` + seed; `test db` → **Files=13,
+> Tests=591, PASS, Failed=0**. **Next major step:** **Phase 5 — Scoring Engine** (approve→point_ledger
+> `task_approved` idempotent, `task_id` index; `final_points` math; timeliness from `submitted_at` — AD4;
+> collaboration non-scoring — AD5; breakdown). A scope-lock is recommended. **Not authorized yet.**
 
 ## Notes for reviewers
 

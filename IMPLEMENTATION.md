@@ -3,7 +3,7 @@
 > **Yaşayan durum/todo takip dosyası.** Detaylı "neden/nasıl" için kaynak: `docs/planning/` (00–18),
 > `docs/adr/` (ADR-001…020), `CLAUDE.md`. Çelişki olursa `docs/planning/00_DECISION_LOCK.md` kazanır.
 > Bu dosya **kod değildir**; yalnızca nerede olduğumuzu ve ne yapacağımızı izler.
-> Son güncelleme: 2026-07-31 (Phase 3.5 app foundation scaffold verified + committed + docs sync — **Phase 3 DB foundation + app scaffold tamamlandı**).
+> Son güncelleme: 2026-08-01 (Phase 4 tasks + task_events + task_reviews foundation verified + committed + docs sync).
 
 ## 0. Yönetişim kuralı (her şeyden önce)
 
@@ -36,11 +36,12 @@ Decision Lock = D1–D12 + AD1–AD10 (22 karar).
 | Phase 3 disputes | `disputes` + `dispute_events` (mutable state machine open→under_review→needs_info→resolved→closed; append-only auto-history trigger; D9 stored decision_owner_id + owns_review_decision; HR-only assign via has_role('hr'); due_at stored + sanity; server-only auto events; Finance/Support excluded) | `migrations/0015`, `tests/0009` | ✅ verified | commit `1bf63fe`; 2026-07-26 |
 | Phase 3 anti-gaming | `anti_gaming_flags` (mutable review lifecycle open→reviewing→confirmed/dismissed; D5 no-auto-punish — isolated from all ledgers, no FK/write to point_ledger/bonus_ledger/bonus_*/compensation; review consistency + reviewer≠subject; server-only INSERT; review via has_role('hr') OR manages_team(team_of(subject)); Finance/Support excluded) | `migrations/0016`, `tests/0010` | ✅ verified | commit `0c813e9`; 2026-07-31 |
 | Phase 3 notifications | `notifications` (recipient-only delivery sink; unread→read one-way lifecycle, recipient marks own read + read_at server-stamped; INSERT server-only; no client DELETE and no prevent_delete — retention/TTL V1; no audit trigger; no new permission/role; no type enum — type non-empty only; payload JSON object; same-org composite FK `(organization_id, recipient_id)→memberships`; RLS recipient-only SELECT/UPDATE — HR/Auditor/Manager/Finance/Support excluded) | `migrations/0017`, `tests/0011` | ✅ verified | commit `fe1b81e`; 2026-07-31 |
-| Phase 3 exports | `exports` (payout export record/container — generation engine YOK; Finance INSERT via existing `payout.export`, actor integrity `exported_by = auth.uid()`; snapshot_id NOT NULL — SI-3; AD6/SI-15 gate via SECURITY DEFINER trigger checks `snapshot.calculation_run_id → bonus_allocations` for pending_missing_cap_basis by status OR cap_applied; `exports.bonus_period_id` = snapshot period; append-only client posture — no authenticated UPDATE/DELETE; prevent_delete retention; audit on INSERT; RLS Finance + Auditor SELECT, HR/Manager/Employee/Support excluded; no new permission — catalog stays 20) | `migrations/0018`, `tests/0012` | ✅ **verified** | commit `b66350d`; 2026-07-31 |
+| Phase 3 exports | `exports` (payout export record/container — generation engine YOK; Finance INSERT via existing `payout.export`, actor integrity `exported_by = auth.uid()`; snapshot_id NOT NULL — SI-3; AD6/SI-15 gate via SECURITY DEFINER trigger checks `snapshot.calculation_run_id → bonus_allocations` for pending_missing_cap_basis by status OR cap_applied; `exports.bonus_period_id` = snapshot period; append-only client posture — no authenticated UPDATE/DELETE; prevent_delete retention; audit on INSERT; RLS Finance + Auditor SELECT, HR/Manager/Employee/Support excluded; no new permission — catalog stays 20) | `migrations/0018`, `tests/0012` | ✅ verified | commit `b66350d`; 2026-07-31 |
+| Phase 4 task/review core | `tasks` + `task_events` + `task_reviews` (status machine draft→…→approved/rejected, DELETE forbidden; task_events auto-written append-only history — AD4; task_reviews append-only decisions; **review-driven transition** — task_reviews INSERT applies the task status via SECURITY DEFINER trigger; direct client approve/reject/needs_revision blocked; **self-approval hard block** — AD4; D3 approve⇒quality≠poor; complexity/impact/quality/timeliness enums from doc 04; same-org composite FKs; RLS assignee/creator/reviewer/team-manager/HR/Auditor/support-grant, **Finance excluded**; no new permission — catalog 20; **no point_ledger on approve** — Phase 5 boundary) | `migrations/0019`, `tests/0013` | ✅ **verified** | commit `148667e`; 2026-08-01 |
 
-**Runtime verification (2026-07-31, local dev stack, npx Supabase CLI 2.109.1):** `supabase db reset`
-migrations **0001..0018** + seed temiz uyguladı; `supabase test db` → **Files=12, Tests=523, Result=PASS,
-Failed=0** (`0001`..`0012` ok). `db reset`'teki geçici container flake'leri (`ENOTFOUND`/timeout/"exit 1" —
+**Runtime verification (2026-08-01, local dev stack, npx Supabase CLI 2.109.1):** `supabase db reset`
+migrations **0001..0019** + seed temiz uyguladı; `supabase test db` → **Files=13, Tests=591, Result=PASS,
+Failed=0** (`0001`..`0013` ok). `db reset`'teki geçici container flake'leri (`ENOTFOUND`/timeout/"exit 1" —
 vector/analytics/storage unhealthy) `supabase stop/start` (gerekirse aux servisleri `-x` ile hariç bırakıp
 yalnız Postgres) + retry ile temiz geçti; kod/şema sorunu değil.
 
@@ -136,6 +137,25 @@ CSV/XLSX/storage yazımı, checksum hesabı, status progression motoru, **period
 engine'e ertelendi), bonus_ledger `payout_exported`/`payout_marked_paid` wiring, mark-paid, Finance aggregate
 `v_finance_*` view'ları, notifications, app/API/UI.
 
+**Phase 4 task/review core invariant'ları (04/14/15/16; D3/AD4/AD5):** `tasks` **status machine**
+(`draft→assigned→in_progress→submitted→needs_revision↺→approved|rejected`; cancelled/archived terminal) — yasak
+geçişler (skip-state, `approved→in_progress`, mid-state insert); **DELETE yasak** (cancel/archive = status).
+`task_events` **auto-written append-only history** (`log_task_event` trigger — AD4 kaynağı; UPDATE/DELETE yasak,
+client write path yok). `task_reviews` **append-only karar** — **review-driven transition**: `task_reviews`
+INSERT, SECURITY DEFINER `apply_review_to_task` trigger'ı ile task status'unu uygular; **doğrudan client
+approve/reject/needs_revision reddedilir** (yalnız güvenilir sunucu/definer bağlamı bu state'lere geçebilir).
+**Self-approval hard block (AD4):** `reviewer_id <> assignee` — review INSERT'te (SECURITY DEFINER, tasks okur) +
+tasks CHECK + transition belt. **D3:** `approve ⇒ quality <> poor` (CHECK). **AD4 timing:** submit `submitted_at`
+damgalar; `needs_revision` `revision_count++` ve `submitted_at`'i korur; resubmit tazeler — pgTAP kanıtlı.
+`complexity/impact/quality/timeliness` enum'ları **doc 04**'ten. Same-org composite FK'ler
+(team/assignee/creator/reviewer/policy-version; events/reviews→tasks; actor→memberships). **RLS:** assignee/
+creator/reviewer/`manages_team`/HR/Auditor + **support-grant top-level OR** (support üyeliksiz, `current_org()`
+null → ayrı OR dalı); events/reviews **task görünürlüğünü miras alır**; **Finance ham task/review/event
+göremez** (SI-12). **Yeni permission/rol yok** — task.create/assign/submit/review mevcut (katalog 20). **Approve
+point_ledger satırı ÜRETMEZ** — Phase 5 sınırı (test: ledger değişmez). **Hariç:** scoring/final_points motoru,
+`task_assignments`/`task_comments`/`task_attachments` (+storage), projects/objectives, period-lock guard,
+notifications, app/UI/API.
+
 **App katmanı (Next.js/API/UI): ✅ foundation scaffold done** (commit `a8b05ac`, verified 2026-07-31).
 
 **Phase 3.5 app foundation scaffold invariant'ları:** **Next.js 16.2.12 + React 19 + TypeScript strict + App
@@ -158,10 +178,12 @@ scoring/bonus/export/notification engine'leri, production deploy. **Doğrulama:*
 `npm run lint → PASS`, `npm run test → PASS (4 files, 13 tests)`, `npm run build → PASS` (workspace-root ve
 deprecated-middleware uyarısı yok).
 
-**✅ Doküman senkron güncel (2026-07-31):** `supabase/README.md`, `docs/planning/12`, `docs/planning/18`,
-bu dosya — 0001..0018 + 3A/3B/comp/bonus-P/P/bonus-C/E/bonus-C/R/A/S/bonus-ledger/disputes/anti-gaming/
-notifications/exports verified + **Phase 3.5 app scaffold** (commit `a8b05ac`) durumunu yansıtıyor. **Phase 3 DB
-foundation + app scaffold tamamlandı.** Ayrıca `docs/planning/14` idempotency + markdownlint sync commit `dae4c6b`;
+**✅ Doküman senkron güncel (2026-08-01):** `supabase/README.md`, `docs/planning/12`, bu dosya —
+0001..0019 (3A/3B/comp/bonus-P/P/bonus-C/E/bonus-C/R/A/S/bonus-ledger/disputes/anti-gaming/notifications/exports
+ve **Phase 4 task/review core**, commit `148667e`) verified, **Phase 3.5 app scaffold** (commit `a8b05ac`)
+durumunu yansıtıyor. **Phase 3 DB foundation + app scaffold + Phase 4 core tamamlandı.** `docs/planning/18`
+Phase 3B DB planı olarak korunur (Phase 4'e yalnız ileri-yön referans; living-status IMPLEMENTATION/12/README'de).
+Ayrıca `docs/planning/14` idempotency + markdownlint sync commit `dae4c6b`;
 `docs/adr/ADR-020` markdownlint hijyeni commit `53d90de` ile tamamlandı.
 
 ---
@@ -206,7 +228,7 @@ Kural: güvenlik temeli (RLS/ledger) bitmeden feature fazı ilerlemez.
 
 ### D. Feature fazları (roadmap 4–10)  ⛔ her faz ayrı yetki
 
-- [ ] **Phase 4 — Task & Review Core**: tasks ailesi tabloları (RLS'li) + submit→review + self-approval block + submission/revision history (AD4).
+- [x] **Phase 4 — Task & Review Core (DB çekirdeği)** ✅ (commit `148667e`, verified 2026-08-01; `tasks` + `task_events` + `task_reviews`; status machine + DELETE yasak; auto-written append-only history; review-driven transition trigger — direct approve/reject/needs_revision blocked; self-approval hard block AD4; D3 approve⇒quality≠poor; AD4 timing; Finance excluded; support-grant top-level OR; no new permission — catalog 20; approve point_ledger üretmez — Phase 5 sınırı). **Ertelenen (feature-fazı):** `task_assignments`/`task_comments`/`task_attachments`, submit/review **Server Actions + UI** (ayrı yetki).
 - [ ] **Phase 5 — Scoring Engine**: `04` motoru; approve→point_ledger (`task_approved` event + `task_id` + idempotency index bu fazda eklenir); timeliness=submitted_at (AD4); collaboration puanı etkilemez (AD5); breakdown.
 - [ ] **Phase 6 — Bonus Engine**: `05` motoru; pro-rata + cap (compensation_records cap basis) + T_org(+top-up AD8) + kuruş/largest-remainder + Σ invariant + immutable snapshot; `09` worked example reproduce.
 - [ ] **Phase 7 — Anti-Gaming & Disputes**: 5 deterministik kural (flag→review, no auto-punish) + dispute workflow (HR atama, 5 iş günü, manager final değil) + recalculation.
@@ -230,24 +252,24 @@ Kural: güvenlik temeli (RLS/ledger) bitmeden feature fazı ilerlemez.
 
 ## 5. Önerilen ilk adım
 
-Phase 3.5 app foundation scaffold **verified + committed + synced** (commit `a8b05ac`). Next.js 16.2.12 +
-React 19 + TS strict + App Router; Supabase CLI devDep korundu + package-lock regenerated; browser anon /
-server anon cookie / **guarded+unused service_role admin** clients (`import 'server-only'`, sızıntı yok — SI-11);
-auth `@supabase/ssr` + `auth.getUser()`; **authz DB/RLS kaynaklı, JWT identity-only** (AD1); single active org
-(membership/cookie); `proxy.ts` (Next 16, deprecated `middleware.ts` yerine); `turbopack.root`/
-`outputFileTracingRoot` pinlendi; Tailwind + shadcn base UI; Zod `validatedAction`; shell rotaları (login/auth
-callback/guarded dashboard/unauthorized/health/error/not-found); Vitest 13 test + Playwright config; CI
-typecheck/lint/unit (E2E/pgTAP ertelendi); **Sentry placeholder — `@sentry/nextjs` Next 16 uyumsuzluğu nedeniyle
-ertelendi**. **Doğrulama:** `npm run typecheck → PASS`, `npm run lint → PASS`, `npm run test → PASS (4 files,
-13 tests)`, `npm run build → PASS` (workspace-root + deprecated-middleware uyarısı yok). **Bununla Phase 3 DB
-foundation (0001..0018 / 0001..0012, Tests=523) + app scaffold TAMAMLANDI.**
+Phase 4 task/review core **verified + committed + synced** (commit `148667e`; db reset 0001..0019 + seed,
+test db **Files=13/Tests=591/PASS**). `tasks` + `task_events` + `task_reviews`: status machine + DELETE yasak;
+auto-written append-only history (AD4); **review-driven transition** (task_reviews INSERT → SECURITY DEFINER
+trigger task status'unu uygular; doğrudan client approve/reject/needs_revision reddedilir); **self-approval hard
+block** (AD4); D3 approve⇒quality≠poor; AD4 timing (submitted_at/revision) test-kanıtlı; doc-04 enum'ları;
+same-org composite FK'ler; RLS assignee/creator/reviewer/team-manager/HR/Auditor + **support-grant top-level OR**,
+**Finance ham task/review/event göremez**; yeni permission yok (katalog 20); **approve point_ledger üretmez —
+Phase 5 sınırı**. Önceki durum korunur: **Phase 3 DB foundation** (0001..0018 / 0001..0012, Files=12/Tests=523,
+PASS) + **Phase 3.5 app scaffold** (commit `a8b05ac`; typecheck/lint/test/build PASS).
 
-**Sıradaki büyük adım = Phase 4 — Task & Review Core** (tasks/task_reviews tabloları RLS'li + submit→review +
-self-approval hard block + submission/revision history — AD4). **Kod-yazmadan-önce scope-lock** önerilir; yeni
-faz, ayrı faz-sınırlı yetki gerektirir (ADR-020).
+**Sıradaki büyük adım = Phase 5 — Scoring Engine** (`04` motoru: approve→point_ledger `task_approved` idempotent
+(ayrıca `task_id` ile idempotency index); `final_points = base·complexity·impact·quality·timeliness·(1−revision_penalty)`;
+timeliness `submitted_at`'ten — AD4; collaboration puanı etkilemez — AD5; breakdown). **Kod-yazmadan-önce
+scope-lock** önerilir; yeni faz, ayrı faz-sınırlı yetki gerektirir (ADR-020). (Ops. ara adım: Phase 4 devamı —
+`task_assignments`/`task_comments` foundation, ya da submit/review **Server Actions + UI** app dilimi.)
 
 **Henüz yetkili değil.** Başlatmak için (önce scope-lock önerilir) yetki cümlesi (örnek):
 
-`implementation authorized only for Phase 4 — task & review core`
+`implementation authorized only for Phase 5 — scoring engine`
 
 > Bu cümle gelene kadar hiçbir kod/migration/test yazılmaz; sonraki her faz/dilim ayrı, faz-sınırlı yetki ister (ADR-020).
