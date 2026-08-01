@@ -687,3 +687,48 @@ values
    'b0000000-0000-0000-0000-000000000030', 'b0000000-0000-0000-0000-000000000035',
    'b0000000-0000-0000-0000-0000000000b1', 'csv', 'requested')
 on conflict (id) do nothing;
+
+-- =============================================================================
+-- Phase 4 seed — tasks / task_events / task_reviews fixtures (DEV/STAGING ONLY)
+-- Refs: 04 (enums), 14/15/16 (task family), D3/AD4/AD5. Tasks are created 'assigned'
+-- then WALKED to their target state (the status machine forbids inserting a mid-state
+-- task). Walking runs via the bypassrls migration role (trusted context), so
+-- review-driven states are not needed here. task_events are auto-written by the
+-- log_task_event() trigger (actor null under the migration role is fine). NO reviews
+-- are seeded (reviews require auth.uid() = reviewer; they are exercised in pgTAP §B).
+--   100 team f1, assignee a7, creator/reviewer a5 -> submitted   (review/AD4/RLS)
+--   101 team f2, assignee a8, creator/reviewer a6 -> in_progress (other-team RLS)
+--   102 team f1, assignee a7, creator/reviewer a5 -> submitted   (D3 + needs_revision)
+--   103 team f1, assignee a5 (mgr), reviewer null -> submitted   (self-review block)
+-- =============================================================================
+insert into public.tasks
+  (id, organization_id, team_id, title, status, created_by, assigned_to, reviewer_id,
+   complexity, impact, base_points, scoring_policy_version_id)
+values
+  ('a0000000-0000-0000-0000-000000000100', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-0000000000f1', 'Seed task alpha', 'assigned',
+   'a0000000-0000-0000-0000-0000000000a5', 'a0000000-0000-0000-0000-0000000000a7',
+   'a0000000-0000-0000-0000-0000000000a5', 'medium', 'high', 100, 'a0000000-0000-0000-0000-0000000000d2'),
+  ('a0000000-0000-0000-0000-000000000101', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-0000000000f2', 'Seed task beta', 'assigned',
+   'a0000000-0000-0000-0000-0000000000a6', 'a0000000-0000-0000-0000-0000000000a8',
+   'a0000000-0000-0000-0000-0000000000a6', 'high', 'medium', 80, 'a0000000-0000-0000-0000-0000000000d2'),
+  ('a0000000-0000-0000-0000-000000000102', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-0000000000f1', 'Seed task gamma', 'assigned',
+   'a0000000-0000-0000-0000-0000000000a5', 'a0000000-0000-0000-0000-0000000000a7',
+   'a0000000-0000-0000-0000-0000000000a5', 'low', 'high', 50, 'a0000000-0000-0000-0000-0000000000d2'),
+  ('a0000000-0000-0000-0000-000000000103', 'a0000000-0000-0000-0000-000000000001',
+   'a0000000-0000-0000-0000-0000000000f1', 'Seed task delta (mgr-assigned)', 'assigned',
+   'a0000000-0000-0000-0000-0000000000a5', 'a0000000-0000-0000-0000-0000000000a5',
+   null, 'medium', 'strategic', 120, 'a0000000-0000-0000-0000-0000000000d2')
+on conflict (id) do nothing;
+
+-- Walk assigned -> in_progress (all four), then in_progress -> submitted (100/102/103).
+update public.tasks set status = 'in_progress'
+  where id in ('a0000000-0000-0000-0000-000000000100','a0000000-0000-0000-0000-000000000101',
+               'a0000000-0000-0000-0000-000000000102','a0000000-0000-0000-0000-000000000103')
+    and status = 'assigned';
+update public.tasks set status = 'submitted'
+  where id in ('a0000000-0000-0000-0000-000000000100','a0000000-0000-0000-0000-000000000102',
+               'a0000000-0000-0000-0000-000000000103')
+    and status = 'in_progress';
