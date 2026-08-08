@@ -736,3 +736,206 @@ update public.tasks set status = 'submitted'
   where id in ('a0000000-0000-0000-0000-000000000100','a0000000-0000-0000-0000-000000000102',
                'a0000000-0000-0000-0000-000000000103')
     and status = 'in_progress';
+
+-- =============================================================================
+-- Phase 6 seed — bonus engine worked-example fixtures (DEV/STAGING ONLY)
+-- Refs: 05 §8 worked example, D1/D10/AD6/AD7/AD9/AD10.
+--
+-- Hosted in a DEDICATED third tenant (Org C / ceres) so the worked example and the
+-- inline engine scenarios never perturb the Org A / Org B membership, team, policy or
+-- comp counts asserted by earlier suites (0001 pins Org A at 9 memberships). Org C has
+-- its own HR (c3), Finance (c4) and Manager (c5) plus five employees (Ali 201 /
+-- Ayşe 202 / Mehmet 203 / Zeynep 204 + Cansu 205), all on Team Ceres (fc). Approved
+-- points 1000/1000/300/847/500 are produced by REAL scoring (c5 reviews each task with
+-- low/low complexity/impact + good/on_time → final = base). UUIDs 201<202<203<204 so
+-- the largest-remainder tie-break (Ali < Ayşe) reproduces doc 05. A dedicated locked
+-- period 230 + locked pool 231 (100,000 TL = 10,000,000 kuruş, T_org=1.0) with eligibility
+-- for the first four. Cansu (205) has NO compensation record (AD6 pending, tested inline
+-- on a separate pool). Period dates are now()-relative so approved_at (now()) always falls
+-- inside — deterministic regardless of run date.
+-- =============================================================================
+insert into auth.users (
+  instance_id, id, aud, role, email, encrypted_password,
+  email_confirmed_at, created_at, updated_at,
+  confirmation_token, recovery_token, email_change_token_new, email_change)
+select '00000000-0000-0000-0000-000000000000', u.id, 'authenticated', 'authenticated',
+       u.email, extensions.crypt('password123', extensions.gen_salt('bf')),
+       now(), now(), now(), '', '', '', ''
+from (values
+  ('c0000000-0000-0000-0000-0000000000c3'::uuid, 'hr-c@ceres.test'),
+  ('c0000000-0000-0000-0000-0000000000c4'::uuid, 'finance-c@ceres.test'),
+  ('c0000000-0000-0000-0000-0000000000c5'::uuid, 'mgr-c@ceres.test'),
+  ('a0000000-0000-0000-0000-000000000201'::uuid, 'ali@ceres.test'),
+  ('a0000000-0000-0000-0000-000000000202'::uuid, 'ayse@ceres.test'),
+  ('a0000000-0000-0000-0000-000000000203'::uuid, 'mehmet@ceres.test'),
+  ('a0000000-0000-0000-0000-000000000204'::uuid, 'zeynep@ceres.test'),
+  ('a0000000-0000-0000-0000-000000000205'::uuid, 'cansu@ceres.test')
+) as u(id, email)
+on conflict (id) do nothing;
+
+insert into public.profiles (id, display_name, alias)
+select p.id, p.name, p.alias from (values
+  ('c0000000-0000-0000-0000-0000000000c3'::uuid, 'HR C',      'hr-c'),
+  ('c0000000-0000-0000-0000-0000000000c4'::uuid, 'Finance C', 'finance-c'),
+  ('c0000000-0000-0000-0000-0000000000c5'::uuid, 'Manager C', 'mgr-c'),
+  ('a0000000-0000-0000-0000-000000000201'::uuid, 'Ali',    'ali'),
+  ('a0000000-0000-0000-0000-000000000202'::uuid, 'Ayse',   'ayse'),
+  ('a0000000-0000-0000-0000-000000000203'::uuid, 'Mehmet', 'mehmet'),
+  ('a0000000-0000-0000-0000-000000000204'::uuid, 'Zeynep', 'zeynep'),
+  ('a0000000-0000-0000-0000-000000000205'::uuid, 'Cansu',  'cansu')
+) as p(id, name, alias)
+on conflict (id) do nothing;
+
+-- Org C (ceres) + settings (cap_rate_default 0.50).
+insert into public.organizations (id, name, slug) values
+  ('c0000000-0000-0000-0000-000000000003', 'Ceres C', 'ceres')
+on conflict (slug) do nothing;
+
+insert into public.organization_settings (organization_id, cap_rate_default) values
+  ('c0000000-0000-0000-0000-000000000003', 0.50)
+on conflict (organization_id) do nothing;
+
+-- Org C memberships: HR / Finance / Manager + five employees.
+insert into public.memberships (organization_id, profile_id, primary_role)
+select 'c0000000-0000-0000-0000-000000000003'::uuid, m.p, m.r from (values
+  ('c0000000-0000-0000-0000-0000000000c3'::uuid, 'hr'),
+  ('c0000000-0000-0000-0000-0000000000c4'::uuid, 'finance'),
+  ('c0000000-0000-0000-0000-0000000000c5'::uuid, 'manager'),
+  ('a0000000-0000-0000-0000-000000000201'::uuid, 'employee'),
+  ('a0000000-0000-0000-0000-000000000202'::uuid, 'employee'),
+  ('a0000000-0000-0000-0000-000000000203'::uuid, 'employee'),
+  ('a0000000-0000-0000-0000-000000000204'::uuid, 'employee'),
+  ('a0000000-0000-0000-0000-000000000205'::uuid, 'employee')
+) as m(p, r)
+on conflict (organization_id, profile_id) do nothing;
+
+insert into public.teams (id, organization_id, name, manager_id) values
+  ('c0000000-0000-0000-0000-0000000000fc', 'c0000000-0000-0000-0000-000000000003', 'Team Ceres',
+   'c0000000-0000-0000-0000-0000000000c5')
+on conflict (organization_id, name) do nothing;
+
+-- Manager c5 leads fc; the five employees have fc as their primary team (AD9 basis).
+insert into public.team_memberships (organization_id, team_id, profile_id, role_in_team, is_primary)
+select 'c0000000-0000-0000-0000-000000000003'::uuid, 'c0000000-0000-0000-0000-0000000000fc'::uuid, tm.p, tm.ro, true
+from (values
+  ('c0000000-0000-0000-0000-0000000000c5'::uuid, 'lead'),
+  ('a0000000-0000-0000-0000-000000000201'::uuid, 'member'),
+  ('a0000000-0000-0000-0000-000000000202'::uuid, 'member'),
+  ('a0000000-0000-0000-0000-000000000203'::uuid, 'member'),
+  ('a0000000-0000-0000-0000-000000000204'::uuid, 'member'),
+  ('a0000000-0000-0000-0000-000000000205'::uuid, 'member')
+) as tm(p, ro)
+on conflict (team_id, profile_id) do nothing;
+
+-- Org C published scoring policy (same multipliers as Org A d2 so final = base).
+insert into public.scoring_policies (id, organization_id, name, status, created_by) values
+  ('c0000000-0000-0000-0000-0000000000d1', 'c0000000-0000-0000-0000-000000000003',
+   'Default Scoring', 'active', 'c0000000-0000-0000-0000-0000000000c3')
+on conflict (id) do nothing;
+
+insert into public.scoring_policy_versions
+  (id, organization_id, scoring_policy_id, version_no, status,
+   multipliers, revision_penalty_rule, timeliness_thresholds, published_at, published_by, created_by)
+values
+  ('c0000000-0000-0000-0000-0000000000d2', 'c0000000-0000-0000-0000-000000000003',
+   'c0000000-0000-0000-0000-0000000000d1', 1, 'published',
+   '{"complexity":{"low":1.0,"medium":1.25,"high":1.5,"critical":2.0},"impact":{"low":1.0,"medium":1.2,"high":1.5,"strategic":2.0},"quality":{"acceptable":0.75,"good":1.0,"excellent":1.25,"poor":0},"timeliness":{"early":1.1,"on_time":1.0,"late_minor":0.85,"late_major":0.5}}'::jsonb,
+   '{"rate_per_revision":0.05,"cap":0.25}'::jsonb, '{}'::jsonb,
+   now(), 'c0000000-0000-0000-0000-0000000000c3', 'c0000000-0000-0000-0000-0000000000c3')
+on conflict (id) do nothing;
+
+-- Comp for 201-204 (cap_basis 10,000,000 kuruş → cap 5,000,000 > any raw share at the 100k
+-- pool ⇒ non-binding). 205 (Cansu) has NO comp record (AD6 pending flow).
+insert into public.compensation_records
+  (id, organization_id, employee_id, gross_salary_minor, currency, cap_basis_minor, effective_from, status, created_by)
+values
+  ('a0000000-0000-0000-0000-000000000221', 'c0000000-0000-0000-0000-000000000003',
+   'a0000000-0000-0000-0000-000000000201', 10000000, 'TRY', 10000000, date '2026-01-01', 'active', 'c0000000-0000-0000-0000-0000000000c3'),
+  ('a0000000-0000-0000-0000-000000000222', 'c0000000-0000-0000-0000-000000000003',
+   'a0000000-0000-0000-0000-000000000202', 10000000, 'TRY', 10000000, date '2026-01-01', 'active', 'c0000000-0000-0000-0000-0000000000c3'),
+  ('a0000000-0000-0000-0000-000000000223', 'c0000000-0000-0000-0000-000000000003',
+   'a0000000-0000-0000-0000-000000000203', 10000000, 'TRY', 10000000, date '2026-01-01', 'active', 'c0000000-0000-0000-0000-0000000000c3'),
+  ('a0000000-0000-0000-0000-000000000224', 'c0000000-0000-0000-0000-000000000003',
+   'a0000000-0000-0000-0000-000000000204', 10000000, 'TRY', 10000000, date '2026-01-01', 'active', 'c0000000-0000-0000-0000-0000000000c3')
+on conflict (id) do nothing;
+
+-- Worked-example period 230 (open) + pool 231 (draft, 100k TL). Dates now()-relative.
+insert into public.bonus_periods (id, organization_id, period_type, starts_on, ends_on, status, created_by)
+values
+  ('a0000000-0000-0000-0000-000000000230', 'c0000000-0000-0000-0000-000000000003', 'monthly',
+   (now() - interval '15 days')::date, (now() + interval '15 days')::date, 'open',
+   'c0000000-0000-0000-0000-0000000000c3')
+on conflict (id) do nothing;
+
+insert into public.bonus_pools (id, organization_id, bonus_period_id, amount_minor, currency, status, created_by)
+values
+  ('a0000000-0000-0000-0000-000000000231', 'c0000000-0000-0000-0000-000000000003',
+   'a0000000-0000-0000-0000-000000000230', 10000000, 'TRY', 'draft', 'c0000000-0000-0000-0000-0000000000c4')
+on conflict (id) do nothing;
+
+-- Tasks 210-214 (base = target points; low/low/good/on_time ⇒ scored final = base).
+insert into public.tasks
+  (id, organization_id, team_id, title, status, created_by, assigned_to, reviewer_id,
+   complexity, impact, base_points, scoring_policy_version_id)
+values
+  ('a0000000-0000-0000-0000-000000000210', 'c0000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-0000000000fc',
+   'Ali task', 'assigned', 'c0000000-0000-0000-0000-0000000000c5', 'a0000000-0000-0000-0000-000000000201',
+   'c0000000-0000-0000-0000-0000000000c5', 'low', 'low', 1000, 'c0000000-0000-0000-0000-0000000000d2'),
+  ('a0000000-0000-0000-0000-000000000211', 'c0000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-0000000000fc',
+   'Ayse task', 'assigned', 'c0000000-0000-0000-0000-0000000000c5', 'a0000000-0000-0000-0000-000000000202',
+   'c0000000-0000-0000-0000-0000000000c5', 'low', 'low', 1000, 'c0000000-0000-0000-0000-0000000000d2'),
+  ('a0000000-0000-0000-0000-000000000212', 'c0000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-0000000000fc',
+   'Mehmet task', 'assigned', 'c0000000-0000-0000-0000-0000000000c5', 'a0000000-0000-0000-0000-000000000203',
+   'c0000000-0000-0000-0000-0000000000c5', 'low', 'low', 300, 'c0000000-0000-0000-0000-0000000000d2'),
+  ('a0000000-0000-0000-0000-000000000213', 'c0000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-0000000000fc',
+   'Zeynep task', 'assigned', 'c0000000-0000-0000-0000-0000000000c5', 'a0000000-0000-0000-0000-000000000204',
+   'c0000000-0000-0000-0000-0000000000c5', 'low', 'low', 847, 'c0000000-0000-0000-0000-0000000000d2'),
+  ('a0000000-0000-0000-0000-000000000214', 'c0000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-0000000000fc',
+   'Cansu task', 'assigned', 'c0000000-0000-0000-0000-0000000000c5', 'a0000000-0000-0000-0000-000000000205',
+   'c0000000-0000-0000-0000-0000000000c5', 'low', 'low', 500, 'c0000000-0000-0000-0000-0000000000d2')
+on conflict (id) do nothing;
+
+update public.tasks set status = 'in_progress'
+  where id in ('a0000000-0000-0000-0000-000000000210','a0000000-0000-0000-0000-000000000211',
+               'a0000000-0000-0000-0000-000000000212','a0000000-0000-0000-0000-000000000213',
+               'a0000000-0000-0000-0000-000000000214') and status = 'assigned';
+update public.tasks set status = 'submitted'
+  where id in ('a0000000-0000-0000-0000-000000000210','a0000000-0000-0000-0000-000000000211',
+               'a0000000-0000-0000-0000-000000000212','a0000000-0000-0000-0000-000000000213',
+               'a0000000-0000-0000-0000-000000000214') and status = 'in_progress';
+
+-- Approve via review as c5 (manages fc). Session-level claim so auth.uid() = c5 across
+-- the autocommit statement; scoring writes the exact points (final = base).
+select set_config('request.jwt.claims', '{"sub":"c0000000-0000-0000-0000-0000000000c5"}', false);
+insert into public.task_reviews (id, organization_id, task_id, reviewer_id, decision, quality, timeliness)
+values
+  ('a0000000-0000-0000-0000-000000000251', 'c0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000210', 'c0000000-0000-0000-0000-0000000000c5', 'approve', 'good', 'on_time'),
+  ('a0000000-0000-0000-0000-000000000252', 'c0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000211', 'c0000000-0000-0000-0000-0000000000c5', 'approve', 'good', 'on_time'),
+  ('a0000000-0000-0000-0000-000000000253', 'c0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000212', 'c0000000-0000-0000-0000-0000000000c5', 'approve', 'good', 'on_time'),
+  ('a0000000-0000-0000-0000-000000000254', 'c0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000213', 'c0000000-0000-0000-0000-0000000000c5', 'approve', 'good', 'on_time'),
+  ('a0000000-0000-0000-0000-000000000255', 'c0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000214', 'c0000000-0000-0000-0000-0000000000c5', 'approve', 'good', 'on_time')
+on conflict (id) do nothing;
+select set_config('request.jwt.claims', '', false);
+
+-- Eligibility for the worked example (first four), on pool 231, BEFORE locking the pool
+-- (inputs freeze once the pool leaves draft — SI-4).
+insert into public.bonus_pool_eligibility
+  (id, organization_id, bonus_pool_id, employee_id, eligible, days_active, eligibility_factor, proration_factor, primary_team_id, created_by)
+values
+  ('a0000000-0000-0000-0000-000000000241', 'c0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000231',
+   'a0000000-0000-0000-0000-000000000201', true, 20, 1, 1.0, 'c0000000-0000-0000-0000-0000000000fc', 'c0000000-0000-0000-0000-0000000000c3'),
+  ('a0000000-0000-0000-0000-000000000242', 'c0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000231',
+   'a0000000-0000-0000-0000-000000000202', true, 20, 1, 1.0, 'c0000000-0000-0000-0000-0000000000fc', 'c0000000-0000-0000-0000-0000000000c3'),
+  ('a0000000-0000-0000-0000-000000000243', 'c0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000231',
+   'a0000000-0000-0000-0000-000000000203', true, 20, 1, 1.0, 'c0000000-0000-0000-0000-0000000000fc', 'c0000000-0000-0000-0000-0000000000c3'),
+  ('a0000000-0000-0000-0000-000000000244', 'c0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000231',
+   'a0000000-0000-0000-0000-000000000204', true, 20, 1, 1.0, 'c0000000-0000-0000-0000-0000000000fc', 'c0000000-0000-0000-0000-0000000000c3')
+on conflict (id) do nothing;
+
+-- Lock the pool (t_org=1) then the period (AD10: pool-lock-before-period-lock).
+update public.bonus_pools set status = 'locked', t_org = 1, locked_at = now(),
+       locked_by = 'c0000000-0000-0000-0000-0000000000c4'
+  where id = 'a0000000-0000-0000-0000-000000000231' and status = 'draft';
+update public.bonus_periods set status = 'locked', locked_at = now(),
+       locked_by = 'c0000000-0000-0000-0000-0000000000c3'
+  where id = 'a0000000-0000-0000-0000-000000000230' and status = 'open';
