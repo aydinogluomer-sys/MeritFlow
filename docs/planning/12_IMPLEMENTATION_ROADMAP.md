@@ -132,7 +132,8 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
     bonus_ledger/bonus_*/compensation'a FK/trigger/yazım **yok**; `confirmed` yan-etkisiz (test: ledger satır
     sayısı değişmez). **INSERT server-only**; review = `has_role('hr') OR manages_team(team_of(subject))`
     (**`flag.review` permission eklenmedi** — test 0001 permissions=20 korunacak, 0001..0009 değiştirilemez);
-    `related_task_id` FK'sız; **`bonus_period_id` yok**. RLS: subject-own + own-team Manager + HR + Auditor;
+    `related_task_id` FK'sız; **`bonus_period_id` (FK'sız) Phase 7-A (`0023`)'te eklendi** (period-scoped
+    idempotency). RLS: subject-own + own-team Manager + HR + Auditor;
     **Finance/Support hariç**. Kod: `migrations/0016_anti_gaming_flags.sql`, `tests/0010_phase3_anti_gaming_flags.test.sql`
     (commit `0c813e9`). **Verified 2026-07-31** (`db reset` 0001..0016 + seed; `test db` Files=10 Tests=427 PASS
     Failed=0). D5/SI-6/SI-7 ve ADR-006 kanıtlı.
@@ -230,11 +231,35 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
     **Verified 2026-08-09** (`db reset` 0001..0022 + seed; `test db` **Files=16 Tests=690 PASS Failed=0**; worked
     example accrual birebir). İki in-slice **test-only** fix (Section A org-scope + `::bigint` cast).
     (Ayrıca docs hijyen: `17a964d` (ADR-014+Decision Lock), `98c0b59` (ADR-006+017) — repo temizliği.)
-  - **Phase 3 (kalan) — governance** [GATED]: **Phase 7 — anti-gaming detection + dispute post-decision**
-    (detection engine, flag→review no-auto-punish D5; dispute→point_ledger `dispute_adjustment` + recalculation +
-    bonus_ledger reversal) — ya da ara-dilim **payout/export engine** (`payout_exported`/`payout_marked_paid` +
-    `v_finance_*` + BL-3 hard-enforce) + UI/API. Her dilim/faz ayrı `implementation authorized` ister.
-    **Kod-yazmadan-önce scope-lock** önerilir (ADR-020). **Henüz yetkili değil.**
+  - **Phase 7-A — Anti-Gaming Detection Engine** [VERIFIED/DONE] (commit `ffdea06`, 2026-08-09; plan
+    `docs/planning/19`): `run_anti_gaming_scan(org, bonus_period_id?)` **SECURITY DEFINER, server-only**
+    orkestratör, mevcut `anti_gaming_flags` (0016) container'ına flag üretir (yeni tablo/permission yok —
+    katalog 20). Dört `detect_*` **deterministik kural**: **duplicate_task** (aynı assignee + normalize
+    `lower(btrim(title))` 24h → sonraki task'e flag); **tiny_task_splitting** (aynı assignee ≥3 task
+    `base_points<5` 1h); **same_reviewer_concentration** (period içi bir reviewer payı >0.80 ve toplam ≥3
+    approval); **period_end_spike** (son-3-gün `task_approved` point gain > 3× period günlük ortalaması).
+    Eşikler **hardcoded** (OQ-1; `organization_settings` kolon V1). **OQ-2 dual idempotency:** `anti_gaming_flags`'a
+    **FK-less `bonus_period_id`** kolonu + **iki partial unique index** (task-scoped `(org, rule, subject,
+    related_task_id)` / period-scoped `(org, rule, subject, bonus_period_id)`); re-scan flag eklemez. **OQ-3:**
+    detection yalnız explicit `run_anti_gaming_scan()` çağrısıyla (HR/job); approve anında otomatik değil.
+    **D5 izolasyon (BY CONSTRUCTION):** detect fonksiyonları `tasks`/`task_reviews`/`point_ledger`/`bonus_periods`
+    **okur**, **yalnız `anti_gaming_flags`'a yazar** — point_ledger/bonus_ledger/bonus_*/compensation'a
+    yazım/FK/trigger **yok**; bir scan **finansal yan-etki üretmez** (test-kanıtlı: ledger satır sayısı değişmez);
+    no auto-punish / no auto-dispute (human-in-loop). **Authz:** `has_role('hr') OR auth.uid() IS NULL` (güvenilir
+    sunucu/job); non-HR authenticated `42501`; `detect_*` grant yalnız service_role. Kod:
+    `migrations/0023_anti_gaming_detection.sql`, `tests/0017_phase7a_anti_gaming_detection.test.sql`.
+    **Verified 2026-08-09** (`db reset` 0001..0023 + seed; `test db` **Files=17 Tests=712 PASS Failed=0**;
+    her kural pozitif/negatif + idempotency + D5 no-side-effect + server-only). Bir in-slice **migration fix:**
+    authz `current_user`-tabanlıydı — SECURITY DEFINER'da `current_user`=owner olduğundan etkisizdi;
+    `auth.uid() IS NULL`-tabanlı kontrole çekildi. D5/OQ-1..OQ-3 kanıtlı. **Not (7-A dışı, committed):**
+    `run_bonus_calculation` (0021) + `post_bonus_accrual` (0022) aynı latent `current_user` authz zayıflığını
+    taşır (app çağırmıyor → istismar yüzeyi yok); ayrı hardening diliminde düzeltilecek.
+  - **Phase 7 (kalan) — dispute post-decision** [GATED]: **7-B** dispute→point_ledger `dispute_adjustment`
+    (`0024`/`tests/0018`); **7-C** recalculation (superseded old run + period `approved→calculated` re-approval +
+    yeni run/snapshot + paid-accrual guard OQ-4/D2 → bonus_ledger reversal + yeni accrual) (`0025`/`tests/0019`).
+    Ya da ara-dilim **0021/0022 authz hardening** (`current_user` → `auth.uid() IS NULL`), veya **payout/export
+    engine** (`payout_exported`/`payout_marked_paid` + `v_finance_*` + BL-3 hard-enforce) + UI/API. Her dilim/faz
+    ayrı `implementation authorized` ister. **Kod-yazmadan-önce scope-lock** önerilir (ADR-020). **Henüz yetkili değil.**
 
 ### Phase 4 — Task & Review Core
 
@@ -263,6 +288,11 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
 - Deliverable: `08` kuralları + `07` dispute akışı (HR atama, 5 iş günü, manager final değil) + recalculation.
 - Acceptance: flag→review (no auto-punish); dispute→adjustment/snapshot; manager final değil.
 - Test: anti-gaming + dispute suite. Risk: false positive. Dep: Phase 6. Difficulty: M.
+- Status: **7-A Anti-Gaming Detection Engine ✅ VERIFIED/DONE** (commit `ffdea06`, 2026-08-09;
+  `run_anti_gaming_scan()` + 4 detect_* kuralı; D5 izolasyon — flag yazar, ledger'a dokunmaz; dual idempotency
+  OQ-2; Files=17/Tests=712/PASS).
+  **Kalan gated:** 7-B dispute point adjustment (`0024`) + 7-C bonus recalculation (`0025`); alternatif ara-dilim
+  0021/0022 authz hardening. Her dilim ayrı `implementation authorized` ister.
 
 ### Phase 8 — Dashboards & UX
 

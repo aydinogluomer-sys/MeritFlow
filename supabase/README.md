@@ -1,11 +1,12 @@
 # MeritFlow — Supabase (Database Foundation: Phase 3A–3B + comp + bonus periods/pools + components/eligibility + calc runs/allocations/snapshots + ledger + disputes + anti-gaming + notifications + exports)
 
-This directory is the **database foundation**. It currently implements sixteen verified
+This directory is the **database foundation**. It currently implements seventeen verified
 slices — the twelve Phase 3 DB slices (**Phase 3 DB foundation complete**), the
 **Phase 4 task/review core** (`tasks` + `task_events` + `task_reviews`), the
 **Phase 5 scoring engine** (approve → `point_ledger task_approved`), the
-**Phase 6 bonus engine** (`run_bonus_calculation()` → allocations + immutable snapshot), and the
-**Phase 6-b bonus_ledger accrual** (`post_bonus_accrual()` → double-entry accrual from an approved snapshot):
+**Phase 6 bonus engine** (`run_bonus_calculation()` → allocations + immutable snapshot), the
+**Phase 6-b bonus_ledger accrual** (`post_bonus_accrual()` → double-entry accrual from an approved snapshot), and the
+**Phase 7-A anti-gaming detection engine** (`run_anti_gaming_scan()` → 4 deterministic rules → `anti_gaming_flags`, ledger-isolated):
 
 - **Phase 3A — Database Foundation & RBAC** (`17_PHASE_3A_...md`): 11 foundation/RBAC
   tables, RLS helpers, RLS (ENABLED + FORCE), constraints, test-tenant seed, blocking pgTAP.
@@ -67,8 +68,8 @@ slices — the twelve Phase 3 DB slices (**Phase 3 DB foundation complete**), th
   INSERT is **server-only** (the rule engine); review (confirm/dismiss) is `has_role('hr') OR
   manages_team(team_of(subject_employee_id))` (**no `flag.review` permission added** — it would change the
   seeded catalog count asserted by test 0001); read = subject-own + own-team manager + HR + Auditor
-  (Finance/Support excluded); `related_task_id` is FK-less (tasks gated), no `bonus_period_id` column; DELETE
-  forbidden — RLS + pgTAP.
+  (Finance/Support excluded); `related_task_id` is FK-less (tasks gated); **`bonus_period_id` (FK-less) is added by
+  Phase 7-A (`0023`)** for period-scoped flag idempotency; DELETE forbidden — RLS + pgTAP.
 - **Phase 3 — notifications** (`14` §424-429, `15` §139-142): a **recipient-only** notification delivery sink.
   One-way `unread → read` lifecycle (a validate trigger keeps `read` terminal — `read → unread` rejected — and
   makes the identity fields org/recipient/type/payload/link/created_at immutable after insert); the recipient
@@ -128,11 +129,29 @@ slices — the twelve Phase 3 DB slices (**Phase 3 DB foundation complete**), th
   `Σdebit = Σcredit` (0014); a new **`DEFERRABLE INITIALLY DEFERRED` trigger** enforces **BL-2** `Σaccrual ≤
   pool_ref` (AD8-aware); **BL-3** (payout ≤ accrual) is deferred to the payout phase (no producer here). Finance +
   Auditor raw read; server-only — pgTAP (`0016`).
+- **Phase 7-A — anti-gaming detection engine** (`08`, plan `19`; D5/OQ-1..OQ-3): the **deterministic detection
+  engine** that produces flags into the existing `anti_gaming_flags` (0016) container (no new table/permission —
+  catalog 20). `run_anti_gaming_scan(organization_id, bonus_period_id?)` (SECURITY DEFINER, server-only)
+  orchestrates four `detect_*` rules: **duplicate_task** (same assignee + normalized `lower(btrim(title))` within
+  24h → flag the later task), **tiny_task_splitting** (same assignee with ≥3 tasks `base_points<5` within 1h),
+  **same_reviewer_concentration** (one reviewer's share >0.80 with ≥3 approvals in the period), **period_end_spike**
+  (last-3-days `task_approved` point gain > 3× the period daily average). Thresholds are **hardcoded** (OQ-1;
+  `organization_settings` columns deferred to V1). **OQ-2 dual idempotency:** `anti_gaming_flags` gains an
+  **FK-less `bonus_period_id`** column (mirrors the FK-less `related_task_id`, so D5's "no FK to bonus_* tables"
+  holds) + **two partial unique indexes** (task-scoped `(org, rule, subject, related_task_id)` / period-scoped
+  `(org, rule, subject, bonus_period_id)`) — a re-scan adds no flags. **OQ-3:** detection runs only via an explicit
+  `run_anti_gaming_scan()` call (HR/job), never automatic at approve-time. **D5 by construction:** the detect
+  functions **read** `tasks`/`task_reviews`/`point_ledger`/`bonus_periods` and **write only `anti_gaming_flags`** —
+  no write/FK/trigger to `point_ledger`/`bonus_ledger`/any `bonus_*`/`compensation_records`, so a scan produces **no
+  financial side effect** (asserted: ledger row counts are unchanged), and a flag is **not** an auto-punishment nor
+  an auto-dispute (human-in-loop). **Authz:** `has_role('hr') OR auth.uid() IS NULL` (a trusted server/job context —
+  `current_user` is unreliable inside SECURITY DEFINER, it is the owner); non-HR authenticated gets `42501`;
+  `detect_*` are granted to `service_role` only — pgTAP (`0017`).
 
-Migrations `0001..0022` + seed apply cleanly; blocking pgTAP suites (`0001`..`0016`) are green (see
+Migrations `0001..0023` + seed apply cleanly; blocking pgTAP suites (`0001`..`0017`) are green (see
 "Verification"). **Phase 3 DB foundation + Phase 4/5 + the Phase 6 bonus calculation engine + the Phase 6-b
-`bonus_ledger` accrual are done; the payout/export engine (Phase 7+) and everything downstream (app UI/API) remain
-gated** (see "Out of scope").
+`bonus_ledger` accrual + the Phase 7-A anti-gaming detection engine are done; the dispute post-decision wiring
+(Phase 7-B/7-C), the payout/export engine, and everything downstream (app UI/API) remain gated** (see "Out of scope").
 
 ## ⚠️ Environment rule (non-negotiable — ADR-014 / CLAUDE.md)
 
@@ -236,6 +255,17 @@ supabase/
                                           idempotent per snapshot; append-only (BL-1); Σdebit=Σcredit (0014);
                                           new DEFERRABLE trigger BL-2 Σaccrual≤pool_ref (AD8-aware); BL-3 deferred
                                           to payout phase; no new permission (catalog 20)
+    0023_anti_gaming_detection.sql        anti-gaming detection engine (Phase 7-A; plan doc 19) —
+                                          run_anti_gaming_scan(org, bonus_period_id?) SECURITY DEFINER server-only
+                                          orchestrator + 4 detect_* (duplicate_task/tiny_task_splitting/
+                                          same_reviewer_concentration/period_end_spike) producing anti_gaming_flags;
+                                          adds FK-less bonus_period_id col + dual partial unique idempotency index
+                                          (OQ-2 task-scoped related_task_id / period-scoped bonus_period_id);
+                                          hardcoded thresholds (OQ-1); explicit-call only (OQ-3, no approve-time
+                                          trigger); D5 isolation — reads tasks/reviews/point_ledger/periods, writes
+                                          ONLY flags (no ledger/bonus/comp write/FK), scan has no financial side
+                                          effect; authz has_role('hr') OR auth.uid() IS NULL; detect_* service_role
+                                          only; no new permission (catalog 20)
   seed/seed_test_tenants.sql              2 tenants, RBAC catalog, teams, support grants,
                                           + Phase 3B (scoring/versions, point_ledger) + comp + bonus fixtures
                                           (periods/pools + components/eligibility + calc run/allocations/snapshot
@@ -246,6 +276,7 @@ supabase/
                                           + Phase 5 policy multipliers/penalty rule (doc-04 values on d2/b-d2)
                                           + Phase 6 dedicated Org C (ceres) worked-example fixtures (05 §8)
                                           + Phase 6-b Org C auditor (for the 0016 accrual RLS assertion)
+                                          (Phase 7-A anti-gaming detection uses inline test fixtures — no seed change)
   tests/
     0001_phase3a_rls.test.sql             blocking pgTAP — RLS/RBAC (Phase 3A)
     0002_phase3b_scoring_policies.test.sql blocking pgTAP — scoring policy/version (Phase 3B-A)
@@ -263,6 +294,7 @@ supabase/
     0014_phase5_scoring.test.sql          blocking pgTAP — scoring determinism (187.5)/SI-1 idempotency/AD4/AD5/D3/AD7/Finance-excluded/no-bonus (Phase 5)
     0015_phase6_bonus_engine.test.sql     blocking pgTAP — bonus engine worked example (05 §8)/idempotency/cap+D6 residual/AD8 top-up/T_org=0/Σadj=0/single-eligible/AD6 pending/SI-13/no-bonus_ledger/Finance-excluded (Phase 6)
     0016_phase6b_bonus_ledger_accrual.test.sql blocking pgTAP — accrual worked example (05 §8)/approval boundary/idempotency/BL-2 Σaccrual≤pool_ref/AD6 gate/append-only/Finance+Auditor RLS (Phase 6-b)
+    0017_phase7a_anti_gaming_detection.test.sql blocking pgTAP — 4 detect_* rules pos/neg + dual idempotency (re-scan adds no flag)/D5 no-side-effect (scan leaves point_ledger+bonus_ledger counts unchanged)/server-only (non-HR 42501, detect_* not callable, direct flag INSERT rejected) (Phase 7-A)
 ```
 
 ## Apply & test (local)
@@ -271,8 +303,8 @@ Requires Docker + the Supabase CLI. From the repo root:
 
 ```bash
 supabase start            # boots local dev stack (Docker)
-supabase db reset         # applies migrations 0001..0022 then seed
-supabase test db          # runs the pgTAP suites in tests/ (0001..0016)
+supabase db reset         # applies migrations 0001..0023 then seed
+supabase test db          # runs the pgTAP suites in tests/ (0001..0017)
 ```
 
 If the `supabase` binary is not on PATH (e.g. a fresh install not yet picked up), the project-local
@@ -455,10 +487,30 @@ re-runnable (on-conflict guards).
 > **test-only** fixes (org-scope the privileged Section-A queries; `::bigint` cast on a `Σaccrual`); no
 > migration/engine defect.
 >
+> **Phase 7-A anti-gaming detection engine: VERIFIED / DONE** (2026-08-09, npx Supabase CLI **2.109.1**; commit
+> `ffdea06`). `db reset` applied migrations **0001..0023** + seed cleanly; `test db` → **Files=17, Tests=712,
+> Result=PASS, Failed=0** (`0001`..`0017` ok). Invariants proven (08; D5/OQ-1..OQ-3): `run_anti_gaming_scan()`
+> orchestrates four `detect_*` rules and each fires **positively** on a crafted anomaly and **not** on a clean
+> fixture — **duplicate_task** (same assignee + normalized title within 24h), **tiny_task_splitting** (≥3
+> `base_points<5` tasks within 1h), **same_reviewer_concentration** (a reviewer's share >0.80 with ≥3 period
+> approvals), **period_end_spike** (last-3-days `task_approved` gain > 3× the period daily average); **dual
+> idempotency** (OQ-2) — a re-scan adds **no** new flag (the two partial unique indexes back the `where not
+> exists` guard); **D5 no-side-effect** — a scan leaves `point_ledger` **and** `bonus_ledger` row counts
+> **unchanged** (the engine writes only `anti_gaming_flags`; no FK/write to any financial table), a confirmed flag
+> is still inert and no dispute is auto-created; **server-only** — a non-HR authenticated caller is rejected
+> (`42501`), the `detect_*` helpers are not callable by `authenticated` (granted to `service_role` only), and a
+> direct client `anti_gaming_flags` INSERT stays rejected (0016 posture). One in-slice **migration fix**: the scan
+> authz was `current_user not in (...)`, which is ineffective inside a SECURITY DEFINER (there `current_user` is
+> the owner) — corrected to `has_role('hr') OR auth.uid() IS NULL`. **Note (out of 7-A scope, committed):**
+> `run_bonus_calculation` (0021) and `post_bonus_accrual` (0022) carry the **same** latent `current_user` authz
+> weakness; no app/client calls them today (no exploit surface), and a future hardening slice will move them to the
+> `auth.uid() IS NULL` check.
+>
 > **Phase 3 DB foundation is COMPLETE** (12 migrations `0001..0018` / 12 suites, Tests=523); the **Phase 4 task/
 > review core** (`0019`/`0013`), **Phase 5 scoring engine** (`0020`/`0014`), **Phase 6 bonus calculation
-> engine** (`0021`/`0015`) and **Phase 6-b bonus_ledger accrual** (`0022`/`0016`) are also done (**Files=16,
-> Tests=690** total). **The payout/export engine (Phase 7+) and later phases (app UI/API) remain gated**
+> engine** (`0021`/`0015`), **Phase 6-b bonus_ledger accrual** (`0022`/`0016`) and the **Phase 7-A anti-gaming
+> detection engine** (`0023`/`0017`) are also done (**Files=17, Tests=712** total). **The dispute post-decision
+> wiring (Phase 7-B/7-C), the payout/export engine, and later phases (app UI/API) remain gated**
 > (ADR-020). **Never run any of this against a production project.**
 
 ### Prerequisites
@@ -475,13 +527,13 @@ re-runnable (on-conflict guards).
 
 ```bash
 supabase start        # 1. boot local stack; note the printed local URLs + dev-default keys
-supabase db reset     # 2. apply 0001..0022 + seed (expect clean apply)
+supabase db reset     # 2. apply 0001..0023 + seed (expect clean apply)
 supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
 ```
 
 ### Expected pass criteria
 
-- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=16, Tests=690, PASS**). Blocking.
+- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=17, Tests=712, PASS**). Blocking.
 - [ ] Green coverage: cross-tenant isolation (SI-7), non-recursive memberships read (§7A), support
   active-vs-expired grant (D4), append-only audit + append-only `point_ledger` (SI-2), helper
   correctness, scoring-policy `policy.manage` gating + published-version immutability (AD7), point_ledger
@@ -519,7 +571,11 @@ supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
   SI-1/SI-11/SI-12/AD4/AD5/AD7/D3), and **bonus engine** (doc-05 §8 worked example Σ = pool 10,000,000,
   undistributed 0; idempotency; cap + D6 residual 980,000,000; AD8 T_org=1.2 top-up yes/no; T_org=0 & Σadj=0
   whole-pool undistributed; AD6 `pending_missing_cap_basis`; NO `bonus_ledger` accrual; period locked→calculated
-  — SI-13/AD6/AD8/AD10).
+  — SI-13/AD6/AD8/AD10), and **anti-gaming detection engine** (`run_anti_gaming_scan()` + 4 `detect_*` rules each
+  positive-on-anomaly / negative-on-clean; dual idempotency OQ-2 — re-scan adds no flag; D5 no-side-effect —
+  scan leaves point_ledger + bonus_ledger counts unchanged, flag isolated from all financial tables; server-only
+  — non-HR 42501, detect_* service_role-only, direct flag INSERT rejected; authz `has_role('hr') OR auth.uid() IS
+  NULL`; hardcoded thresholds OQ-1; catalog stays 20 — D5/OQ-1/OQ-2/OQ-3).
 - [ ] `supabase db reset` then re-running the suite is reproducible (deterministic seed).
 
 ### Failure triage
@@ -645,8 +701,11 @@ Manual point override/adjustment
 (`point.override` 2-step → `manual_adjustment`), the **export generation engine**
 (CSV/XLSX/storage write, checksum/row_count, status progression `requested→generated→downloaded`, the
 period=`approved` gate) + `payout_exported`/`payout_marked_paid` ledger wiring (+ **BL-3** `payout ≤ accrual`
-hard-enforce) + mark-paid + Finance aggregate views (`v_finance_*`), clawback workflow, dispute post-decision effects (point_ledger `dispute_adjustment` /
-recalculation / bonus_ledger reversal), the anti-gaming rule **detection engine** + `anomaly_baselines`, the
+hard-enforce) + mark-paid + Finance aggregate views (`v_finance_*`), clawback workflow, the **dispute post-decision
+wiring** — **Phase 7-B** point_ledger `dispute_adjustment` (`0024`) + **Phase 7-C** recalculation (new run/snapshot +
+period `approved→calculated` re-approval + paid-accrual guard) + bonus_ledger reversal (`0025`) — the anti-gaming
+**detection engine itself is now DONE** (Phase 7-A, `0023`); only statistical `anomaly_baselines`/Z-score (beyond the
+5 deterministic rules) and the `self_approval_attempt` trail remain; the
 notification **delivery engine** (email/push/realtime) + notification preferences + retention job, projects,
 objectives, integrations, webhook_events, UI/dashboard, API routes. Each needs its own phase-scoped, verbatim
 authorization (ADR-020).
@@ -675,10 +734,15 @@ authorization (ADR-020).
 > after HR approves the period (`calculated→approved`, `period.manage`), `post_bonus_accrual()` posts one balanced
 > double-entry accrual (debit pool = Σfinal / credit accrual per employee) from the approved snapshot — idempotent;
 > AD6 gate; **BL-2** `Σaccrual ≤ pool_ref` (deferred trigger); the snapshot stays immutable and no new permission
-> is added. `db reset` `0001..0022` + seed; `test db` → **Files=16, Tests=690, PASS, Failed=0**. **Next major
-> step:** **Phase 7 — anti-gaming detection + dispute post-decision** (or the intermediate **payout/export
-> engine** — `payout_exported`/`payout_marked_paid` + `v_finance_*` + BL-3). A scope-lock is recommended. **Not
-> authorized yet.**
+> is added. And the **Phase 7-A anti-gaming detection engine** (`0023`/`0017`, commit `ffdea06`) is **done**:
+> `run_anti_gaming_scan()` + four `detect_*` rules produce flags into `anti_gaming_flags` with dual idempotency
+> (OQ-2) and **D5 isolation** (a scan writes only flags — no ledger/bonus/comp write, no financial side effect);
+> authz `has_role('hr') OR auth.uid() IS NULL`; no new permission. `db reset` `0001..0023` + seed; `test db` →
+> **Files=17, Tests=712, PASS, Failed=0**. **Next major step:** **Phase 7-B — dispute point adjustment** (point_ledger
+> `dispute_adjustment`, `0024`) → **7-C** recalculation + bonus_ledger reversal (`0025`); or the intermediate
+> **0021/0022 authz hardening** (move their ineffective `current_user` check to `auth.uid() IS NULL`); or the
+> **payout/export engine** (`payout_exported`/`payout_marked_paid` + `v_finance_*` + BL-3). A scope-lock is
+> recommended. **Not authorized yet.**
 
 ## Notes for reviewers
 
