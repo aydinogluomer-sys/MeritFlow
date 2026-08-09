@@ -26,33 +26,38 @@ MVP'de hile/manipülasyonu **otomatik ceza vermeden** tespit edip insan inceleme
 ## Detailed specification
 
 ### Kural 1 — Self-approval block (hard)
+
 - Mekanizma: reviewer_id == assignee_id ise approve **reddedilir** (DB + uygulama).
 - Çıktı: engelleme (flag değil); denenirse audit.
 
 ### Kural 2 — Duplicate task detection
+
 - Mekanizma: aynı assignee + aynı/çok benzer title (normalize) + yakın zaman penceresi içinde
   tekrar eden görevler (`Assumption:` aynı title + 24 saat içinde N≥2).
 - Çıktı: `flag(duplicate_task)` → review queue.
 
 ### Kural 3 — Tiny-task splitting flag
+
 - Mekanizma: kısa sürede çok sayıda düşük base_point'li görev (`Assumption:` base_points < eşik ve
   aynı assignee için 1 saatte M≥ adet) → görev parçalama şüphesi.
 - Çıktı: `flag(tiny_task_splitting)`.
 
-### Kural 4 — Same-reviewer concentration flag
 - Mekanizma: bir çalışanın onaylarının orantısız kısmı aynı reviewer'dan (`Assumption:` son dönemde
   bir reviewer payı > %80 ve toplam onay ≥ eşik) → collusion sinyali (deterministik oran).
 - Çıktı: `flag(same_reviewer_concentration)`.
 
 ### Kural 5 — Period-end point spike flag
+
 - Mekanizma: dönem kapanışına yakın pencerede (`Assumption:` son 3 gün) bir çalışanın puan kazancı
   kendi dönem ortalamasının belirgin üstünde (`Assumption:` günlük ortalamanın > 3 katı) → puan şişirme şüphesi.
 - Çıktı: `flag(period_end_spike)`.
 
 ### Flag yaşam döngüsü
+
 ```txt
 open -> reviewing -> confirmed | dismissed
 ```
+
 - Manager/HR review queue'da görür; inceler; `confirmed` ise olası aksiyon: ilgili görevlerin yeniden
   review'i, manuel adjustment (audit'li), veya dönem hesabında HR kararı.
 - `dismissed` ise gerekçe + audit.

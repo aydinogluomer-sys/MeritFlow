@@ -28,11 +28,13 @@ sağlayan dispute (itiraz/appeal) sistemini tanımlamak.
 ## Detailed specification
 
 ### Dispute türleri (context `00 §13`)
+
 `task_points_too_low`, `unfair_rejection`, `quality_score_dispute`, `missing_task_credit`,
 `bonus_calculation_dispute`, `manager_bias_report`, `anomaly_false_positive`, `system_error`,
 `clawback_dispute`.
 
 ### Durum makinesi
+
 ```txt
 open
  -> under_review            (HR reviewer atadı)
@@ -43,17 +45,20 @@ open
 ```
 
 ### Reviewer atama kuralları
+
 - HR bir reviewer atar.
 - Atanan reviewer, ihtilaf konusu kararın **sahibi olamaz** (örn. reddi yapan manager o reddin
   dispute'unda final karar veremez; bağımsız reviewer/HR atanır).
 - `manager_bias_report` ve `clawback_dispute` türleri doğrudan HR'a eskale edilir.
 
 ### SLA
+
 - Hedef çözüm süresi: 5 iş günü.
 - SLA aşımında HR'a uyarı/eskalasyon (notification).
 - SLA durumu dispute kaydında izlenir (opened_at, due_at, resolved_at).
 
 ### Karar sonrası etkiler
+
 - **accepted (puan):** point ledger'a `dispute_adjustment` (delta) + audit.
 - **accepted (prim):** etkilenen period için yeni `bonus_calculation_run` + yeni immutable snapshot;
   gerekiyorsa bonus ledger reversal + yeni accrual (otomatik kesinti yok; ödenmiş fazla için clawback workflow).
@@ -61,6 +66,7 @@ open
 - Her iki sonuçta employee'ye açıklanabilir bildirim.
 
 ### Reopen
+
 - `Assumption:` MVP'de resolved bir dispute aynı gerekçeyle yeniden açılamaz; yeni kanıtla HR onayıyla
   yeni dispute açılabilir.
 
