@@ -33,6 +33,7 @@ toplam alanlarda değil ledger/snapshot'ta yaşar" ilkesini somutlaştırır.
 ## Detailed specification
 
 ### 1. Point Ledger (single-entry, append-only)
+
 Neden single-entry: puan korunan/transfer edilen bir miktar değildir; **kazanılır**. Çift kayıt
 gerektiren bir "kaynaktan hedefe transfer" yoktur.
 
@@ -51,21 +52,25 @@ Event types (context `00 §7.1`):
 > ayrı satırlardır.
 
 Kurallar:
+
 - `task_approved` idempotent: task başına bir kazanç satırı.
 - Çalışanın dönem toplam puanı = ilgili period satırlarının `points_delta` toplamı (türev, cache değil source).
 - Düzeltme: orijinali silme yerine `reversal` (negatif delta) + gerekiyorsa yeni `adjustment`.
 - UPDATE/DELETE policy yok → DB seviyesinde imkânsız.
 
 Invariants:
+
 - PL-1: satır immutable.
 - PL-2: period `locked` + onaylı snapshot varken o döneme yeni kazanç satırı eklenemez (yalnız
   dispute → `dispute_adjustment`, ve bu yeni calculation run tetikler).
 
 ### 2. Bonus Ledger (double-entry, money)
+
 Neden double-entry: para korunan bir büyüklüktür; her hareket dengeli olmalı ve toplamlar
 mutabakat (reconciliation) vermelidir. Σdebit = Σcredit invariant'ı yanlış/eksik ödemeyi yakalar.
 
 Hesaplar (accounts):
+
 - `pool` (org bonus havuzu)
 - `accrual` (çalışan hak edişi, henüz ödenmemiş)
 - `payout` (ödenmiş / dışa aktarılmış)
@@ -81,6 +86,7 @@ Event types (context `00 §7.2`):
 `payout_marked_paid`, `clawback_pending`, `clawback_approved`, `reversal`.
 
 Tipik dengeli hareketler:
+
 | Olay | Debit | Credit |
 | --- | --- | --- |
 | HR snapshot approve (accrual) | pool | accrual(employee_i) |
@@ -88,6 +94,7 @@ Tipik dengeli hareketler:
 | Clawback approved | clawback / accrual | (ters yönde dengeli reversal) |
 
 Kurallar:
+
 - Her calculation run için Σdebit = Σcredit (run bazında dengeli).
 - Accrual yalnız **approved snapshot**'tan üretilir (snapshot_id zorunlu).
 - `pending_missing_cap_basis` allocation'ları çözülmeden ilgili payout export üretilmez (Decision Lock AD6).
@@ -96,12 +103,14 @@ Kurallar:
   reversal entry + dispute hakkı (Decision Lock D2).
 
 Invariants:
+
 - BL-1: satır immutable.
 - BL-2: Σ(accrual credits) ≤ pool (snapshot ile tutarlı; undistributed_remainder pool'da kalır).
 - BL-3: payout yalnız accrual'ı olan çalışana; payout ≤ accrual.
 - BL-4: her money mutation bir audit_log üretir.
 
 ### 3. Audit Log (append-only)
+
 Alanlar (kavramsal):
 `id, organization_id, actor_id, action, target_type, target_id, before jsonb, after jsonb, reason,
 request_context (ip/agent opsiyonel), created_at`.
@@ -113,17 +122,20 @@ dispute decision, export generation, role/permission change, user deactivation, 
 support access, integration token change, **compensation record access/change** (AD3).
 
 Compensation-sensitive audit (Decision Lock AD3):
+
 - Liste/özet görünümü: `action, actor, target, timestamp, masked summary` (raw comp değeri görünmez).
 - Raw `before/after` compensation payload yalnız `comp.read` yetkisi (HR/Finance/Auditor) + **gerekçeli erişim** ile.
 - Employee comp audit payload'ı **hiç göremez**.
 - Bu raw erişimlerin **kendisi** ayrıca audit log'a düşer (erişim audit'i).
 
 Kurallar:
+
 - Silme yok; düzeltme append-only.
 - `before/after` snapshot ile "ne değişti" görünür (comp alanları maskeli — AD3).
 - Auditor full read; Finance financial subset; diğerleri ilgili scope.
 
 ### 4. Ledger ↔ Snapshot ilişkisi
+
 - Calculation run → immutable allocation snapshot (puan + faktörler dondurulur — AD7).
 - HR approve → bonus ledger `bonus_accrual` (para tarafı başlar; `pending_missing_cap_basis` hariç).
 - Finance export → `payout_exported`; mark paid → `payout_marked_paid`.

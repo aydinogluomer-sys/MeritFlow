@@ -84,12 +84,12 @@ Aşağıdakiler "stable security-definer" yardımcılar olarak tasarlanır; **ro
 
 Notasyon: `USING` = okunabilir satır filtresi; `WITH CHECK` = yazılabilir satır kısıtı.
 Tüm policy'ler örtük olarak `organization_id = current_org()` ile başlar.
-
 **memberships**
+
 - SELECT USING: `organization_id = current_org()` ve (`profile_id = auth.uid()` OR `has_permission('user.invite')` OR `has_role('HR')`).
 - INSERT/UPDATE WITH CHECK: `has_permission('user.invite')`.
-
 **tasks**
+
 - SELECT USING: org eşit ve (`assignee_id = auth.uid()` OR `created_by = auth.uid()` OR `reviewer_id = auth.uid()` OR `manages_team(team_id)` OR `has_role('HR')` OR `has_role('Admin')` OR `has_role('Owner')` OR `has_role('Auditor')`).
 - INSERT WITH CHECK: `has_permission('task.create')` ve (`manages_team(team_id)` OR `has_role('Admin')`).
 - UPDATE WITH CHECK:
@@ -97,45 +97,47 @@ Tüm policy'ler örtük olarak `organization_id = current_org()` ile başlar.
   - reviewer yalnız `task.review` ve `reviewer_id = auth.uid()` ve `assignee_id <> auth.uid()` (self-approval block).
   - Finance/Auditor: UPDATE yok.
 - Period lock sonrası: ilgili döneme bağlı task'larda mutation engellenir (status/lock guard).
-
 **task_reviews**
+
 - SELECT USING: ilgili task SELECT'i görenler.
 - INSERT WITH CHECK: `task.review` ve reviewer = auth.uid() ve task.assignee <> auth.uid().
 
 **point_ledger** (append-only)
+
 - SELECT USING: `employee_id = auth.uid()` OR `manages_team(team_of(employee_id))` OR `has_role('HR')` OR `has_role('Auditor')`.
 - INSERT WITH CHECK: yalnız server/trusted (`has_permission` veya service context); manuel override `reason` + audit.
 - UPDATE/DELETE: **policy yok → tamamen yasak** (append-only).
-
 **bonus_allocations / bonus_allocation_snapshots**
+
 - SELECT USING:
   - Employee: `employee_id = auth.uid()` (yalnız kendi allocation'ı; başka çalışan satırı görünmez).
   - HR: org seviyesinde.
   - Finance: erişir ama **kolon kısıtı** (aşağı bkz).
   - Auditor: read-only tüm snapshot.
 - INSERT: yalnız calculation run (trusted). UPDATE/DELETE: snapshot için yasak (immutable).
-
 **bonus_ledger**
+
 - SELECT USING: `has_role('Finance')` OR `has_role('Auditor')` OR (`employee_id = auth.uid()` ve yalnız özet alanlar — view ile).
 - INSERT: trusted/calculation/payout. UPDATE/DELETE: yasak (düzeltme = reversal entry).
 
 **compensation_records** (comp-sensitive, Decision Lock D7/AD6)
+
 - SELECT USING: `has_permission('comp.read')` (yalnız HR/Finance, minimum) — Employee/Manager/Auditor **göremez**.
 - INSERT/UPDATE WITH CHECK: `has_permission('comp.read')` + audit zorunlu.
 - Her SELECT erişimi uygulama katmanında audit'lenir; erişim audit'i ayrıca audit log'a düşer (AD3).
-
 **disputes / dispute_events**
+
 - SELECT USING: `complainant_id = auth.uid()` OR `assigned_reviewer_id = auth.uid()` OR `has_role('HR')` OR `has_role('Auditor')`.
 - INSERT (open): `has_permission('dispute.open')` ve complainant = auth.uid().
 - UPDATE (resolve): `has_permission('dispute.resolve')` ve reviewer kendi verdiği task kararına bakıyorsa final-decision engeli (uygulama kuralı + audit).
-
 **audit_logs**
+
 - SELECT USING: `has_permission('audit.read')`; Finance yalnız financial action subset (kolon/satır filtresi).
 - Compensation-ilişkili audit satırları: liste görünümünde **masked summary** (action/actor/target/timestamp);
   raw before/after comp payload yalnız `comp.read` yetkisi + **gerekçeli erişim** ile; bu erişim de audit'lenir (AD3).
 - INSERT: trusted. UPDATE/DELETE: yasak.
-
 **support_access_grants**
+
 - SELECT USING: `has_role('Owner')` OR `has_role('Auditor')`.
 - INSERT: `has_permission('support.grant')`.
 
@@ -146,6 +148,7 @@ scoring_policies/versions) aynı kalıpla: org filtresi + ilgili permission.
 
 RLS yalnız **satır** filtreler; "Finance görev detayını görmesin, ödeme özetini görsün" gereksinimi
 **kolon** kısıtı ister. Strateji:
+
 - Finance'a doğrudan `tasks`/`task_reviews`/`point_ledger` SELECT'i **verilmez**.
 - Finance için dedicated **read view'lar**: `v_finance_allocation_summary`, `v_finance_payout`,
   `v_finance_period_totals`. Bu view'lar yalnız: employee_id, display_name (veya rumuz), period,
@@ -155,6 +158,7 @@ RLS yalnız **satır** filtreler; "Finance görev detayını görmesin, ödeme �
 - View'lar `security_invoker` ile çalışır ve alttaki tabloların RLS'ine tabidir.
 
 ### 5. Support access (Super Admin)
+
 - Varsayılan: tenant verisine erişim **yok**.
 - Owner bir `support_access_grant` oluşturur: scope + expires_at (süreli).
 - Grant aktifken `has_support_grant()` true döner; ilgili read policy'ler support'a izin verir.
@@ -162,6 +166,7 @@ RLS yalnız **satır** filtreler; "Finance görev detayını görmesin, ödeme �
 - Grant süresi dolunca erişim otomatik kapanır.
 
 ### 6. Service role kullanımı
+
 - Yalnız: scoring hesap, calculation run, snapshot yazımı, audit yazımı, bildirim fan-out.
 - Service role kullanan her server fonksiyonu, kullanıcı yetkisini **uygulama katmanında** ayrıca doğrular
   (RLS bypass edildiği için authorization server'da tekrar kontrol edilir).
