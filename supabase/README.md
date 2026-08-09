@@ -1,13 +1,14 @@
 # MeritFlow — Supabase (Database Foundation: Phase 3A–3B + comp + bonus periods/pools + components/eligibility + calc runs/allocations/snapshots + ledger + disputes + anti-gaming + notifications + exports)
 
-This directory is the **database foundation**. It currently implements eighteen verified
+This directory is the **database foundation**. It currently implements nineteen verified
 slices — the twelve Phase 3 DB slices (**Phase 3 DB foundation complete**), the
 **Phase 4 task/review core** (`tasks` + `task_events` + `task_reviews`), the
 **Phase 5 scoring engine** (approve → `point_ledger task_approved`), the
 **Phase 6 bonus engine** (`run_bonus_calculation()` → allocations + immutable snapshot), the
 **Phase 6-b bonus_ledger accrual** (`post_bonus_accrual()` → double-entry accrual from an approved snapshot), the
-**Phase 6-d bonus engine authz hardening** (`run_bonus_calculation`/`post_bonus_accrual` → `auth.uid() IS NULL` trusted-context authz), and the
-**Phase 7-A anti-gaming detection engine** (`run_anti_gaming_scan()` → 4 deterministic rules → `anti_gaming_flags`, ledger-isolated):
+**Phase 6-d bonus engine authz hardening** (`run_bonus_calculation`/`post_bonus_accrual` → `auth.uid() IS NULL` trusted-context authz), the
+**Phase 7-A anti-gaming detection engine** (`run_anti_gaming_scan()` → 4 deterministic rules → `anti_gaming_flags`, ledger-isolated), and the
+**Phase 7-B dispute point adjustment** (`apply_dispute_point_adjustment()` → resolved+accepted dispute → `point_ledger dispute_adjustment`):
 
 - **Phase 3A — Database Foundation & RBAC** (`17_PHASE_3A_...md`): 11 foundation/RBAC
   tables, RLS helpers, RLS (ENABLED + FORCE), constraints, test-tenant seed, blocking pgTAP.
@@ -158,12 +159,28 @@ slices — the twelve Phase 3 DB slices (**Phase 3 DB foundation complete**), th
   an auto-dispute (human-in-loop). **Authz:** `has_role('hr') OR auth.uid() IS NULL` (a trusted server/job context —
   `current_user` is unreliable inside SECURITY DEFINER, it is the owner); non-HR authenticated gets `42501`;
   `detect_*` are granted to `service_role` only — pgTAP (`0017`).
+- **Phase 7-B — dispute point adjustment** (`07 §62`, plan `19 §5.2`; D9/D2/ADR-005): the resolved+accepted dispute
+  → `point_ledger` **`dispute_adjustment`** effect over the existing `point_ledger` (0009) container (no new table/
+  permission — catalog 20). `apply_dispute_point_adjustment(p_dispute_id, p_points_delta, p_reason, p_actor)`
+  (SECURITY DEFINER, server-only) checks, in order: **authz** (`has_permission('dispute.resolve') OR auth.uid() IS
+  NULL` — the resolving reviewer or a trusted server/job; else `42501`), **non-zero delta** (OQ-7B-5; `0` → `23514`),
+  loads the dispute (org + employee **derived** from the row — no cross-org param, SI-7), **fail-closed precondition**
+  (OQ-7B-3: unless `status in ('resolved','closed') AND resolution='accepted'` → `23514`, no row), **idempotency** (a
+  prior `dispute_adjustment` for the dispute → no-op, returns it), then appends **one delta** for the complainant
+  (`employee_id = disputes.complainant_id` — OQ-7B-2). **Schema (additive, 0020 precedent):** `point_ledger` gains a
+  `dispute_id` + a **same-org composite FK `(dispute_id, organization_id) → disputes`** (SI-7); the event_type CHECK
+  is widened via **DROP+ADD under the same name** to add `dispute_adjustment` (0003 regression holds); a
+  `point_ledger_dispute_adjustment_chk` (dispute_id NOT NULL + reverses_entry_id NULL); a **partial unique index**
+  `(dispute_id) where event_type='dispute_adjustment'` (one adjustment per dispute — 23505 backstop). **Audit:** the
+  INSERT audit WHEN clause is widened (DROP+CREATE) to audit `dispute_adjustment`; **`task_approved` stays un-audited**
+  (0020 behaviour). Append-only is preserved (UPDATE/DELETE → `23001`); **D2** is not violated (a point correction is
+  not a paid-money clawback — the money side is 7-C), **D9** is enforced at the resolve step (0015) — pgTAP (`0019`).
 
-Migrations `0001..0024` + seed apply cleanly; blocking pgTAP suites (`0001`..`0018`) are green (see
+Migrations `0001..0025` + seed apply cleanly; blocking pgTAP suites (`0001`..`0019`) are green (see
 "Verification"). **Phase 3 DB foundation + Phase 4/5 + the Phase 6 bonus calculation engine + the Phase 6-b
-`bonus_ledger` accrual + the Phase 6-d authz hardening + the Phase 7-A anti-gaming detection engine are done; the
-dispute post-decision wiring (Phase 7-B/7-C), the payout/export engine, and everything downstream (app UI/API)
-remain gated** (see "Out of scope").
+`bonus_ledger` accrual + the Phase 6-d authz hardening + the Phase 7-A anti-gaming detection engine + the Phase 7-B
+dispute point adjustment are done; the dispute bonus recalculation (Phase 7-C), the payout/export engine, and
+everything downstream (app UI/API) remain gated** (see "Out of scope").
 
 ## ⚠️ Environment rule (non-negotiable — ADR-014 / CLAUDE.md)
 
@@ -286,6 +303,16 @@ supabase/
                                           period.manage). Same signatures -> GRANTs/COMMENTs preserved; no logic/
                                           formula/ledger change; no new permission (catalog 20); 0023 untouched;
                                           idempotent
+    0025_dispute_point_adjustment.sql     dispute point adjustment (Phase 7-B) — point_ledger gains dispute_id +
+                                          same-org composite FK (dispute_id, organization_id) -> disputes; event_type
+                                          CHECK DROP+ADD (same name) adds 'dispute_adjustment' (0020 precedent);
+                                          dispute_adjustment_chk (dispute_id NOT NULL, no reverses_entry_id); partial
+                                          unique index (dispute_id) where event_type='dispute_adjustment' (idempotency);
+                                          audit WHEN clause DROP+CREATE adds dispute_adjustment (task_approved still
+                                          un-audited); apply_dispute_point_adjustment(dispute, delta, reason, actor)
+                                          SECURITY DEFINER server-only: authz dispute.resolve OR auth.uid() IS NULL ->
+                                          non-zero delta -> resolved+accepted (fail-closed 23514) -> idempotent ->
+                                          one delta for the complainant; no new permission (catalog 20)
   seed/seed_test_tenants.sql              2 tenants, RBAC catalog, teams, support grants,
                                           + Phase 3B (scoring/versions, point_ledger) + comp + bonus fixtures
                                           (periods/pools + components/eligibility + calc run/allocations/snapshot
@@ -316,6 +343,7 @@ supabase/
     0016_phase6b_bonus_ledger_accrual.test.sql blocking pgTAP — accrual worked example (05 §8)/approval boundary/idempotency/BL-2 Σaccrual≤pool_ref/AD6 gate/append-only/Finance+Auditor RLS (Phase 6-b)
     0017_phase7a_anti_gaming_detection.test.sql blocking pgTAP — 4 detect_* rules pos/neg + dual idempotency (re-scan adds no flag)/D5 no-side-effect (scan leaves point_ledger+bonus_ledger counts unchanged)/server-only (non-HR 42501, detect_* not callable, direct flag INSERT rejected) (Phase 7-A)
     0018_phase6d_authz_hardening.test.sql blocking pgTAP — run_bonus_calculation + post_bonus_accrual authz: authenticated w/o period.manage (Finance c4) -> 42501; authenticated w/ period.manage (HR c3) -> authz passes -> 23503; trusted context (auth.uid() null) -> authz passes -> 23503 (Phase 6-d)
+    0019_phase7b_dispute_point_adjustment.test.sql blocking pgTAP — apply_dispute_point_adjustment: positive (one dispute_adjustment delta, employee=complainant)/negative rejected+under_review+zero-delta 23514/idempotency (no-op + 23505 backstop)/missing dispute_id 23514 + invalid event_type 23514 (0003 regression)/audit row/append-only 23001/cross-tenant FK 23503/employee-without-dispute.resolve 42501 (Phase 7-B)
 ```
 
 ## Apply & test (local)
@@ -324,8 +352,8 @@ Requires Docker + the Supabase CLI. From the repo root:
 
 ```bash
 supabase start            # boots local dev stack (Docker)
-supabase db reset         # applies migrations 0001..0024 then seed
-supabase test db          # runs the pgTAP suites in tests/ (0001..0018)
+supabase db reset         # applies migrations 0001..0025 then seed
+supabase test db          # runs the pgTAP suites in tests/ (0001..0019)
 ```
 
 If the `supabase` binary is not on PATH (e.g. a fresh install not yet picked up), the project-local
@@ -542,13 +570,27 @@ re-runnable (on-conflict guards).
 > weakness — **fixed in Phase 6-d (`0024`, commit `0b8b34a`)**; all three (0021/0022/0023) now use the
 > `auth.uid() IS NULL` trusted-context check.
 >
+> **Phase 7-B dispute point adjustment: VERIFIED / DONE** (2026-08-09, npx Supabase CLI **2.109.1**; commit
+> `70ba400`). `db reset` applied migrations **0001..0025** + seed cleanly; `test db` → **Files=19, Tests=737,
+> Result=PASS, Failed=0** (`0001`..`0019` ok). Invariants proven (07 §62; D9/D2/ADR-005):
+> `apply_dispute_point_adjustment()` on a **resolved+accepted** dispute appends **exactly one** `point_ledger`
+> `dispute_adjustment` delta for the **complainant**, returns its id; a **rejected**, an **under_review**, or a
+> **zero-delta** call is rejected `23514` (fail-closed); a **second** apply is an idempotent **no-op** (returns the
+> same row; a direct duplicate hits the partial unique index → `23505`); a `dispute_adjustment` **without a
+> dispute_id** → `23514`, while an **invalid event_type** is still rejected by the same-named CHECK (0003
+> regression holds); the insert **produces an `audit_logs` row** (`point_ledger.insert` — the widened WHEN clause);
+> the row is **append-only** (UPDATE → `23001`); a **cross-org** dispute_id/organization_id pairing is rejected by
+> the same-org composite FK (`23503`, SI-7); and an **authenticated caller without `dispute.resolve`** (a plain
+> employee) is rejected `42501`. `task_approved` stays un-audited (0020 behaviour); the **catalog stays 20**; D2 is
+> not violated (a point correction is not a paid-money clawback — the money side is 7-C).
+>
 > **Phase 3 DB foundation is COMPLETE** (12 migrations `0001..0018` / 12 suites, Tests=523); the **Phase 4 task/
 > review core** (`0019`/`0013`), **Phase 5 scoring engine** (`0020`/`0014`), **Phase 6 bonus calculation
 > engine** (`0021`/`0015`), **Phase 6-b bonus_ledger accrual** (`0022`/`0016`), the **Phase 6-d bonus engine authz
-> hardening** (`0024`/`0018`) and the **Phase 7-A anti-gaming detection engine** (`0023`/`0017`) are also done
-> (**Files=18, Tests=720** total). **The dispute post-decision wiring (Phase 7-B `0025` / 7-C `0026`), the payout/
-> export engine, and later phases (app UI/API) remain gated** (ADR-020). **Never run any of this against a
-> production project.**
+> hardening** (`0024`/`0018`), the **Phase 7-A anti-gaming detection engine** (`0023`/`0017`) and the **Phase 7-B
+> dispute point adjustment** (`0025`/`0019`) are also done (**Files=19, Tests=737** total). **The dispute bonus
+> recalculation (Phase 7-C `0026`), the payout/export engine, and later phases (app UI/API) remain gated**
+> (ADR-020). **Never run any of this against a production project.**
 
 ### Prerequisites
 
@@ -564,13 +606,13 @@ re-runnable (on-conflict guards).
 
 ```bash
 supabase start        # 1. boot local stack; note the printed local URLs + dev-default keys
-supabase db reset     # 2. apply 0001..0024 + seed (expect clean apply)
+supabase db reset     # 2. apply 0001..0025 + seed (expect clean apply)
 supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
 ```
 
 ### Expected pass criteria
 
-- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=18, Tests=720, PASS**). Blocking.
+- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=19, Tests=737, PASS**). Blocking.
 - [ ] Green coverage: cross-tenant isolation (SI-7), non-recursive memberships read (§7A), support
   active-vs-expired grant (D4), append-only audit + append-only `point_ledger` (SI-2), helper
   correctness, scoring-policy `policy.manage` gating + published-version immutability (AD7), point_ledger
@@ -615,7 +657,11 @@ supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
   NULL`; hardcoded thresholds OQ-1; catalog stays 20 — D5/OQ-1/OQ-2/OQ-3), and **bonus engine authz hardening**
   (`run_bonus_calculation` + `post_bonus_accrual`: authenticated without period.manage -> 42501; authenticated with
   period.manage -> authz passes -> 23503; trusted context auth.uid() null -> authz passes -> 23503; no regression —
-  0015/0016 stay green — AD1).
+  0015/0016 stay green — AD1), and **dispute point adjustment** (`apply_dispute_point_adjustment()`: resolved+accepted
+  -> one point_ledger dispute_adjustment delta for the complainant; rejected/under_review/zero-delta -> 23514
+  fail-closed; idempotent no-op + 23505 backstop; missing dispute_id -> 23514 + invalid event_type -> 23514 (0003
+  regression); audit row on insert; append-only 23001; cross-tenant FK 23503; employee without dispute.resolve -> 42501;
+  catalog 20 — D9/D2/ADR-005/SI-7).
 - [ ] `supabase db reset` then re-running the suite is reproducible (deterministic seed).
 
 ### Failure triage
@@ -782,9 +828,14 @@ authorization (ADR-020).
 > ineffective `current_user`-based "trusted context" check inside a SECURITY DEFINER (current_user = owner), so
 > `period.manage` was never enforced — `0024` CREATE OR REPLACEs both with byte-identical bodies except that clause
 > → `auth.uid() IS NULL`; a one-way tightening (authenticated without `period.manage` now gets `42501`), no logic
-> change, catalog stays 20, 0023 untouched. `db reset` `0001..0024` + seed; `test db` → **Files=18, Tests=720,
-> PASS, Failed=0**. **Next major step:** **Phase 7-B — dispute point adjustment** (point_ledger `dispute_adjustment`,
-> now `0025`) → **7-C** recalculation + bonus_ledger reversal (`0026`); or the **payout/export engine**
+> change, catalog stays 20, 0023 untouched. Finally the **Phase 7-B dispute point adjustment** (`0025`/`0019`,
+> commit `70ba400`) is **done**: `apply_dispute_point_adjustment()` posts one `point_ledger` `dispute_adjustment`
+> delta for the complainant on a resolved+accepted dispute (fail-closed `23514` otherwise), idempotent per dispute
+> (partial unique index), audited, with a same-org composite FK to disputes (SI-7); the event_type CHECK was widened
+> (DROP+ADD) and the audit WHEN clause widened (task_approved stays un-audited); no new permission. `db reset`
+> `0001..0025` + seed; `test db` → **Files=19, Tests=737, PASS, Failed=0**. **Next major step:** **Phase 7-C —
+> dispute bonus recalculation + reversal** (`0026`/`0020`: superseded run + period `approved→calculated`
+> re-approval + new run/snapshot + paid-accrual guard → bonus_ledger reversal + new accrual); or the **payout/export engine**
 > (`payout_exported`/`payout_marked_paid` + `v_finance_*` + BL-3). A scope-lock is recommended. **Not authorized yet.**
 
 ## Notes for reviewers

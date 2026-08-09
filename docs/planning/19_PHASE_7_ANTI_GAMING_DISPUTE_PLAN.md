@@ -18,8 +18,11 @@
 - **Update (2026-08-09):** **7-A is DONE** (commit `ffdea06`; `0023`/`0017`). An out-of-band **Phase 6-d bonus
   engine authz hardening** slice was then implemented (commit `0b8b34a`) and **took migration `0024`** +
   test `0018`. **Consequence — the dispute migration/test numbers below shift by one:** 7-B `0024`/`0018` →
-  **`0025`/`0019`**, 7-C `0025`/`0019` → **`0026`/`0020`** (see §3 and §9). Current tip: migrations `0001..0024`,
-  suites `0001..0018` (Files=18/Tests=720). 7-B/7-C remain **gated**.
+  **`0025`/`0019`**, 7-C `0025`/`0019` → **`0026`/`0020`** (see §3 and §9). 7-B/7-C were **gated** at that point.
+- **Update (2026-08-09, later):** **7-B is DONE** (commit `70ba400`; `0025`/`0019`) — `apply_dispute_point_adjustment()`
+  posts the resolved+accepted dispute's `point_ledger dispute_adjustment` delta (fail-closed, idempotent, audited;
+  same-org FK to disputes). Current tip: migrations `0001..0025`, suites `0001..0019` (**Files=19/Tests=737**). Only
+  **7-C** (`0026`/`0020`) remains **gated**.
 
 ## 2. Purpose
 
@@ -33,7 +36,7 @@ correction chain (7-B/7-C).
 | Slice | Scope | New migration / test |
 | --- | --- | --- |
 | **7-A** | Anti-gaming detection engine (4 deterministic rules → flags); isolated, no financial wiring | `0023` / `tests/0017` — **DONE** (`ffdea06`) |
-| **7-B** | Dispute post-decision **points**: `point_ledger dispute_adjustment` | `0025` / `tests/0019` (was `0024`/`0018`) |
+| **7-B** | Dispute post-decision **points**: `point_ledger dispute_adjustment` | `0025` / `tests/0019` — **DONE** (`70ba400`) |
 | **7-C** | Dispute post-decision **money**: recalculation (new run+snapshot) + `bonus_ledger` reversal | `0026` / `tests/0020` (was `0025`/`0019`) |
 
 > **Numbering note:** `0024`/`tests/0018` were consumed by the out-of-band **Phase 6-d authz hardening** slice
@@ -101,7 +104,7 @@ and **write only `anti_gaming_flags`** — no write path/FK/trigger to `point_le
 threshold columns; `self_approval_attempt` trail; app/UI/API. **Catalog stays 20** (scan is server/job — no
 new permission).
 
-### 5.2 Slice 7-B — dispute point adjustment (migration `0025`, was `0024`) — GATED
+### 5.2 Slice 7-B — dispute point adjustment (migration `0025`, was `0024`) — DONE (`70ba400`)
 
 - Widen `point_ledger.event_type` CHECK (**DROP+ADD**) to add `'dispute_adjustment'` (append-only preserved —
   only widens the allowed set); widen the conditional-audit trigger WHEN clause to include it.

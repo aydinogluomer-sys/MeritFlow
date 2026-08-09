@@ -269,10 +269,26 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
     `auth.uid() IS NULL`-tabanlı kontrole çekildi. D5/OQ-1..OQ-3 kanıtlı. **Not:** `run_bonus_calculation` (0021) +
     `post_bonus_accrual` (0022) aynı latent `current_user` authz zayıflığını taşıyordu → **Phase 6-d (`0b8b34a`)'te
     çözüldü** (yukarı bkz.); artık 0021/0022/0023'ün üçü de aynı doğru deseni kullanıyor.
-  - **Phase 7 (kalan) — dispute post-decision** [GATED]: **7-B** dispute→point_ledger `dispute_adjustment`
-    (`0025`/`tests/0019`); **7-C** recalculation (superseded old run + period `approved→calculated` re-approval +
-    yeni run/snapshot + paid-accrual guard OQ-4/D2 → bonus_ledger reversal + yeni accrual) (`0026`/`tests/0020`).
-    *(Phase 6-d `0024`'ü aldığından dispute migration numaraları `0024`/`0025` → `0025`/`0026` kaydı; doc-19 §9.)*
+  - **Phase 7-B — Dispute Point Adjustment** [VERIFIED/DONE] (commit `70ba400`, 2026-08-09):
+    `apply_dispute_point_adjustment(p_dispute_id, p_points_delta, p_reason, p_actor)` **SECURITY DEFINER,
+    server-only** — resolved+accepted dispute'un puan etkisini mevcut `point_ledger` (0009) container'ına yazar
+    (yeni tablo/permission yok — katalog 20). Sıralı: **authz** (`has_permission('dispute.resolve') OR auth.uid()
+    IS NULL`; yoksa `42501`) → **non-zero delta** (OQ-7B-5; 0 → `23514`) → dispute yükle (org+employee **satırdan
+    türetilir** — SI-7) → **precondition fail-closed** (OQ-7B-3: `status in ('resolved','closed') AND
+    resolution='accepted'` değilse `23514`) → **idempotency** (dispute başına mevcut `dispute_adjustment` → no-op) →
+    **insert** (employee = `complainant_id` — OQ-7B-2; tek delta). **Şema (additive, 0020 precedent):**
+    `point_ledger`'a `dispute_id` + **same-org composite FK `(dispute_id, organization_id) → disputes`** (SI-7);
+    event_type CHECK **DROP+ADD (aynı isim)** → `dispute_adjustment` (0003 regresyon korunur);
+    `point_ledger_dispute_adjustment_chk` (dispute_id NOT NULL + reverses_entry_id NULL); **partial unique index**
+    `(dispute_id) where event_type='dispute_adjustment'` (idempotency backstop → 23505). **Audit:** INSERT audit
+    WHEN clause **DROP+CREATE** ile `dispute_adjustment` eklendi; **`task_approved` yine audit'siz** (0020
+    davranışı). **Append-only** korundu (UPDATE/DELETE → `23001`). **D2** ihlali yok (puan ≠ para clawback; para
+    tarafı 7-C); **D9** resolve adımında (0015). Kod: `migrations/0025_dispute_point_adjustment.sql`,
+    `tests/0019_phase7b_dispute_point_adjustment.test.sql`. **Verified 2026-08-09** (`db reset` 0001..0025 + seed;
+    `test db` **Files=19 Tests=737 PASS Failed=0**; 7 senaryo/17 assertion; 0003/0015/0016 yeşil kalır).
+  - **Phase 7 (kalan) — dispute bonus recalculation** [GATED]: **7-C** recalculation (superseded old run + period
+    `approved→calculated` re-approval + yeni run/snapshot + paid-accrual guard OQ-4/D2 → bonus_ledger reversal +
+    yeni accrual) (`0026`/`tests/0020`). *(Phase 6-d `0024`'ü aldığından dispute migration numaraları `0025`/`0026`.)*
     Ara-dilim **0021/0022 authz hardening** → **Phase 6-d'de yapıldı (`0b8b34a`)**. Kalan ara-dilim: **payout/export
     engine** (`payout_exported`/`payout_marked_paid` + `v_finance_*` + BL-3 hard-enforce) + UI/API. Her dilim/faz
     ayrı `implementation authorized` ister. **Kod-yazmadan-önce scope-lock** önerilir (ADR-020). **Henüz yetkili değil.**
@@ -305,10 +321,12 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
 - Acceptance: flag→review (no auto-punish); dispute→adjustment/snapshot; manager final değil.
 - Test: anti-gaming + dispute suite. Risk: false positive. Dep: Phase 6. Difficulty: M.
 - Status: **7-A Anti-Gaming Detection Engine ✅ VERIFIED/DONE** (commit `ffdea06`, 2026-08-09;
-  `run_anti_gaming_scan()` + 4 detect_* kuralı; D5 izolasyon — flag yazar, ledger'a dokunmaz; dual idempotency
-  OQ-2; Files=17/Tests=712/PASS).
-  **Kalan gated:** 7-B dispute point adjustment (`0025`) + 7-C bonus recalculation (`0026`). Ara-dilim
-  0021/0022 authz hardening **Phase 6-d'de yapıldı** (`0b8b34a`). Her dilim ayrı `implementation authorized` ister.
+  `run_anti_gaming_scan()` + 4 detect_* kuralı; D5 izolasyon; dual idempotency OQ-2; Files=17/Tests=712/PASS) +
+  **7-B Dispute Point Adjustment ✅ VERIFIED/DONE** (commit `70ba400`, 2026-08-09;
+  `apply_dispute_point_adjustment()` — resolved+accepted → point_ledger `dispute_adjustment`; fail-closed;
+  idempotent; SI-7; Files=19/Tests=737/PASS).
+  **Kalan gated:** 7-C bonus recalculation + reversal (`0026`/`tests/0020`). Ara-dilim 0021/0022 authz hardening
+  **Phase 6-d'de yapıldı** (`0b8b34a`). Her dilim ayrı `implementation authorized` ister.
 
 ### Phase 8 — Dashboards & UX
 

@@ -3,7 +3,7 @@
 > **Yaşayan durum/todo takip dosyası.** Detaylı "neden/nasıl" için kaynak: `docs/planning/` (00–18),
 > `docs/adr/` (ADR-001…020), `CLAUDE.md`. Çelişki olursa `docs/planning/00_DECISION_LOCK.md` kazanır.
 > Bu dosya **kod değildir**; yalnızca nerede olduğumuzu ve ne yapacağımızı izler.
-> Son güncelleme: 2026-08-09 (Phase 6-d bonus engine authz hardening verified + committed + docs sync).
+> Son güncelleme: 2026-08-09 (Phase 7-B dispute point adjustment verified + committed + docs sync).
 
 ## 0. Yönetişim kuralı (her şeyden önce)
 
@@ -43,10 +43,11 @@ Decision Lock = D1–D12 + AD1–AD10 (22 karar).
 | Phase 6-b bonus_ledger accrual | `post_bonus_accrual()` SECURITY DEFINER server-only: approved period (ADR-006 snapshot-approval boundary — period calculated→approved via `period.manage`) → tek balanced accrual (debit pool=Σfinal / credit accrual per employee) from the completed run's snapshot; idempotent per snapshot; **AD6 gate** (pending_missing_cap_basis → blok); **BL-2** deferred trigger Σaccrual≤pool_ref (AD8-aware); BL-3 payout fazına ertelendi; snapshot immutable (approval period-level); no new permission — catalog 20; Finance raw-excluded (SI-12) | `migrations/0022`, `seed` (Org C auditor), `tests/0016` | ✅ **verified** | commit `a65013d`; 2026-08-09 |
 | Phase 6-d bonus engine authz hardening | `run_bonus_calculation()` + `post_bonus_accrual()` giriş-authz'ı `CREATE OR REPLACE` ile düzeltildi: `current_user not in ('authenticated','anon')` → **`auth.uid() is null`** (SECURITY DEFINER'da `current_user`=owner olduğundan eski kontrol etkisizdi; `period.manage` fiilen zorlanmıyordu). AD1 uyum; **gövde/mantık/imza/grant değişmedi** (aynı OID → grant+comment korundu); no new permission — catalog 20; regresyon yok (0015/0016 trusted bağlamda geçer) | `migrations/0024`, `tests/0018` | ✅ **verified** | commit `0b8b34a`; 2026-08-09 |
 | Phase 7-A anti-gaming detection engine | `run_anti_gaming_scan()` SECURITY DEFINER server-only orkestratör + 4 `detect_*` fonksiyonu (duplicate_task, tiny_task_splitting, same_reviewer_concentration, period_end_spike); `anti_gaming_flags`'a FK-less `bonus_period_id` kolonu + **dual idempotency** partial unique index (OQ-2: task-scoped `related_task_id` / period-scoped `bonus_period_id`); **D5 izolasyon** — yalnız flag yazar, ledger/bonus/comp'a dokunmaz (scan finansal yan-etkisiz); authz `has_role('hr') OR auth.uid() IS NULL`; hardcoded eşikler (OQ-1); no new permission — catalog 20 | `docs/planning/19`, `migrations/0023`, `tests/0017` | ✅ **verified** | commit `ffdea06`; 2026-08-09 |
+| Phase 7-B dispute point adjustment | `apply_dispute_point_adjustment()` SECURITY DEFINER server-only: resolved+accepted dispute → mevcut `point_ledger`'a **tek `dispute_adjustment` delta** (employee=complainant); fail-closed 23514 (accepted değilse); idempotent per dispute (partial unique index); non-zero delta (OQ-7B-5); `point_ledger`'a FK-less olmayan `dispute_id` + **same-org composite FK → disputes** (SI-7); event_type CHECK DROP+ADD (aynı isim, 0020 precedent); audit WHEN clause genişletildi (`dispute_adjustment` eklendi, `task_approved` hariç); authz `has_permission('dispute.resolve') OR auth.uid() IS NULL`; D2/D9 ihlali yok; no new permission — catalog 20 | `migrations/0025`, `tests/0019` | ✅ **verified** | commit `70ba400`; 2026-08-09 |
 
 **Runtime verification (2026-08-09, local dev stack, npx Supabase CLI 2.109.1):** `supabase db reset`
-migrations **0001..0024** + seed temiz uyguladı; `supabase test db` → **Files=18, Tests=720, Result=PASS,
-Failed=0** (`0001`..`0018` ok). `db reset`'teki geçici container flake'leri (`ENOTFOUND`/timeout/"exit 1" —
+migrations **0001..0025** + seed temiz uyguladı; `supabase test db` → **Files=19, Tests=737, Result=PASS,
+Failed=0** (`0001`..`0019` ok). `db reset`'teki geçici container flake'leri (`ENOTFOUND`/timeout/"exit 1" —
 vector/analytics/storage unhealthy) `supabase stop/start` (gerekirse aux servisleri `-x` ile hariç bırakıp
 yalnız Postgres) + retry ile temiz geçti; kod/şema sorunu değil.
 
@@ -251,8 +252,28 @@ idempotency (re-scan 0 yeni flag) + D5 no-side-effect + server-only (non-HR redd
 flag INSERT reddi). Bir **in-slice migration fix:** `run_anti_gaming_scan` authz'ı ilk yazımda `current_user not
 in ('authenticated','anon')` idi — SECURITY DEFINER'da `current_user` = fonksiyon **sahibi** (postgres) olduğundan
 her zaman "trusted" oluyordu; `auth.uid() IS NULL`-tabanlı doğru kontrole çekildi (test #11 kırmızı→yeşil).
-**Hariç (gated):** point_ledger/bonus_ledger yazımı, dispute wiring (7-B/7-C), `organization_settings` eşik kolonu,
-`self_approval_attempt` trail, app/UI/API.
+**Hariç (gated):** point_ledger/bonus_ledger yazımı, dispute wiring (**7-B done `70ba400`**; 7-C gated),
+`organization_settings` eşik kolonu, `self_approval_attempt` trail, app/UI/API.
+
+**Phase 7-B dispute point adjustment invariant'ları (07 §62; D9/D2/ADR-005):** `apply_dispute_point_adjustment(
+p_dispute_id, p_points_delta, p_reason, p_actor)` **SECURITY DEFINER, server-only** — resolved+accepted dispute'un
+puan etkisini mevcut `point_ledger` (0009) container'ına yazar; **yeni tablo/permission yok** (katalog 20). Sıralı
+kontroller: **authz** (`has_permission('dispute.resolve') OR auth.uid() IS NULL` — dispute'u çözen reviewer veya
+güvenilir server/job; yoksa `42501`) → **non-zero delta** (OQ-7B-5; 0 → `23514`) → **dispute yükle** (org+employee
+dispute satırından **türetilir** — cross-org param yok, SI-7) → **precondition fail-closed** (OQ-7B-3: `status in
+('resolved','closed') AND resolution='accepted'` değilse `23514`, satır yazılmaz) → **idempotency** (dispute başına
+mevcut `dispute_adjustment` varsa no-op, id döner) → **insert** (employee = `complainant_id` — OQ-7B-2; tek delta).
+**Şema (additive, 0020 precedent):** `point_ledger`'a `dispute_id uuid` + **same-org composite FK `(dispute_id,
+organization_id) → disputes`** (SI-7); event_type CHECK **DROP+ADD (aynı isim)** → `dispute_adjustment` (0003
+regresyon korunur); `point_ledger_dispute_adjustment_chk` (dispute_id NOT NULL + reverses_entry_id NULL); **partial
+unique index** `(dispute_id) where event_type='dispute_adjustment'` (idempotency backstop → 23505). **Audit:** INSERT
+audit WHEN clause **DROP+CREATE** ile `dispute_adjustment` eklendi (spec §62 "+ audit"); **`task_approved` yine
+audit'siz** (0020 davranışı korundu). **Append-only** korundu (prevent_mutation; UPDATE/DELETE → `23001`). **D2
+ihlali yok** (puan düzeltmesi = para/prim clawback değil; para tarafı 7-C'de gated); **D9** resolve adımında (0015)
+enforce, 7-B yalnız accepted sonrası uygular. **Verified (`tests/0019`):** pozitif (tek satır/delta/employee) +
+rejected/under_review/zero-delta `23514` + idempotency (no-op + 23505) + dispute_id'siz `23514` + invalid event_type
+`23514` (0003 regresyon) + audit satırı + append-only `23001` + cross-tenant FK `23503` + employee `42501`. OQ-7B-1..5
+kilitli. **Hariç (gated):** bonus_ledger reversal + recalculation (7-C, `0026`), dispute_type routing, app/UI/API.
 
 **✅ Güvenlik gözlemi ÇÖZÜLDÜ (Phase 6-d, commit `0b8b34a`):** `run_bonus_calculation` (0021) + `post_bonus_accrual`
 (0022) SECURITY DEFINER'da etkisiz olan `current_user not in ('authenticated','anon')` authz'ı **`auth.uid() IS
@@ -282,14 +303,15 @@ scoring/bonus/export/notification engine'leri, production deploy. **Doğrulama:*
 deprecated-middleware uyarısı yok).
 
 **✅ Doküman senkron güncel (2026-08-09):** `supabase/README.md`, `docs/planning/12`, `docs/planning/19`, bu dosya —
-0001..0024 (3A/3B/comp/bonus-P/P/bonus-C/E/bonus-C/R/A/S/bonus-ledger/disputes/anti-gaming/notifications/exports,
+0001..0025 (3A/3B/comp/bonus-P/P/bonus-C/E/bonus-C/R/A/S/bonus-ledger/disputes/anti-gaming/notifications/exports,
 **Phase 4 task/review core** `148667e`, **Phase 5 scoring engine** `aa47e40`, **Phase 6 bonus engine** `0c54fba`,
 **Phase 6-b bonus_ledger accrual** `a65013d`, **Phase 6-d bonus engine authz hardening** `0b8b34a`,
-**Phase 7-A anti-gaming detection engine** `ffdea06`) verified (**Files=18/Tests=720/PASS**), **Phase 3.5 app
-scaffold** (`a8b05ac`) durumunu yansıtıyor. **Phase 3 DB foundation + app scaffold + Phase 4 core + Phase 5 scoring +
-Phase 6 bonus calculation engine + Phase 6-b bonus_ledger accrual + Phase 6-d authz hardening + Phase 7-A anti-gaming
-detection engine tamamlandı; dispute post-decision (7-B/7-C) + payout/export engine gated.** `docs/planning/18`
-Phase 3B DB planı olarak **korunur** (dokunulmadı); `docs/planning/19` Phase 7 planı (7-A done, 7-B/7-C gated;
+**Phase 7-A anti-gaming detection engine** `ffdea06`, **Phase 7-B dispute point adjustment** `70ba400`) verified
+(**Files=19/Tests=737/PASS**), **Phase 3.5 app scaffold** (`a8b05ac`) durumunu yansıtıyor. **Phase 3 DB foundation +
+app scaffold + Phase 4 core + Phase 5 scoring + Phase 6 bonus calculation engine + Phase 6-b bonus_ledger accrual +
+Phase 6-d authz hardening + Phase 7-A anti-gaming detection engine + Phase 7-B dispute point adjustment tamamlandı;
+dispute bonus recalculation (7-C) + payout/export engine gated.** `docs/planning/18`
+Phase 3B DB planı olarak **korunur** (dokunulmadı); `docs/planning/19` Phase 7 planı (7-A + 7-B done, 7-C gated;
 migration numaraları 6-d sonrası **7-B→`0025` / 7-C→`0026`**). Ayrıca `docs/planning/14` idempotency + markdownlint
 sync `dae4c6b`; `docs/adr/ADR-020` markdownlint `53d90de`; **docs hijyen (ADR-014 + Decision Lock) `17a964d`,
 (ADR-006 + ADR-017) `98c0b59`, (doc-07 + doc-08) `91b6ce9`** ile tamamlandı.
@@ -343,7 +365,7 @@ Kural: güvenlik temeli (RLS/ledger) bitmeden feature fazı ilerlemez.
 - [x] **Phase 6-d — Bonus Engine Authz Hardening** ✅ (commit `0b8b34a`, verified 2026-08-09; `run_bonus_calculation` + `post_bonus_accrual` giriş-authz'ı `current_user not in (...)` → **`auth.uid() IS NULL`** — SECURITY DEFINER'da `current_user`=owner olduğundan eski kontrol etkisizdi; AD1 uyum; `CREATE OR REPLACE`, gövde/mantık/imza/grant değişmedi, aynı OID; catalog 20; no seed; regresyon yok (0015/0016 trusted bağlamda geçer); Files=18/Tests=720). 0021/0022/0023 artık aynı doğru deseni kullanıyor.
 - [~] **Phase 7 — Anti-Gaming & Disputes** (partial — 7-A done; 7-B/7-C gated):
   - [x] **Phase 7-A — Anti-Gaming Detection Engine** ✅ (commit `ffdea06`, verified 2026-08-09; `run_anti_gaming_scan()` SECURITY DEFINER server-only orkestratör + 4 `detect_*` kuralı (duplicate_task/tiny_task_splitting/same_reviewer_concentration/period_end_spike); FK-less `bonus_period_id` + dual idempotency partial unique index (OQ-2); D5 izolasyon — yalnız flag yazar, ledger'a dokunmaz, scan finansal yan-etkisiz; authz `has_role('hr') OR auth.uid() IS NULL`; hardcoded eşikler OQ-1; no auto-punish/no auto-dispute — human-in-loop; katalog 20; Files=17/Tests=712).
-  - [ ] **Phase 7-B — Dispute Point Adjustment** ⛔ gated (`0025`: point_ledger `dispute_adjustment` — resolved+accepted dispute → tek delta satırı; append-only korunur; audit). *(6-d `0024`'ü aldığından `0024`→`0025` kaydı.)*
+  - [x] **Phase 7-B — Dispute Point Adjustment** ✅ (commit `70ba400`, verified 2026-08-09; `apply_dispute_point_adjustment()` SECURITY DEFINER server-only; resolved+accepted dispute → tek `point_ledger dispute_adjustment` delta (employee=complainant); fail-closed 23514; idempotent per dispute (partial unique index + 23505 backstop); `dispute_id` + same-org composite FK → disputes (SI-7); event_type CHECK DROP+ADD; audit WHEN clause genişletildi (task_approved hariç); authz `dispute.resolve OR auth.uid() IS NULL`; D2/D9 ihlali yok; append-only korundu; katalog 20; Files=19/Tests=737).
   - [ ] **Phase 7-C — Dispute Bonus Recalculation** ⛔ gated (`0026`: superseded old run + period `approved→calculated` re-approval + yeni run/snapshot + paid-accrual guard (OQ-4/D2) → bonus_ledger reversal + yeni accrual).
 - [ ] **Phase 8 — Dashboards & UX**: 5 rol ekranı + 2 leaderboard görünümü; her puan/prim açıklanabilir; estimated/final ayrımı.
 - [ ] **Phase 9 — Testing & Security**: tam suite; cross-tenant + self-approval bloklayıcı; AD1–AD10 testleri; audit coverage.
@@ -365,25 +387,27 @@ Kural: güvenlik temeli (RLS/ledger) bitmeden feature fazı ilerlemez.
 
 ## 5. Önerilen ilk adım
 
-Phase 6-d bonus engine authz hardening **verified + committed + synced** (commit `0b8b34a`; db reset 0001..0024 + seed,
-test db **Files=18/Tests=720/PASS/Failed=0**). `run_bonus_calculation` (0021) + `post_bonus_accrual` (0022) giriş-authz'ı
-`CREATE OR REPLACE` ile — gövde/mantık/imza/grant birebir korunarak — `current_user not in ('authenticated','anon')` →
-**`auth.uid() IS NULL`** doğru sinyaline çekildi (SECURITY DEFINER'da `current_user`=owner olduğundan eski kontrol
-etkisizdi; `period.manage` fiilen zorlanmıyordu). AD1 uyum; tek yönlü sıkılaştırma (authenticated + period.manage'siz →
-`42501`); regresyon yok; 0021/0022/0023 artık aynı deseni kullanıyor. Önceki durum korunur: Phase 3 DB foundation,
-Phase 3.5 app scaffold (`a8b05ac`), Phase 4 (`148667e`), Phase 5 (`aa47e40`), Phase 6 (`0c54fba`), Phase 6-b
-(`a65013d`), Phase 7-A anti-gaming detection (`ffdea06`) — hepsi tamam.
+Phase 7-B dispute point adjustment **verified + committed + synced** (commit `70ba400`; db reset 0001..0025 + seed,
+test db **Files=19/Tests=737/PASS/Failed=0**). `apply_dispute_point_adjustment()` SECURITY DEFINER server-only:
+resolved+accepted dispute → mevcut `point_ledger`'a **tek `dispute_adjustment` delta** (employee=complainant); fail-closed
+`23514` (accepted değilse); idempotent per dispute (partial unique index + 23505 backstop); `point_ledger`'a
+`dispute_id` + **same-org composite FK → disputes** (SI-7); event_type CHECK DROP+ADD (0020 precedent); audit WHEN clause genişletildi
+(`dispute_adjustment` eklendi, `task_approved` hariç); authz `dispute.resolve OR auth.uid() IS NULL`; append-only korundu;
+D2/D9 ihlali yok; katalog 20. Önceki durum korunur: Phase 3 DB foundation, Phase 3.5 app scaffold (`a8b05ac`), Phase 4
+(`148667e`), Phase 5 (`aa47e40`), Phase 6 (`0c54fba`), Phase 6-b (`a65013d`), Phase 6-d (`0b8b34a`), Phase 7-A (`ffdea06`)
+— hepsi tamam.
 
-**Sıradaki adım = Phase 7-B — Dispute Point Adjustment** (`0025`: point_ledger `dispute_adjustment` — resolved+accepted
-dispute → tek delta earning/adjustment satırı; append-only korunur; audit; sonra **7-C** (`0026`) recalculation +
-bonus_ledger reversal — ADR-006/017, D2/OQ-4 paid-accrual guard). *(6-d `0024`'ü aldı → dispute 7-B/7-C `0025`/`0026`'ya
-kaydı; bkz. `docs/planning/19` §9.)* Diğer ara-dilim: **payout/export engine** (`payout_exported`/`payout_marked_paid` +
-`v_finance_*` + BL-3 hard-enforce). **Kod-yazmadan-önce scope-lock** önerilir; ayrı faz-sınırlı yetki gerektirir (ADR-020).
+**Sıradaki adım = Phase 7-C — Dispute Bonus Recalculation + Reversal** (`0026`/`tests/0020`: etkilenen period'un completed
+run'ını `superseded` yap + period `approved→calculated` (re-approval zorunlu, `validate_bonus_period_transition` ALTER) +
+yeni run/snapshot (eski snapshot korunur — ADR-006) + **paid-accrual guard** (OQ-4: ödenmişse raise, clawback gated — D2)
+→ `bonus_ledger` reversal + yeni accrual). **En yüksek-riskli finansal dilim; worked-example test zorunlu.** Alternatif
+ara-dilim: **payout/export engine** (`payout_exported`/`payout_marked_paid` + `v_finance_*` + BL-3 hard-enforce).
+**Kod-yazmadan-önce scope-lock** önerilir; ayrı faz-sınırlı yetki gerektirir (ADR-020).
 (Ops./ertelenen: **Phase 5-b** manual override/adjustment; submit/review **Server Actions + UI**.)
 
 **Henüz yetkili değil.** Başlatmak için (önce scope-lock önerilir) yetki cümlesi (örnek):
 
-`implementation authorized only for Phase 7-B — dispute point adjustment`
+`implementation authorized only for Phase 7-C — dispute bonus recalculation`
 (veya ara-dilim: `implementation authorized only for Phase 6-c — payout/export engine`)
 
 > Bu cümle gelene kadar hiçbir kod/migration/test yazılmaz; sonraki her faz/dilim ayrı, faz-sınırlı yetki ister (ADR-020).
