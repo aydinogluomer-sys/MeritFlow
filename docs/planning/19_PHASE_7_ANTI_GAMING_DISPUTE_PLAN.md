@@ -15,7 +15,12 @@
   ADR-020 authorization (`implementation authorized only for Phase 7-X — …`). Build order 7-A → 7-B → 7-C
   (7-C is the highest-risk, financial one; last).
 - As of this document: **only 7-A is authorized** (`… Phase 7-A — anti-gaming detection engine`). 7-B/7-C **gated**.
-
+- **Update (2026-08-09):** **7-A is DONE** (commit `ffdea06`; `0023`/`0017`). An out-of-band **Phase 6-d bonus
+  engine authz hardening** slice was then implemented (commit `0b8b34a`) and **took migration `0024`** +
+  test `0018`. **Consequence — the dispute migration/test numbers below shift by one:** 7-B `0024`/`0018` →
+  **`0025`/`0019`**, 7-C `0025`/`0019` → **`0026`/`0020`** (see §3 and §9). Current tip: migrations `0001..0024`,
+  suites `0001..0018` (Files=18/Tests=720). 7-B/7-C remain **gated**.
+  
 ## 2. Purpose
 
 Phase 3 delivered `anti_gaming_flags` (0016) and `disputes`/`dispute_events` (0015) as **containers only** —
@@ -27,9 +32,12 @@ correction chain (7-B/7-C).
 
 | Slice | Scope | New migration / test |
 | --- | --- | --- |
-| **7-A** | Anti-gaming detection engine (4 deterministic rules → flags); isolated, no financial wiring | `0023` / `tests/0017` |
-| **7-B** | Dispute post-decision **points**: `point_ledger dispute_adjustment` | `0024` / `tests/0018` |
-| **7-C** | Dispute post-decision **money**: recalculation (new run+snapshot) + `bonus_ledger` reversal | `0025` / `tests/0019` |
+| **7-A** | Anti-gaming detection engine (4 deterministic rules → flags); isolated, no financial wiring | `0023` / `tests/0017` — **DONE** (`ffdea06`) |
+| **7-B** | Dispute post-decision **points**: `point_ledger dispute_adjustment` | `0025` / `tests/0019` (was `0024`/`0018`) |
+| **7-C** | Dispute post-decision **money**: recalculation (new run+snapshot) + `bonus_ledger` reversal | `0026` / `tests/0020` (was `0025`/`0019`) |
+
+> **Numbering note:** `0024`/`tests/0018` were consumed by the out-of-band **Phase 6-d authz hardening** slice
+> (commit `0b8b34a`), so the dispute slices shift up by one.
 
 ## 4. Locked OQ decisions (user, 2026-08-09)
 
@@ -54,18 +62,22 @@ correction chain (7-B/7-C).
 - **Ek karar — period status on recalc (7-C):** `recalculate_bonus_after_dispute()` moves the period status
   **`approved → calculated`** (re-approval required before re-accrual); this extra transition is added to the
   `0011` bonus-period state machine by an **ALTER (CREATE OR REPLACE `validate_bonus_period_transition`)** in
-  the `0025` migration.
+  the `0026` migration (7-C).
 
 ## 5. Detailed design
 
-### 5.1 Slice 7-A — anti-gaming detection (migration `0023`) — AUTHORIZED
+### 5.1 Slice 7-A — anti-gaming detection (migration `0023`) — DONE (`ffdea06`)
+
 **New (all SECURITY DEFINER, server-only, `set search_path=''`):**
+
 - `run_anti_gaming_scan(p_organization_id uuid, p_bonus_period_id uuid default null)` — orchestrator: runs the
   4 detect functions and inserts flags **idempotently** (`where not exists` guard + the unique indexes as a
   backstop). Period-scoped rules require `p_bonus_period_id`.
+
 - `detect_duplicate_task(p_org)` — same `assignee_id` + same normalized `lower(btrim(title))` within a **24h**
   window, ≥ 2 → flag `duplicate_task` on the later task (`related_task_id` = later task; `evidence` records the
   original task + title). Constant: window = 24h.
+
 - `detect_tiny_task_splitting(p_org)` — a task whose assignee has ≥ **M** tasks with `base_points < THRESHOLD`
   in the preceding **1h** → flag `tiny_task_splitting` (`related_task_id` = the triggering task). Constants:
   `THRESHOLD`, `M`, window = 1h.
@@ -89,14 +101,18 @@ and **write only `anti_gaming_flags`** — no write path/FK/trigger to `point_le
 threshold columns; `self_approval_attempt` trail; app/UI/API. **Catalog stays 20** (scan is server/job — no
 new permission).
 
-### 5.2 Slice 7-B — dispute point adjustment (migration `0024`) — GATED
+### 5.2 Slice 7-B — dispute point adjustment
+
+(migration `0025`, was `0024`) — GATED
+
 - Widen `point_ledger.event_type` CHECK (**DROP+ADD**) to add `'dispute_adjustment'` (append-only preserved —
   only widens the allowed set); widen the conditional-audit trigger WHEN clause to include it.
 - `apply_dispute_point_adjustment(p_dispute_id, p_points_delta, p_reason, p_actor)` SECURITY DEFINER,
   server-only — requires the dispute `resolved` + `resolution='accepted'`; writes **one** `dispute_adjustment`
   `point_ledger` row (delta); **idempotent** per dispute; audited. rejected/other → no row.
 
-### 5.3 Slice 7-C — dispute bonus recalculation + reversal (migration `0025`) — GATED
+### 5.3 Slice 7-C — dispute bonus recalculation + reversal (migration `0026`, was `0025`) — GATED
+
 - `recalculate_bonus_after_dispute(p_dispute_id, …)` SECURITY DEFINER, server-only, **explicit HR/server call**
   (OQ-6):
   1. mark the affected period's completed run **`superseded`** (0013 machine);
@@ -148,8 +164,8 @@ run on a human-resolved (accepted) dispute via an explicit call.
 ## 9. Migration + test titles
 
 - `migrations/0023_anti_gaming_detection.sql` + `tests/0017_phase7a_anti_gaming_detection.test.sql` (7-A)
-- `migrations/0024_dispute_point_adjustment.sql` + `tests/0018_phase7b_dispute_point_adjustment.test.sql` (7-B)
-- `migrations/0025_dispute_bonus_recalculation.sql` + `tests/0019_phase7c_dispute_bonus_recalc.test.sql` (7-C)
+- `migrations/0025_dispute_point_adjustment.sql` + `tests/0019_phase7b_dispute_point_adjustment.test.sql` (7-B)
+- `migrations/0026_dispute_bonus_recalculation.sql` + `tests/0020_phase7c_dispute_bonus_recalc.test.sql` (7-C)
 
 ## 10. Risks
 

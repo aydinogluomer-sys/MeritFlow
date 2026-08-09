@@ -1,11 +1,12 @@
 # MeritFlow — Supabase (Database Foundation: Phase 3A–3B + comp + bonus periods/pools + components/eligibility + calc runs/allocations/snapshots + ledger + disputes + anti-gaming + notifications + exports)
 
-This directory is the **database foundation**. It currently implements seventeen verified
+This directory is the **database foundation**. It currently implements eighteen verified
 slices — the twelve Phase 3 DB slices (**Phase 3 DB foundation complete**), the
 **Phase 4 task/review core** (`tasks` + `task_events` + `task_reviews`), the
 **Phase 5 scoring engine** (approve → `point_ledger task_approved`), the
 **Phase 6 bonus engine** (`run_bonus_calculation()` → allocations + immutable snapshot), the
-**Phase 6-b bonus_ledger accrual** (`post_bonus_accrual()` → double-entry accrual from an approved snapshot), and the
+**Phase 6-b bonus_ledger accrual** (`post_bonus_accrual()` → double-entry accrual from an approved snapshot), the
+**Phase 6-d bonus engine authz hardening** (`run_bonus_calculation`/`post_bonus_accrual` → `auth.uid() IS NULL` trusted-context authz), and the
 **Phase 7-A anti-gaming detection engine** (`run_anti_gaming_scan()` → 4 deterministic rules → `anti_gaming_flags`, ledger-isolated):
 
 - **Phase 3A — Database Foundation & RBAC** (`17_PHASE_3A_...md`): 11 foundation/RBAC
@@ -129,6 +130,16 @@ slices — the twelve Phase 3 DB slices (**Phase 3 DB foundation complete**), th
   `Σdebit = Σcredit` (0014); a new **`DEFERRABLE INITIALLY DEFERRED` trigger** enforces **BL-2** `Σaccrual ≤
   pool_ref` (AD8-aware); **BL-3** (payout ≤ accrual) is deferred to the payout phase (no producer here). Finance +
   Auditor raw read; server-only — pgTAP (`0016`).
+- **Phase 6-d — bonus engine authz hardening** (`0021`/`0022`, AD1): both engines gated their entry on
+  `has_permission('period.manage') OR current_user not in ('authenticated','anon')`, but inside a SECURITY DEFINER
+  function `current_user` is the function OWNER (not the caller), so that clause was **always true** and
+  `period.manage` was never actually enforced. `0024_authz_hardening.sql` **CREATE OR REPLACEs** both functions with
+  **byte-identical bodies except the single authz clause each** — `current_user not in (...)` → **`auth.uid() IS
+  NULL`** (the trusted server/job signal used by 0023; an authenticated user always carries a JWT `sub`). Same
+  signatures → existing GRANTs and COMMENTs are preserved (same OID); **no logic/formula/ledger change, no new
+  table/permission (catalog stays 20), no seed change, 0023 untouched**; idempotent (re-runs cleanly on `db reset`).
+  Behaviour is a **one-way tightening**: an authenticated caller lacking `period.manage` now gets `42501` (no
+  app/client calls these server-only functions, so nothing breaks) — pgTAP (`0018`).
 - **Phase 7-A — anti-gaming detection engine** (`08`, plan `19`; D5/OQ-1..OQ-3): the **deterministic detection
   engine** that produces flags into the existing `anti_gaming_flags` (0016) container (no new table/permission —
   catalog 20). `run_anti_gaming_scan(organization_id, bonus_period_id?)` (SECURITY DEFINER, server-only)
@@ -148,10 +159,11 @@ slices — the twelve Phase 3 DB slices (**Phase 3 DB foundation complete**), th
   `current_user` is unreliable inside SECURITY DEFINER, it is the owner); non-HR authenticated gets `42501`;
   `detect_*` are granted to `service_role` only — pgTAP (`0017`).
 
-Migrations `0001..0023` + seed apply cleanly; blocking pgTAP suites (`0001`..`0017`) are green (see
+Migrations `0001..0024` + seed apply cleanly; blocking pgTAP suites (`0001`..`0018`) are green (see
 "Verification"). **Phase 3 DB foundation + Phase 4/5 + the Phase 6 bonus calculation engine + the Phase 6-b
-`bonus_ledger` accrual + the Phase 7-A anti-gaming detection engine are done; the dispute post-decision wiring
-(Phase 7-B/7-C), the payout/export engine, and everything downstream (app UI/API) remain gated** (see "Out of scope").
+`bonus_ledger` accrual + the Phase 6-d authz hardening + the Phase 7-A anti-gaming detection engine are done; the
+dispute post-decision wiring (Phase 7-B/7-C), the payout/export engine, and everything downstream (app UI/API)
+remain gated** (see "Out of scope").
 
 ## ⚠️ Environment rule (non-negotiable — ADR-014 / CLAUDE.md)
 
@@ -266,6 +278,14 @@ supabase/
                                           ONLY flags (no ledger/bonus/comp write/FK), scan has no financial side
                                           effect; authz has_role('hr') OR auth.uid() IS NULL; detect_* service_role
                                           only; no new permission (catalog 20)
+    0024_authz_hardening.sql              bonus engine authz hardening (Phase 6-d) — CREATE OR REPLACE
+                                          run_bonus_calculation (0021) + post_bonus_accrual (0022) with byte-
+                                          identical bodies except the authz clause: current_user not in
+                                          ('authenticated','anon') -> auth.uid() is null (current_user is the
+                                          owner inside SECURITY DEFINER, so the old check never enforced
+                                          period.manage). Same signatures -> GRANTs/COMMENTs preserved; no logic/
+                                          formula/ledger change; no new permission (catalog 20); 0023 untouched;
+                                          idempotent
   seed/seed_test_tenants.sql              2 tenants, RBAC catalog, teams, support grants,
                                           + Phase 3B (scoring/versions, point_ledger) + comp + bonus fixtures
                                           (periods/pools + components/eligibility + calc run/allocations/snapshot
@@ -295,6 +315,7 @@ supabase/
     0015_phase6_bonus_engine.test.sql     blocking pgTAP — bonus engine worked example (05 §8)/idempotency/cap+D6 residual/AD8 top-up/T_org=0/Σadj=0/single-eligible/AD6 pending/SI-13/no-bonus_ledger/Finance-excluded (Phase 6)
     0016_phase6b_bonus_ledger_accrual.test.sql blocking pgTAP — accrual worked example (05 §8)/approval boundary/idempotency/BL-2 Σaccrual≤pool_ref/AD6 gate/append-only/Finance+Auditor RLS (Phase 6-b)
     0017_phase7a_anti_gaming_detection.test.sql blocking pgTAP — 4 detect_* rules pos/neg + dual idempotency (re-scan adds no flag)/D5 no-side-effect (scan leaves point_ledger+bonus_ledger counts unchanged)/server-only (non-HR 42501, detect_* not callable, direct flag INSERT rejected) (Phase 7-A)
+    0018_phase6d_authz_hardening.test.sql blocking pgTAP — run_bonus_calculation + post_bonus_accrual authz: authenticated w/o period.manage (Finance c4) -> 42501; authenticated w/ period.manage (HR c3) -> authz passes -> 23503; trusted context (auth.uid() null) -> authz passes -> 23503 (Phase 6-d)
 ```
 
 ## Apply & test (local)
@@ -303,8 +324,8 @@ Requires Docker + the Supabase CLI. From the repo root:
 
 ```bash
 supabase start            # boots local dev stack (Docker)
-supabase db reset         # applies migrations 0001..0023 then seed
-supabase test db          # runs the pgTAP suites in tests/ (0001..0017)
+supabase db reset         # applies migrations 0001..0024 then seed
+supabase test db          # runs the pgTAP suites in tests/ (0001..0018)
 ```
 
 If the `supabase` binary is not on PATH (e.g. a fresh install not yet picked up), the project-local
@@ -487,6 +508,21 @@ re-runnable (on-conflict guards).
 > **test-only** fixes (org-scope the privileged Section-A queries; `::bigint` cast on a `Σaccrual`); no
 > migration/engine defect.
 >
+> **Phase 6-d bonus engine authz hardening: VERIFIED / DONE** (2026-08-09, npx Supabase CLI **2.109.1**; commit
+> `0b8b34a`). `db reset` applied migrations **0001..0024** + seed cleanly; `test db` → **Files=18, Tests=720,
+> Result=PASS, Failed=0** (`0001`..`0018` ok). Invariants proven (AD1): both `run_bonus_calculation` (0021) and
+> `post_bonus_accrual` (0022) had an entry-authz whose "trusted context" clause was `current_user not in
+> ('authenticated','anon')` — **ineffective inside a SECURITY DEFINER** (there `current_user` is the owner, so the
+> clause is always true and `period.manage` was never enforced). `0024` **CREATE OR REPLACEs** both with
+> byte-identical bodies except that clause → **`auth.uid() IS NULL`**. An **authenticated caller without
+> `period.manage` (Finance c4) is now rejected `42501`**; an **authenticated caller with `period.manage` (HR c3)**
+> passes authz and then hits `23503` on a bogus period (proving the privileged path is admitted); a **trusted
+> context (`auth.uid()` null)** likewise passes authz → `23503` — asserted for **both** functions (the authz check
+> runs before any lookup, so bogus UUIDs suffice). **No regression:** the 0015/0016 engine calls all run in a
+> trusted context and stay green. Same signatures → GRANTs/COMMENTs preserved; **no logic/ledger change, no new
+> permission (catalog 20), no seed change, 0023 untouched**; the migration is idempotent (`CREATE OR REPLACE`).
+> Consequence: with 6-d taking `0024`, the planned dispute migrations shift to **7-B `0025` / 7-C `0026`** (doc-19 §9).
+>
 > **Phase 7-A anti-gaming detection engine: VERIFIED / DONE** (2026-08-09, npx Supabase CLI **2.109.1**; commit
 > `ffdea06`). `db reset` applied migrations **0001..0023** + seed cleanly; `test db` → **Files=17, Tests=712,
 > Result=PASS, Failed=0** (`0001`..`0017` ok). Invariants proven (08; D5/OQ-1..OQ-3): `run_anti_gaming_scan()`
@@ -501,17 +537,18 @@ re-runnable (on-conflict guards).
 > (`42501`), the `detect_*` helpers are not callable by `authenticated` (granted to `service_role` only), and a
 > direct client `anti_gaming_flags` INSERT stays rejected (0016 posture). One in-slice **migration fix**: the scan
 > authz was `current_user not in (...)`, which is ineffective inside a SECURITY DEFINER (there `current_user` is
-> the owner) — corrected to `has_role('hr') OR auth.uid() IS NULL`. **Note (out of 7-A scope, committed):**
-> `run_bonus_calculation` (0021) and `post_bonus_accrual` (0022) carry the **same** latent `current_user` authz
-> weakness; no app/client calls them today (no exploit surface), and a future hardening slice will move them to the
-> `auth.uid() IS NULL` check.
+> the owner) — corrected to `has_role('hr') OR auth.uid() IS NULL`. **Note (now resolved):**
+> `run_bonus_calculation` (0021) and `post_bonus_accrual` (0022) carried the **same** latent `current_user` authz
+> weakness — **fixed in Phase 6-d (`0024`, commit `0b8b34a`)**; all three (0021/0022/0023) now use the
+> `auth.uid() IS NULL` trusted-context check.
 >
 > **Phase 3 DB foundation is COMPLETE** (12 migrations `0001..0018` / 12 suites, Tests=523); the **Phase 4 task/
 > review core** (`0019`/`0013`), **Phase 5 scoring engine** (`0020`/`0014`), **Phase 6 bonus calculation
-> engine** (`0021`/`0015`), **Phase 6-b bonus_ledger accrual** (`0022`/`0016`) and the **Phase 7-A anti-gaming
-> detection engine** (`0023`/`0017`) are also done (**Files=17, Tests=712** total). **The dispute post-decision
-> wiring (Phase 7-B/7-C), the payout/export engine, and later phases (app UI/API) remain gated**
-> (ADR-020). **Never run any of this against a production project.**
+> engine** (`0021`/`0015`), **Phase 6-b bonus_ledger accrual** (`0022`/`0016`), the **Phase 6-d bonus engine authz
+> hardening** (`0024`/`0018`) and the **Phase 7-A anti-gaming detection engine** (`0023`/`0017`) are also done
+> (**Files=18, Tests=720** total). **The dispute post-decision wiring (Phase 7-B `0025` / 7-C `0026`), the payout/
+> export engine, and later phases (app UI/API) remain gated** (ADR-020). **Never run any of this against a
+> production project.**
 
 ### Prerequisites
 
@@ -527,13 +564,13 @@ re-runnable (on-conflict guards).
 
 ```bash
 supabase start        # 1. boot local stack; note the printed local URLs + dev-default keys
-supabase db reset     # 2. apply 0001..0023 + seed (expect clean apply)
+supabase db reset     # 2. apply 0001..0024 + seed (expect clean apply)
 supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
 ```
 
 ### Expected pass criteria
 
-- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=17, Tests=712, PASS**). Blocking.
+- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=18, Tests=720, PASS**). Blocking.
 - [ ] Green coverage: cross-tenant isolation (SI-7), non-recursive memberships read (§7A), support
   active-vs-expired grant (D4), append-only audit + append-only `point_ledger` (SI-2), helper
   correctness, scoring-policy `policy.manage` gating + published-version immutability (AD7), point_ledger
@@ -575,7 +612,10 @@ supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
   positive-on-anomaly / negative-on-clean; dual idempotency OQ-2 — re-scan adds no flag; D5 no-side-effect —
   scan leaves point_ledger + bonus_ledger counts unchanged, flag isolated from all financial tables; server-only
   — non-HR 42501, detect_* service_role-only, direct flag INSERT rejected; authz `has_role('hr') OR auth.uid() IS
-  NULL`; hardcoded thresholds OQ-1; catalog stays 20 — D5/OQ-1/OQ-2/OQ-3).
+  NULL`; hardcoded thresholds OQ-1; catalog stays 20 — D5/OQ-1/OQ-2/OQ-3), and **bonus engine authz hardening**
+  (`run_bonus_calculation` + `post_bonus_accrual`: authenticated without period.manage -> 42501; authenticated with
+  period.manage -> authz passes -> 23503; trusted context auth.uid() null -> authz passes -> 23503; no regression —
+  0015/0016 stay green — AD1).
 - [ ] `supabase db reset` then re-running the suite is reproducible (deterministic seed).
 
 ### Failure triage
@@ -734,15 +774,18 @@ authorization (ADR-020).
 > after HR approves the period (`calculated→approved`, `period.manage`), `post_bonus_accrual()` posts one balanced
 > double-entry accrual (debit pool = Σfinal / credit accrual per employee) from the approved snapshot — idempotent;
 > AD6 gate; **BL-2** `Σaccrual ≤ pool_ref` (deferred trigger); the snapshot stays immutable and no new permission
-> is added. And the **Phase 7-A anti-gaming detection engine** (`0023`/`0017`, commit `ffdea06`) is **done**:
+> is added. The **Phase 7-A anti-gaming detection engine** (`0023`/`0017`, commit `ffdea06`) is **done**:
 > `run_anti_gaming_scan()` + four `detect_*` rules produce flags into `anti_gaming_flags` with dual idempotency
 > (OQ-2) and **D5 isolation** (a scan writes only flags — no ledger/bonus/comp write, no financial side effect);
-> authz `has_role('hr') OR auth.uid() IS NULL`; no new permission. `db reset` `0001..0023` + seed; `test db` →
-> **Files=17, Tests=712, PASS, Failed=0**. **Next major step:** **Phase 7-B — dispute point adjustment** (point_ledger
-> `dispute_adjustment`, `0024`) → **7-C** recalculation + bonus_ledger reversal (`0025`); or the intermediate
-> **0021/0022 authz hardening** (move their ineffective `current_user` check to `auth.uid() IS NULL`); or the
-> **payout/export engine** (`payout_exported`/`payout_marked_paid` + `v_finance_*` + BL-3). A scope-lock is
-> recommended. **Not authorized yet.**
+> authz `has_role('hr') OR auth.uid() IS NULL`; no new permission. And the **Phase 6-d bonus engine authz
+> hardening** (`0024`/`0018`, commit `0b8b34a`) is **done**: `run_bonus_calculation` + `post_bonus_accrual` had an
+> ineffective `current_user`-based "trusted context" check inside a SECURITY DEFINER (current_user = owner), so
+> `period.manage` was never enforced — `0024` CREATE OR REPLACEs both with byte-identical bodies except that clause
+> → `auth.uid() IS NULL`; a one-way tightening (authenticated without `period.manage` now gets `42501`), no logic
+> change, catalog stays 20, 0023 untouched. `db reset` `0001..0024` + seed; `test db` → **Files=18, Tests=720,
+> PASS, Failed=0**. **Next major step:** **Phase 7-B — dispute point adjustment** (point_ledger `dispute_adjustment`,
+> now `0025`) → **7-C** recalculation + bonus_ledger reversal (`0026`); or the **payout/export engine**
+> (`payout_exported`/`payout_marked_paid` + `v_finance_*` + BL-3). A scope-lock is recommended. **Not authorized yet.**
 
 ## Notes for reviewers
 

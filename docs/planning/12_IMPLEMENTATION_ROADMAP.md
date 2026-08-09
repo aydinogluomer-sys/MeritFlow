@@ -231,6 +231,21 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
     **Verified 2026-08-09** (`db reset` 0001..0022 + seed; `test db` **Files=16 Tests=690 PASS Failed=0**; worked
     example accrual birebir). İki in-slice **test-only** fix (Section A org-scope + `::bigint` cast).
     (Ayrıca docs hijyen: `17a964d` (ADR-014+Decision Lock), `98c0b59` (ADR-006+017) — repo temizliği.)
+  - **Phase 6-d — Bonus Engine Authz Hardening** [VERIFIED/DONE] (commit `0b8b34a`, 2026-08-09):
+    `run_bonus_calculation` (0021) + `post_bonus_accrual` (0022) giriş-authz'ı
+    `has_permission('period.manage') OR current_user not in ('authenticated','anon')` idi; **SECURITY DEFINER
+    içinde `current_user` = fonksiyon sahibi** (postgres, çağıran değil) → ikinci clause her zaman TRUE →
+    `period.manage` **fiilen hiç zorlanmıyordu** (latent authz zayıflığı). `0024_authz_hardening.sql` her iki
+    fonksiyonu **`CREATE OR REPLACE` ile, gövde/mantık/formül/ledger/imza birebir korunarak** yeniden tanımlar;
+    **yalnızca** authz clause'u `current_user not in (...)` → **`auth.uid() IS NULL`** olur (0023'teki doğru
+    "trusted server/job = authenticated JWT identity yok" sinyali). İmza aynı → **mevcut GRANT + COMMENT korunur**
+    (aynı OID); **yeni tablo/permission yok** (katalog 20); seed değişmez; **0023'e dokunulmaz**; migration
+    **idempotent** (`CREATE OR REPLACE`). Davranış = tek yönlü sıkılaştırma (authenticated + `period.manage`'siz →
+    `42501`); app/client çağırmıyor → çağıran kırılmaz; **AD1** ile daha uyumlu. Kod:
+    `migrations/0024_authz_hardening.sql`, `tests/0018_phase6d_authz_hardening.test.sql`. **Verified 2026-08-09**
+    (`db reset` 0001..0024 + seed; `test db` **Files=18 Tests=720 PASS Failed=0**; **regresyon yok** — 0015/0016
+    engine çağrıları trusted (`auth.uid()` null) bağlamda geçer). Test: (a) Finance c4 → `42501`; (b) HR c3 →
+    authz geçer, `23503`; (c) trusted context → authz geçer, `23503` (her iki fonksiyon). AD1 kanıtlı.
   - **Phase 7-A — Anti-Gaming Detection Engine** [VERIFIED/DONE] (commit `ffdea06`, 2026-08-09; plan
     `docs/planning/19`): `run_anti_gaming_scan(org, bonus_period_id?)` **SECURITY DEFINER, server-only**
     orkestratör, mevcut `anti_gaming_flags` (0016) container'ına flag üretir (yeni tablo/permission yok —
@@ -251,13 +266,14 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
     **Verified 2026-08-09** (`db reset` 0001..0023 + seed; `test db` **Files=17 Tests=712 PASS Failed=0**;
     her kural pozitif/negatif + idempotency + D5 no-side-effect + server-only). Bir in-slice **migration fix:**
     authz `current_user`-tabanlıydı — SECURITY DEFINER'da `current_user`=owner olduğundan etkisizdi;
-    `auth.uid() IS NULL`-tabanlı kontrole çekildi. D5/OQ-1..OQ-3 kanıtlı. **Not (7-A dışı, committed):**
-    `run_bonus_calculation` (0021) + `post_bonus_accrual` (0022) aynı latent `current_user` authz zayıflığını
-    taşır (app çağırmıyor → istismar yüzeyi yok); ayrı hardening diliminde düzeltilecek.
+    `auth.uid() IS NULL`-tabanlı kontrole çekildi. D5/OQ-1..OQ-3 kanıtlı. **Not:** `run_bonus_calculation` (0021) +
+    `post_bonus_accrual` (0022) aynı latent `current_user` authz zayıflığını taşıyordu → **Phase 6-d (`0b8b34a`)'te
+    çözüldü** (yukarı bkz.); artık 0021/0022/0023'ün üçü de aynı doğru deseni kullanıyor.
   - **Phase 7 (kalan) — dispute post-decision** [GATED]: **7-B** dispute→point_ledger `dispute_adjustment`
-    (`0024`/`tests/0018`); **7-C** recalculation (superseded old run + period `approved→calculated` re-approval +
-    yeni run/snapshot + paid-accrual guard OQ-4/D2 → bonus_ledger reversal + yeni accrual) (`0025`/`tests/0019`).
-    Ya da ara-dilim **0021/0022 authz hardening** (`current_user` → `auth.uid() IS NULL`), veya **payout/export
+    (`0025`/`tests/0019`); **7-C** recalculation (superseded old run + period `approved→calculated` re-approval +
+    yeni run/snapshot + paid-accrual guard OQ-4/D2 → bonus_ledger reversal + yeni accrual) (`0026`/`tests/0020`).
+    *(Phase 6-d `0024`'ü aldığından dispute migration numaraları `0024`/`0025` → `0025`/`0026` kaydı; doc-19 §9.)*
+    Ara-dilim **0021/0022 authz hardening** → **Phase 6-d'de yapıldı (`0b8b34a`)**. Kalan ara-dilim: **payout/export
     engine** (`payout_exported`/`payout_marked_paid` + `v_finance_*` + BL-3 hard-enforce) + UI/API. Her dilim/faz
     ayrı `implementation authorized` ister. **Kod-yazmadan-önce scope-lock** önerilir (ADR-020). **Henüz yetkili değil.**
 
@@ -291,8 +307,8 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
 - Status: **7-A Anti-Gaming Detection Engine ✅ VERIFIED/DONE** (commit `ffdea06`, 2026-08-09;
   `run_anti_gaming_scan()` + 4 detect_* kuralı; D5 izolasyon — flag yazar, ledger'a dokunmaz; dual idempotency
   OQ-2; Files=17/Tests=712/PASS).
-  **Kalan gated:** 7-B dispute point adjustment (`0024`) + 7-C bonus recalculation (`0025`); alternatif ara-dilim
-  0021/0022 authz hardening. Her dilim ayrı `implementation authorized` ister.
+  **Kalan gated:** 7-B dispute point adjustment (`0025`) + 7-C bonus recalculation (`0026`). Ara-dilim
+  0021/0022 authz hardening **Phase 6-d'de yapıldı** (`0b8b34a`). Her dilim ayrı `implementation authorized` ister.
 
 ### Phase 8 — Dashboards & UX
 
