@@ -21,8 +21,13 @@
   **`0025`/`0019`**, 7-C `0025`/`0019` → **`0026`/`0020`** (see §3 and §9). 7-B/7-C were **gated** at that point.
 - **Update (2026-08-09, later):** **7-B is DONE** (commit `70ba400`; `0025`/`0019`) — `apply_dispute_point_adjustment()`
   posts the resolved+accepted dispute's `point_ledger dispute_adjustment` delta (fail-closed, idempotent, audited;
-  same-org FK to disputes). Current tip: migrations `0001..0025`, suites `0001..0019` (**Files=19/Tests=737**). Only
-  **7-C** (`0026`/`0020`) remains **gated**.
+  same-org FK to disputes). Current tip at that point: migrations `0001..0025`, suites `0001..0019` (**Files=19/Tests=737**).
+- **Update (2026-08-10):** **7-C is DONE** (commit `8941089`; `0026`/`0020`) — `recalculate_bonus_after_dispute()`
+  reverses the approved period's accrual with a balanced `bonus_ledger reversal`, supersedes the completed run, and
+  rolls the period back to `approved→calculated` (re-approval required). **C-c1 reduced scope** (mechanical
+  reversal+supersede only; no new run/snapshot — engine requires `locked` period; `dispute_adjustment` → bonus basis
+  deferred to Phase 7-D). 16 assertions. Current tip: migrations `0001..0026`, suites `0001..0020`
+  (**Files=20/Tests=753**). **Phase 7 (7-A + 7-B + 7-C) DB slices complete.** 7-D gated.
 
 ## 2. Purpose
 
@@ -37,7 +42,7 @@ correction chain (7-B/7-C).
 | --- | --- | --- |
 | **7-A** | Anti-gaming detection engine (4 deterministic rules → flags); isolated, no financial wiring | `0023` / `tests/0017` — **DONE** (`ffdea06`) |
 | **7-B** | Dispute post-decision **points**: `point_ledger dispute_adjustment` | `0025` / `tests/0019` — **DONE** (`70ba400`) |
-| **7-C** | Dispute post-decision **money**: recalculation (new run+snapshot) + `bonus_ledger` reversal | `0026` / `tests/0020` (was `0025`/`0019`) |
+| **7-C** | Dispute post-decision **money**: reversal + supersede + period rollback (C-c1 reduced scope — no new run/snapshot; dispute_adjustment → bonus basis deferred to Phase 7-D) | `0026` / `tests/0020` — **DONE** (`8941089`) |
 
 > **Numbering note:** `0024`/`tests/0018` were consumed by the out-of-band **Phase 6-d authz hardening** slice
 > (commit `0b8b34a`), so the dispute slices shift up by one.
@@ -112,7 +117,7 @@ new permission).
   server-only — requires the dispute `resolved` + `resolution='accepted'`; writes **one** `dispute_adjustment`
   `point_ledger` row (delta); **idempotent** per dispute; audited. rejected/other → no row.
 
-### 5.3 Slice 7-C — dispute bonus recalculation + reversal (migration `0026`, was `0025`) — GATED
+### 5.3 Slice 7-C — dispute bonus recalculation + reversal (migration `0026`, was `0025`) — DONE (`8941089`)
 
 - `recalculate_bonus_after_dispute(p_dispute_id, …)` SECURITY DEFINER, server-only, **explicit HR/server call**
   (OQ-6):
@@ -166,7 +171,7 @@ run on a human-resolved (accepted) dispute via an explicit call.
 
 - `migrations/0023_anti_gaming_detection.sql` + `tests/0017_phase7a_anti_gaming_detection.test.sql` (7-A)
 - `migrations/0025_dispute_point_adjustment.sql` + `tests/0019_phase7b_dispute_point_adjustment.test.sql` (7-B)
-- `migrations/0026_dispute_bonus_recalculation.sql` + `tests/0020_phase7c_dispute_bonus_recalc.test.sql` (7-C)
+- `migrations/0026_dispute_bonus_recalculation.sql` + `tests/0020_phase7c_dispute_bonus_recalculation.test.sql` (7-C)
 
 ## 10. Risks
 

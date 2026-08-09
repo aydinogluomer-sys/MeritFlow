@@ -286,12 +286,23 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
     tarafı 7-C); **D9** resolve adımında (0015). Kod: `migrations/0025_dispute_point_adjustment.sql`,
     `tests/0019_phase7b_dispute_point_adjustment.test.sql`. **Verified 2026-08-09** (`db reset` 0001..0025 + seed;
     `test db` **Files=19 Tests=737 PASS Failed=0**; 7 senaryo/17 assertion; 0003/0015/0016 yeşil kalır).
-  - **Phase 7 (kalan) — dispute bonus recalculation** [GATED]: **7-C** recalculation (superseded old run + period
-    `approved→calculated` re-approval + yeni run/snapshot + paid-accrual guard OQ-4/D2 → bonus_ledger reversal +
-    yeni accrual) (`0026`/`tests/0020`). *(Phase 6-d `0024`'ü aldığından dispute migration numaraları `0025`/`0026`.)*
-    Ara-dilim **0021/0022 authz hardening** → **Phase 6-d'de yapıldı (`0b8b34a`)**. Kalan ara-dilim: **payout/export
-    engine** (`payout_exported`/`payout_marked_paid` + `v_finance_*` + BL-3 hard-enforce) + UI/API. Her dilim/faz
-    ayrı `implementation authorized` ister. **Kod-yazmadan-önce scope-lock** önerilir (ADR-020). **Henüz yetkili değil.**
+  - **Phase 7-C — Dispute Bonus Recalculation** [VERIFIED/DONE] (commit `8941089`, 2026-08-10):
+    `recalculate_bonus_after_dispute()` **SECURITY DEFINER, server-only** — approved period + accrued run →
+    run **superseded** + period **`approved→calculated`** (re-approval required; `validate_bonus_period_transition`
+    CREATE OR REPLACE bu geçişi ekledi) + mevcut `bonus_ledger` accrual'ı **balanced reversal** (mirror rows,
+    debit↔credit swap, yeni transaction_id; ADR-017; BL-1 append-only). **OQ-4/D2 paid-guard:** accrual satırı
+    paid ise `23514` (clawback gated). **Idempotent:** reversal varsa no-op. **Authz:** `has_permission('period.manage')
+    OR auth.uid() IS NULL`. **C-c1 reduced scope:** yeni run/snapshot üretilmez (engine approved period üzerinde
+    çalışamıyor); `dispute_adjustment` → bonus bazı etkisi → **Phase 7-D'ye ertelendi**. Yeni permission yok
+    (katalog 20). Kod: `migrations/0026_dispute_bonus_recalculation.sql`,
+    `tests/0020_phase7c_dispute_bonus_recalculation.test.sql`. **Verified 2026-08-10** (`db reset` 0001..0026 +
+    seed; `test db` **Files=20 Tests=753 PASS Failed=0**; 16 assertion — worked example/paid-guard/authz/
+    append-only/DB balance). D2/OQ-4/OQ-6/ADR-006/ADR-017/BL-1 kanıtlı.
+  - **Phase 7-D — dispute_adjustment → bonus bazı [GATED]:** `dispute_adjustment` satırlarının (`NULL task_id`)
+    `run_bonus_calculation()` motor girdisine dahil edilmesi; period-atıf kuralı + engine genişletme.
+    Her dilim/faz ayrı `implementation authorized` ister. **Henüz yetkili değil.**
+  - **Kalan ara-dilim [GATED]: payout/export engine** (`payout_exported`/`payout_marked_paid` +
+    `v_finance_*` + BL-3 hard-enforce) + UI/API. Her dilim ayrı `implementation authorized` ister.
 
 ### Phase 4 — Task & Review Core
 

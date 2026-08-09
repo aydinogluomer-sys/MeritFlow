@@ -1,6 +1,6 @@
 # MeritFlow — Supabase (Database Foundation: Phase 3A–3B + comp + bonus periods/pools + components/eligibility + calc runs/allocations/snapshots + ledger + disputes + anti-gaming + notifications + exports)
 
-This directory is the **database foundation**. It currently implements nineteen verified
+This directory is the **database foundation**. It currently implements twenty verified
 slices — the twelve Phase 3 DB slices (**Phase 3 DB foundation complete**), the
 **Phase 4 task/review core** (`tasks` + `task_events` + `task_reviews`), the
 **Phase 5 scoring engine** (approve → `point_ledger task_approved`), the
@@ -8,7 +8,8 @@ slices — the twelve Phase 3 DB slices (**Phase 3 DB foundation complete**), th
 **Phase 6-b bonus_ledger accrual** (`post_bonus_accrual()` → double-entry accrual from an approved snapshot), the
 **Phase 6-d bonus engine authz hardening** (`run_bonus_calculation`/`post_bonus_accrual` → `auth.uid() IS NULL` trusted-context authz), the
 **Phase 7-A anti-gaming detection engine** (`run_anti_gaming_scan()` → 4 deterministic rules → `anti_gaming_flags`, ledger-isolated), and the
-**Phase 7-B dispute point adjustment** (`apply_dispute_point_adjustment()` → resolved+accepted dispute → `point_ledger dispute_adjustment`):
+**Phase 7-B dispute point adjustment** (`apply_dispute_point_adjustment()` → resolved+accepted dispute → `point_ledger dispute_adjustment`), and the
+**Phase 7-C dispute bonus recalculation** (`recalculate_bonus_after_dispute()` → run superseded + period `approved→calculated` + `bonus_ledger` reversal; paid-guard D2; idempotent; C-c1 reduced scope — dispute_adjustment → bonus basis deferred to Phase 7-D):
 
 - **Phase 3A — Database Foundation & RBAC** (`17_PHASE_3A_...md`): 11 foundation/RBAC
   tables, RLS helpers, RLS (ENABLED + FORCE), constraints, test-tenant seed, blocking pgTAP.
@@ -176,11 +177,11 @@ slices — the twelve Phase 3 DB slices (**Phase 3 DB foundation complete**), th
   (0020 behaviour). Append-only is preserved (UPDATE/DELETE → `23001`); **D2** is not violated (a point correction is
   not a paid-money clawback — the money side is 7-C), **D9** is enforced at the resolve step (0015) — pgTAP (`0019`).
 
-Migrations `0001..0025` + seed apply cleanly; blocking pgTAP suites (`0001`..`0019`) are green (see
+Migrations `0001..0026` + seed apply cleanly; blocking pgTAP suites (`0001`..`0020`) are green (see
 "Verification"). **Phase 3 DB foundation + Phase 4/5 + the Phase 6 bonus calculation engine + the Phase 6-b
 `bonus_ledger` accrual + the Phase 6-d authz hardening + the Phase 7-A anti-gaming detection engine + the Phase 7-B
-dispute point adjustment are done; the dispute bonus recalculation (Phase 7-C), the payout/export engine, and
-everything downstream (app UI/API) remain gated** (see "Out of scope").
+dispute point adjustment + the Phase 7-C dispute bonus recalculation are done; the payout/export engine,
+Phase 7-D (dispute_adjustment → bonus basis), and everything downstream (app UI/API) remain gated** (see "Out of scope").
 
 ## ⚠️ Environment rule (non-negotiable — ADR-014 / CLAUDE.md)
 
@@ -313,6 +314,17 @@ supabase/
                                           SECURITY DEFINER server-only: authz dispute.resolve OR auth.uid() IS NULL ->
                                           non-zero delta -> resolved+accepted (fail-closed 23514) -> idempotent ->
                                           one delta for the complainant; no new permission (catalog 20)
+    0026_dispute_bonus_recalculation.sql  dispute bonus recalculation (Phase 7-C; plan doc 19 §5.3) —
+                                          recalculate_bonus_after_dispute() SECURITY DEFINER server-only:
+                                          run superseded (0013 machine) + period approved->calculated
+                                          (CREATE OR REPLACE validate_bonus_period_transition adds this
+                                          transition) + balanced bonus_ledger reversal (debit<->credit swap,
+                                          new transaction_id; append-only BL-1); paid-guard (23514 if any
+                                          accrual row paid — D2 clawback-gated); idempotent (reversal exists
+                                          -> no-op); authz has_permission('period.manage') OR
+                                          auth.uid() IS NULL; C-c1 reduced scope (no new run/snapshot;
+                                          dispute_adjustment->bonus basis deferred to Phase 7-D); no new
+                                          permission (catalog 20)
   seed/seed_test_tenants.sql              2 tenants, RBAC catalog, teams, support grants,
                                           + Phase 3B (scoring/versions, point_ledger) + comp + bonus fixtures
                                           (periods/pools + components/eligibility + calc run/allocations/snapshot
@@ -344,6 +356,7 @@ supabase/
     0017_phase7a_anti_gaming_detection.test.sql blocking pgTAP — 4 detect_* rules pos/neg + dual idempotency (re-scan adds no flag)/D5 no-side-effect (scan leaves point_ledger+bonus_ledger counts unchanged)/server-only (non-HR 42501, detect_* not callable, direct flag INSERT rejected) (Phase 7-A)
     0018_phase6d_authz_hardening.test.sql blocking pgTAP — run_bonus_calculation + post_bonus_accrual authz: authenticated w/o period.manage (Finance c4) -> 42501; authenticated w/ period.manage (HR c3) -> authz passes -> 23503; trusted context (auth.uid() null) -> authz passes -> 23503 (Phase 6-d)
     0019_phase7b_dispute_point_adjustment.test.sql blocking pgTAP — apply_dispute_point_adjustment: positive (one dispute_adjustment delta, employee=complainant)/negative rejected+under_review+zero-delta 23514/idempotency (no-op + 23505 backstop)/missing dispute_id 23514 + invalid event_type 23514 (0003 regression)/audit row/append-only 23001/cross-tenant FK 23503/employee-without-dispute.resolve 42501 (Phase 7-B)
+    0020_phase7c_dispute_bonus_recalculation.test.sql blocking pgTAP — recalculate_bonus_after_dispute: worked example (approve+accrue period 230 then recalc: reversal balanced Σdebit=Σcredit, magnitude=accrual total, run superseded, period->calculated, snapshot immutable 23001, re-approval required post_bonus_accrual->23514); idempotency (no-op, no duplicate reversal); paid-guard (manual accrual fixture + disabled trigger for payout row injection -> 23514); authz (employee->42501); append-only (reversal UPDATE->23001); DB balance check (Phase 7-C)
 ```
 
 ## Apply & test (local)
@@ -352,7 +365,7 @@ Requires Docker + the Supabase CLI. From the repo root:
 
 ```bash
 supabase start            # boots local dev stack (Docker)
-supabase db reset         # applies migrations 0001..0025 then seed
+supabase db reset         # applies migrations 0001..0026 then seed
 supabase test db          # runs the pgTAP suites in tests/ (0001..0019)
 ```
 
@@ -584,13 +597,34 @@ re-runnable (on-conflict guards).
 > employee) is rejected `42501`. `task_approved` stays un-audited (0020 behaviour); the **catalog stays 20**; D2 is
 > not violated (a point correction is not a paid-money clawback — the money side is 7-C).
 >
+> **Phase 7-C dispute bonus recalculation: VERIFIED / DONE** (2026-08-10, npx Supabase CLI **2.109.1**; commit
+> `8941089`). `db reset` applied migrations **0001..0026** + seed cleanly; `test db` → **Files=20, Tests=753,
+> Result=PASS, Failed=0** (`0001`..`0020` ok). Invariants proven (plan `19 §5.3`; D2/OQ-4/OQ-6/ADR-006/ADR-017;
+> BL-1; SI-7): `recalculate_bonus_after_dispute()` on an **approved period with an accrued completed run**
+> (Section A worked example — period 230 / Org C, accrual=10,000,000) marks the run **superseded**, transitions
+> the period **`approved→calculated`** (re-approval required before re-accrual — `post_bonus_accrual()` 0022
+> approved-gate enforces it; confirmed: re-accrual raises `23514`), and posts a **balanced reversal**: 5 mirror
+> rows (one pool-credit + 4 employee-debits; debit↔credit swap; new `transaction_id`); `Σdebit=Σcredit` of the
+> reversal (ADR-017); reversal magnitude = original accrual total (10,000,000); the original accrual rows are
+> **intact** (snapshot immutable — UPDATE → `23001`); **idempotent** (a second call is a no-op; no duplicate
+> reversal rows). **Paid-guard (OQ-4/D2):** a self-contained fixture inserts a manual accrual pair + a simulated
+> `payout_exported` row (trigger disabled/re-enabled with `set constraints all immediate` to flush deferred
+> events before ALTER) → `recalculate_bonus_after_dispute()` raises `23514` (paid clawback gated). **Authz:**
+> a plain employee without `period.manage` is rejected `42501`. **Append-only:** a reversal UPDATE → `23001`
+> (BL-1). **DB balance:** `Σ(original accrual + reversal) credits = Σ debits`. **C-c1 reduced scope:** no new
+> run or snapshot is produced; dispute_adjustment rows have `NULL task_id` so the engine would compute an
+> unchanged bonus basis anyway — that correction path is **deferred to Phase 7-D**. `validate_bonus_period_transition()`
+> is CREATE OR REPLACEd to add the `approved→calculated` transition required by recalculation. No new permission
+> (catalog 20); BL-3 remains deferred to the payout phase.
+>
 > **Phase 3 DB foundation is COMPLETE** (12 migrations `0001..0018` / 12 suites, Tests=523); the **Phase 4 task/
 > review core** (`0019`/`0013`), **Phase 5 scoring engine** (`0020`/`0014`), **Phase 6 bonus calculation
 > engine** (`0021`/`0015`), **Phase 6-b bonus_ledger accrual** (`0022`/`0016`), the **Phase 6-d bonus engine authz
-> hardening** (`0024`/`0018`), the **Phase 7-A anti-gaming detection engine** (`0023`/`0017`) and the **Phase 7-B
-> dispute point adjustment** (`0025`/`0019`) are also done (**Files=19, Tests=737** total). **The dispute bonus
-> recalculation (Phase 7-C `0026`), the payout/export engine, and later phases (app UI/API) remain gated**
-> (ADR-020). **Never run any of this against a production project.**
+> hardening** (`0024`/`0018`), the **Phase 7-A anti-gaming detection engine** (`0023`/`0017`), the **Phase 7-B
+> dispute point adjustment** (`0025`/`0019`) and the **Phase 7-C dispute bonus recalculation** (`0026`/`0020`) are
+> also done (**Files=20, Tests=753** total). **The payout/export engine (BL-3), Phase 7-D (dispute_adjustment →
+> bonus basis), and everything downstream (app UI/API) remain gated** (ADR-020). **Never run any of this against a
+> production project.**
 
 ### Prerequisites
 
@@ -606,13 +640,13 @@ re-runnable (on-conflict guards).
 
 ```bash
 supabase start        # 1. boot local stack; note the printed local URLs + dev-default keys
-supabase db reset     # 2. apply 0001..0025 + seed (expect clean apply)
+supabase db reset     # 2. apply 0001..0026 + seed (expect clean apply)
 supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
 ```
 
 ### Expected pass criteria
 
-- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=19, Tests=737, PASS**). Blocking.
+- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=20, Tests=753, PASS**). Blocking.
 - [ ] Green coverage: cross-tenant isolation (SI-7), non-recursive memberships read (§7A), support
   active-vs-expired grant (D4), append-only audit + append-only `point_ledger` (SI-2), helper
   correctness, scoring-policy `policy.manage` gating + published-version immutability (AD7), point_ledger
@@ -661,7 +695,11 @@ supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
   -> one point_ledger dispute_adjustment delta for the complainant; rejected/under_review/zero-delta -> 23514
   fail-closed; idempotent no-op + 23505 backstop; missing dispute_id -> 23514 + invalid event_type -> 23514 (0003
   regression); audit row on insert; append-only 23001; cross-tenant FK 23503; employee without dispute.resolve -> 42501;
-  catalog 20 — D9/D2/ADR-005/SI-7).
+  catalog 20 — D9/D2/ADR-005/SI-7), and **dispute bonus recalculation**
+  (`recalculate_bonus_after_dispute()`: run superseded + period approved→calculated + balanced reversal
+  Σdebit=Σcredit + original accrual immutable; idempotent no-op; paid-guard 23514 (D2 OQ-4); authz
+  employee without period.manage -> 42501; reversal UPDATE -> 23001 (BL-1); DB balance; catalog 20 —
+  D2/OQ-4/OQ-6/ADR-006/ADR-017/BL-1/SI-7).
 - [ ] `supabase db reset` then re-running the suite is reproducible (deterministic seed).
 
 ### Failure triage
