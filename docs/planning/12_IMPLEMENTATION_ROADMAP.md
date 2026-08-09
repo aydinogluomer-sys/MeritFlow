@@ -206,11 +206,22 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
     `migrations/0020_scoring_engine.sql`, `tests/0014_phase5_scoring.test.sql`. **Verified 2026-08-01** (`db reset`
     0001..0020 + seed; `test db` Files=14 Tests=626 PASS Failed=0). **Ertelenen (5-b):** manual override/adjustment
     (`point.override` 2-step → `manual_adjustment`); breakdown UI.
-  - **Phase 3 (kalan) — governance** [GATED]: bonus **engine** (accrual/allocation/snapshot→bonus_ledger), UI/API.
-    Her dilim/faz ayrı `implementation authorized` ister. **Sıradaki büyük adım:** **Phase 6 — Bonus Engine**
-    (aşağıda) — `05` motoru: approved point'lerden Safe Pro-Rata, cap, T_org (+top-up AD8), kuruş/largest-remainder,
-    Σ invariant (SI-13), immutable snapshot'tan double-entry `bonus_ledger` accrual; `09` worked example.
-    **Kod-yazmadan-önce scope-lock** önerilir; ayrı faz-sınırlı yetki ister (ADR-020). **Henüz yetkili değil.**
+  - **Phase 6 — Bonus Engine (Safe Pro-Rata calculation)** [VERIFIED/DONE] (commit `0c54fba`, 2026-08-09):
+    `run_bonus_calculation()` SECURITY DEFINER server-only motoru mevcut `0013` container'larını doldurur.
+    Locked period + locked pool (AD10); approved point'ler `point_ledger task_approved` × `tasks.approved_at`
+    period içi; Safe Pro-Rata (`W_individual=1.0`, malus yok — D1/D2); cap = `compensation_records.cap_basis` ×
+    `cap_rate` × proration (eksik → `pending_missing_cap_basis`, unlimited cap yok — AD6); T_org + AD8 top-up;
+    largest-remainder kuruş (tie-break `employee_id`); `bonus_allocations` + **immutable** snapshot yazar; run
+    completed (freeze) + period **locked→calculated**; idempotent `(org, key)`; `Σfinal+undistributed=pool_ref`
+    (SI-13). **`bonus_ledger` accrual YOK** (Phase 6-b'ye ertelendi); yeni permission yok (katalog 20); Finance
+    raw-excluded (SI-12). Kod: `migrations/0021_bonus_engine.sql`, `tests/0015_phase6_bonus_engine.test.sql`.
+    **Verified 2026-08-09** (`db reset` 0001..0021 + seed; `test db` **Files=15 Tests=665 PASS Failed=0**;
+    `09` §8 worked example birebir). Tek in-slice **test-only** fix: `s.top_up_applied` (ambiguous kolon).
+    (Ayrıca docs hijyen commit `17a964d` — repo temizliği; Phase 6 implementation'ı değil.)
+  - **Phase 3 (kalan) — governance** [GATED]: **Phase 6-b — `bonus_ledger` accrual** (approved immutable
+    snapshot → double-entry `bonus_accrual`; snapshot-approval boundary) + UI/API. Her dilim/faz ayrı
+    `implementation authorized` ister. **Sıradaki büyük adım:** **Phase 6-b** (accrual) — ya da 6-b sınırı
+    kilitlenince **Phase 7**. **Kod-yazmadan-önce scope-lock** önerilir (ADR-020). **Henüz yetkili değil.**
 
 ### Phase 4 — Task & Review Core
 

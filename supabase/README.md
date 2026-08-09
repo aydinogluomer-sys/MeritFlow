@@ -1,9 +1,11 @@
 # MeritFlow — Supabase (Database Foundation: Phase 3A–3B + comp + bonus periods/pools + components/eligibility + calc runs/allocations/snapshots + ledger + disputes + anti-gaming + notifications + exports)
 
-This directory is the **database foundation**. It currently implements fourteen verified
+This directory is the **database foundation**. It currently implements fifteen verified
 slices — the twelve Phase 3 DB slices (**Phase 3 DB foundation complete**), the
-**Phase 4 task/review core** (`tasks` + `task_events` + `task_reviews`), and the
-**Phase 5 scoring engine** (approve → `point_ledger task_approved`):
+**Phase 4 task/review core** (`tasks` + `task_events` + `task_reviews`), the
+**Phase 5 scoring engine** (approve → `point_ledger task_approved`), and the
+**Phase 6 bonus engine** (`run_bonus_calculation()` → allocations + immutable snapshot; **NO
+`bonus_ledger` accrual — deferred to Phase 6-b**):
 
 - **Phase 3A — Database Foundation & RBAC** (`17_PHASE_3A_...md`): 11 foundation/RBAC
   tables, RLS helpers, RLS (ENABLED + FORCE), constraints, test-tenant seed, blocking pgTAP.
@@ -106,10 +108,20 @@ slices — the twelve Phase 3 DB slices (**Phase 3 DB foundation complete**), th
   new permission (catalog 20). This slice is the lifecycle container; **scoring/point_ledger is wired in `0020`
   (Phase 5)** — approving a task now writes exactly one `task_approved` point_ledger row (see the Phase 5 slice) —
   RLS + pgTAP.
+- **Phase 6 — bonus engine (Safe Pro-Rata calculation)** (`05`, `09` §8; D1/D6/D10/AD6/AD7/AD8/AD9/AD10;
+  SI-13): the **calculation engine** that populates the existing `0013` containers. `run_bonus_calculation()`
+  (SECURITY DEFINER, server-only) validates a **locked period + locked pool** (AD10), sums approved points from
+  `point_ledger task_approved` joined to `tasks.approved_at` in the period, computes Safe Pro-Rata
+  (`W_individual=1.0`, no malus), caps from `compensation_records.cap_basis` × `cap_rate` (missing →
+  `pending_missing_cap_basis`, **no unlimited cap** — AD6), applies T_org + AD8 top-up, allocates integer
+  **kuruş via largest-remainder** (tie-break `employee_id` asc), writes `bonus_allocations` + one **immutable**
+  `bonus_allocation_snapshot`, completes the run (freeze) and transitions the period `locked→calculated`.
+  **Idempotent** per `(org, idempotency_key)`; `Σfinal + undistributed = pool_ref` (SI-13); **NO `bonus_ledger`
+  accrual** (deferred to Phase 6-b); no new permission (catalog 20); Finance raw-excluded — pgTAP (`0015`).
 
-Migrations `0001..0020` + seed apply cleanly; blocking pgTAP suites (`0001`..`0014`) are green (see
-"Verification"). **Phase 3 DB foundation is complete; everything downstream (app + engines) is still gated**
-(see "Out of scope").
+Migrations `0001..0021` + seed apply cleanly; blocking pgTAP suites (`0001`..`0015`) are green (see
+"Verification"). **Phase 3 DB foundation + Phase 4/5 + the Phase 6 bonus calculation engine are done; the
+`bonus_ledger` accrual (Phase 6-b) and everything downstream (app UI/API) remain gated** (see "Out of scope").
 
 ## ⚠️ Environment rule (non-negotiable — ADR-014 / CLAUDE.md)
 
@@ -196,6 +208,15 @@ supabase/
                                           row (breakdown metadata); raw numeric no rounding; AD4 review timeliness;
                                           AD5 collaboration non-scoring; D3/AD7 guards; direct-approve w/o review
                                           skips; Finance excluded; no new permission (catalog 20); no bonus changes
+    0021_bonus_engine.sql                 bonus engine (Phase 6; Safe Pro-Rata calculation) —
+                                          run_bonus_calculation() SECURITY DEFINER server-only: locked
+                                          period+pool (AD10), approved points from point_ledger task_approved
+                                          × tasks.approved_at in period, Safe Pro-Rata (W_individual=1.0), cap
+                                          from compensation_records×cap_rate (AD6 pending_missing_cap_basis),
+                                          T_org+AD8 top-up, largest-remainder kuruş (tie-break employee_id),
+                                          writes bonus_allocations + immutable snapshot, run completed +
+                                          period locked→calculated; idempotent; SI-13 Σ invariant; NO
+                                          bonus_ledger accrual (6-b); no new permission (catalog 20)
   seed/seed_test_tenants.sql              2 tenants, RBAC catalog, teams, support grants,
                                           + Phase 3B (scoring/versions, point_ledger) + comp + bonus fixtures
                                           (periods/pools + components/eligibility + calc run/allocations/snapshot
@@ -204,6 +225,7 @@ supabase/
                                           + export fixtures + AD6-gate pending-cap fixtures
                                           + Phase 4 task fixtures (walked to submitted/in_progress)
                                           + Phase 5 policy multipliers/penalty rule (doc-04 values on d2/b-d2)
+                                          + Phase 6 dedicated Org C (ceres) worked-example fixtures (05 §8)
   tests/
     0001_phase3a_rls.test.sql             blocking pgTAP — RLS/RBAC (Phase 3A)
     0002_phase3b_scoring_policies.test.sql blocking pgTAP — scoring policy/version (Phase 3B-A)
@@ -219,6 +241,7 @@ supabase/
     0012_phase3_exports.test.sql          blocking pgTAP — exports snapshot/AD6-gate/actor-integrity/append-only/Finance+Auditor RLS (Phase 3)
     0013_phase4_tasks_reviews.test.sql    blocking pgTAP — tasks state machine/review-driven transition/self-approval/D3/AD4 timing/append-only/RLS (Phase 4)
     0014_phase5_scoring.test.sql          blocking pgTAP — scoring determinism (187.5)/SI-1 idempotency/AD4/AD5/D3/AD7/Finance-excluded/no-bonus (Phase 5)
+    0015_phase6_bonus_engine.test.sql     blocking pgTAP — bonus engine worked example (05 §8)/idempotency/cap+D6 residual/AD8 top-up/T_org=0/Σadj=0/single-eligible/AD6 pending/SI-13/no-bonus_ledger/Finance-excluded (Phase 6)
 ```
 
 ## Apply & test (local)
@@ -227,8 +250,8 @@ Requires Docker + the Supabase CLI. From the repo root:
 
 ```bash
 supabase start            # boots local dev stack (Docker)
-supabase db reset         # applies migrations 0001..0018 then seed
-supabase test db          # runs the pgTAP suites in tests/ (0001..0012)
+supabase db reset         # applies migrations 0001..0021 then seed
+supabase test db          # runs the pgTAP suites in tests/ (0001..0015)
 ```
 
 If the `supabase` binary is not on PATH (e.g. a fresh install not yet picked up), the project-local
@@ -381,9 +404,25 @@ re-runnable (on-conflict guards).
 > doc-04 values. In-slice fix: scoring **skips** (rather than errors) when a trusted approve has no review; and the
 > 0013 obsolete "no ledger" boundary assertion was amended (authorized).
 >
+> **Phase 6 bonus engine: VERIFIED / DONE** (2026-08-09, npx Supabase CLI **2.109.1**; commit `0c54fba`).
+> `db reset` applied migrations **0001..0021** + seed cleanly; `test db` → **Files=15, Tests=665, Result=PASS,
+> Failed=0** (`0001`..`0015` ok). Invariants proven (05 §8; D1/D6/D10/AD6/AD7/AD8/AD9/AD10/SI-13): the **doc-05
+> §8 worked example** reproduces exactly (final 3,177,630 / 3,177,629 / 953,289 / 2,691,452; Σ = pool
+> 10,000,000; undistributed 0; tie-break Ali 201 < Ayşe 202); the run is **idempotent** per `(org, key)` (one
+> run, four allocations); completed-run allocations are **frozen** and the snapshot **immutable**; **AD10** — an
+> unlocked period is rejected (`23514`); **cap-binding + D6** — all-capped Σ = 20,000,000 with residual
+> 980,000,000 undistributed (not redistributed); **AD8** — T_org=1.2 without top-up caps distributable at the
+> pool (`top_up_applied=false`), with top-up reaches 1.2× (`top_up_applied=true`); **T_org=0** and **Σadj=0**
+> both leave the whole pool undistributed; a **single eligible** employee takes the full distributable; **AD6** —
+> a missing cap basis yields `pending_missing_cap_basis` with no cap materialized; the engine writes **NO
+> `bonus_ledger` rows** (accrual deferred to 6-b; seed count stays 5); the **permission catalog is unchanged
+> (20)**; Finance cannot read raw allocations (SI-12). One in-slice **test-only** fix qualified an ambiguous
+> `top_up_applied` reference to `s.top_up_applied` in the snapshot subquery.
+>
 > **Phase 3 DB foundation is COMPLETE** (12 migrations `0001..0018` / 12 suites, Tests=523); the **Phase 4 task/
-> review core** (`0019`/`0013`) and **Phase 5 scoring engine** (`0020`/`0014`) are also done (Tests=626 total).
-> **Later phases (bonus engine + app UI) remain gated** (ADR-020). **Never run any of this against a production
+> review core** (`0019`/`0013`), **Phase 5 scoring engine** (`0020`/`0014`) and **Phase 6 bonus calculation
+> engine** (`0021`/`0015`) are also done (**Files=15, Tests=665** total). **The `bonus_ledger` accrual (Phase
+> 6-b) and later phases (app UI/API) remain gated** (ADR-020). **Never run any of this against a production
 > project.**
 
 ### Prerequisites
@@ -400,13 +439,13 @@ re-runnable (on-conflict guards).
 
 ```bash
 supabase start        # 1. boot local stack; note the printed local URLs + dev-default keys
-supabase db reset     # 2. apply 0001..0020 + seed (expect clean apply)
+supabase db reset     # 2. apply 0001..0021 + seed (expect clean apply)
 supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
 ```
 
 ### Expected pass criteria
 
-- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=14, Tests=626, PASS**). Blocking.
+- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=15, Tests=665, PASS**). Blocking.
 - [ ] Green coverage: cross-tenant isolation (SI-7), non-recursive memberships read (§7A), support
   active-vs-expired grant (D4), append-only audit + append-only `point_ledger` (SI-2), helper
   correctness, scoring-policy `policy.manage` gating + published-version immutability (AD7), point_ledger
@@ -441,7 +480,10 @@ supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
   tasks.final_points numeric = points_delta; SI-1 partial-unique idempotency; AD4 review timeliness; AD5
   collaboration non-scoring; revision cap 25%; AD7 draft-policy cannot score; D3 blocked pre-scoring; direct-approve
   w/o review skips; Finance excluded from raw point_ledger; server-only; no bonus writes; catalog 20 —
-  SI-1/SI-11/SI-12/AD4/AD5/AD7/D3).
+  SI-1/SI-11/SI-12/AD4/AD5/AD7/D3), and **bonus engine** (doc-05 §8 worked example Σ = pool 10,000,000,
+  undistributed 0; idempotency; cap + D6 residual 980,000,000; AD8 T_org=1.2 top-up yes/no; T_org=0 & Σadj=0
+  whole-pool undistributed; AD6 `pending_missing_cap_basis`; NO `bonus_ledger` accrual; period locked→calculated
+  — SI-13/AD6/AD8/AD10).
 - [ ] `supabase db reset` then re-running the suite is reproducible (deterministic seed).
 
 ### Failure triage
@@ -563,8 +605,8 @@ supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
 
 ## Out of scope (later slices / phases — still gated, ADR-020)
 
-The **bonus engine** (approved-points → Safe Pro-Rata allocation + cap + T_org + largest-remainder + Σ invariant),
-the **approve→accrual posting engine** + snapshot-approval workflow, manual point override/adjustment
+The **`bonus_ledger` accrual/posting engine** (approved immutable snapshot → double-entry `bonus_accrual`) +
+snapshot-approval workflow (**Phase 6-b**), manual point override/adjustment
 (`point.override` 2-step → `manual_adjustment`), the **export generation engine**
 (CSV/XLSX/storage write, checksum/row_count, status progression `requested→generated→downloaded`, the
 period=`approved` gate) + `payout_exported`/`payout_marked_paid` ledger wiring + mark-paid + Finance aggregate
@@ -591,10 +633,13 @@ authorization (ADR-020).
 > one `point_ledger task_approved` earning row (breakdown metadata) + the `tasks.final_points` numeric cache;
 > SI-1 partial-unique idempotency; AD4 (review timeliness), AD5 (collaboration non-scoring), D3/AD7 guards; a
 > trusted direct-approve without a review skips scoring; Finance excluded; no new permission; no bonus writes.
-> `db reset` `0001..0020` + seed; `test db` → **Files=14, Tests=626, PASS, Failed=0**. **Next major step:**
-> **Phase 6 — Bonus Engine** (approved points → Safe Pro-Rata allocation + cap + T_org (+top-up AD8) +
-> kuruş/largest-remainder + Σ invariant (SI-13) + immutable snapshot → double-entry `bonus_ledger` accrual;
-> `09` worked example). A scope-lock is recommended. **Not authorized yet.**
+> The **Phase 6 bonus calculation engine** (`0021`/`0015`, commit `0c54fba`) is also **done**:
+> `run_bonus_calculation()` populates `bonus_allocations` + an immutable snapshot from a locked period+pool
+> (Safe Pro-Rata + cap + T_org/top-up + largest-remainder kuruş; Σ invariant SI-13; period locked→calculated;
+> idempotent) — but writes **NO `bonus_ledger` accrual**. `db reset` `0001..0021` + seed; `test db` →
+> **Files=15, Tests=665, PASS, Failed=0**. **Next major step:** **Phase 6-b — `bonus_ledger` accrual**
+> (approved immutable snapshot → double-entry `bonus_accrual`; snapshot-approval boundary) — or, once the 6-b
+> boundary is locked, **Phase 7**. A scope-lock is recommended. **Not authorized yet.**
 
 ## Notes for reviewers
 
