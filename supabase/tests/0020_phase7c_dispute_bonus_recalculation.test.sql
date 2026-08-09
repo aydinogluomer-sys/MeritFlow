@@ -127,16 +127,19 @@ values
 -- is not blocked by pending trigger events; from here constraints are IMMEDIATE.
 set constraints all immediate;
 
--- Simulate a future payout row for the accrued snapshot (payout_* is not writable yet —
--- 0014 rejects it — so disable the event-type guard only for this balanced insert).
+-- Simulate a payout-in-progress marker for the accrued snapshot (payout_exported is not
+-- writable via the event-type guard — disable it only for this balanced insert). NOTE:
+-- payout_exported is used (not payout_marked_paid) so 0027's payout_export_chk — which
+-- requires export_id on payout_marked_paid rows — does not apply to this bare fixture;
+-- recalculate_bonus_after_dispute()'s paid-guard checks both payout_* events.
 alter table public.bonus_ledger disable trigger trg_bonus_ledger_validate_event;
 insert into public.bonus_ledger
   (organization_id, bonus_pool_id, employee_id, snapshot_id, transaction_id, entry_type, account, event_type, amount_minor, reason, created_by)
 values
   ('c0000000-0000-0000-0000-000000000003','c0000000-0000-0000-0000-0000000007c3', null, 'c0000000-0000-0000-0000-0000000007c5',
-   'c0000000-0000-0000-0000-0000000007c1', 'debit',  'payout', 'payout_marked_paid', 100, 'sim payout', 'c0000000-0000-0000-0000-0000000000c3'),
+   'c0000000-0000-0000-0000-0000000007c1', 'debit',  'payout', 'payout_exported', 100, 'sim payout', 'c0000000-0000-0000-0000-0000000000c3'),
   ('c0000000-0000-0000-0000-000000000003','c0000000-0000-0000-0000-0000000007c3', null, 'c0000000-0000-0000-0000-0000000007c5',
-   'c0000000-0000-0000-0000-0000000007c1', 'credit', 'payout', 'payout_marked_paid', 100, 'sim payout', 'c0000000-0000-0000-0000-0000000000c3');
+   'c0000000-0000-0000-0000-0000000007c1', 'credit', 'payout', 'payout_exported', 100, 'sim payout', 'c0000000-0000-0000-0000-0000000000c3');
 alter table public.bonus_ledger enable trigger trg_bonus_ledger_validate_event;
 
 -- (#11) paid-guard: recalc is rejected because the accrual is already paid (D2 clawback gated).
