@@ -1,11 +1,11 @@
 # MeritFlow — Supabase (Database Foundation: Phase 3A–3B + comp + bonus periods/pools + components/eligibility + calc runs/allocations/snapshots + ledger + disputes + anti-gaming + notifications + exports)
 
-This directory is the **database foundation**. It currently implements fifteen verified
+This directory is the **database foundation**. It currently implements sixteen verified
 slices — the twelve Phase 3 DB slices (**Phase 3 DB foundation complete**), the
 **Phase 4 task/review core** (`tasks` + `task_events` + `task_reviews`), the
-**Phase 5 scoring engine** (approve → `point_ledger task_approved`), and the
-**Phase 6 bonus engine** (`run_bonus_calculation()` → allocations + immutable snapshot; **NO
-`bonus_ledger` accrual — deferred to Phase 6-b**):
+**Phase 5 scoring engine** (approve → `point_ledger task_approved`), the
+**Phase 6 bonus engine** (`run_bonus_calculation()` → allocations + immutable snapshot), and the
+**Phase 6-b bonus_ledger accrual** (`post_bonus_accrual()` → double-entry accrual from an approved snapshot):
 
 - **Phase 3A — Database Foundation & RBAC** (`17_PHASE_3A_...md`): 11 foundation/RBAC
   tables, RLS helpers, RLS (ENABLED + FORCE), constraints, test-tenant seed, blocking pgTAP.
@@ -116,12 +116,23 @@ slices — the twelve Phase 3 DB slices (**Phase 3 DB foundation complete**), th
   `pending_missing_cap_basis`, **no unlimited cap** — AD6), applies T_org + AD8 top-up, allocates integer
   **kuruş via largest-remainder** (tie-break `employee_id` asc), writes `bonus_allocations` + one **immutable**
   `bonus_allocation_snapshot`, completes the run (freeze) and transitions the period `locked→calculated`.
-  **Idempotent** per `(org, idempotency_key)`; `Σfinal + undistributed = pool_ref` (SI-13); **NO `bonus_ledger`
-  accrual** (deferred to Phase 6-b); no new permission (catalog 20); Finance raw-excluded — pgTAP (`0015`).
+  **Idempotent** per `(org, idempotency_key)`; `Σfinal + undistributed = pool_ref` (SI-13); accrual → **Phase 6-b**
+  (`a65013d`); no new permission (catalog 20); Finance raw-excluded — pgTAP (`0015`).
+- **Phase 6-b — bonus_ledger accrual** (`06 §2`, ADR-006/ADR-017; D2/AD6/AD8; BL-1/BL-2; SI-3/SI-7/SI-12/SI-13):
+  the **approve→accrual posting engine** over the existing `bonus_ledger` (0014). `post_bonus_accrual()`
+  (SECURITY DEFINER, server-only) requires an **APPROVED period** (the snapshot-approval boundary — HR moves the
+  `bonus_period` `calculated→approved` via `period.manage`; the immutable snapshot is **not** mutated and no new
+  permission is added — catalog 20), takes the single completed run's snapshot + allocations, blocks on any
+  `pending_missing_cap_basis` allocation (**AD6 gate**), and posts **one balanced transaction**: `debit pool =
+  Σfinal`, `credit accrual` per employee (`bonus_accrual`). **Idempotent** per snapshot; append-only (**BL-1**);
+  `Σdebit = Σcredit` (0014); a new **`DEFERRABLE INITIALLY DEFERRED` trigger** enforces **BL-2** `Σaccrual ≤
+  pool_ref` (AD8-aware); **BL-3** (payout ≤ accrual) is deferred to the payout phase (no producer here). Finance +
+  Auditor raw read; server-only — pgTAP (`0016`).
 
-Migrations `0001..0021` + seed apply cleanly; blocking pgTAP suites (`0001`..`0015`) are green (see
-"Verification"). **Phase 3 DB foundation + Phase 4/5 + the Phase 6 bonus calculation engine are done; the
-`bonus_ledger` accrual (Phase 6-b) and everything downstream (app UI/API) remain gated** (see "Out of scope").
+Migrations `0001..0022` + seed apply cleanly; blocking pgTAP suites (`0001`..`0016`) are green (see
+"Verification"). **Phase 3 DB foundation + Phase 4/5 + the Phase 6 bonus calculation engine + the Phase 6-b
+`bonus_ledger` accrual are done; the payout/export engine (Phase 7+) and everything downstream (app UI/API) remain
+gated** (see "Out of scope").
 
 ## ⚠️ Environment rule (non-negotiable — ADR-014 / CLAUDE.md)
 
@@ -216,7 +227,15 @@ supabase/
                                           T_org+AD8 top-up, largest-remainder kuruş (tie-break employee_id),
                                           writes bonus_allocations + immutable snapshot, run completed +
                                           period locked→calculated; idempotent; SI-13 Σ invariant; NO
-                                          bonus_ledger accrual (6-b); no new permission (catalog 20)
+                                          bonus_ledger accrual (posted in 0022, 6-b); no new permission (catalog 20)
+    0022_bonus_ledger_accrual.sql         bonus_ledger accrual (Phase 6-b; approve->accrual posting) —
+                                          post_bonus_accrual() SECURITY DEFINER server-only: APPROVED period
+                                          (period.manage calculated->approved; immutable snapshot untouched) +
+                                          single completed run -> AD6 gate (pending_missing_cap_basis blocks) ->
+                                          one balanced accrual (debit pool=Σfinal / credit accrual per employee);
+                                          idempotent per snapshot; append-only (BL-1); Σdebit=Σcredit (0014);
+                                          new DEFERRABLE trigger BL-2 Σaccrual≤pool_ref (AD8-aware); BL-3 deferred
+                                          to payout phase; no new permission (catalog 20)
   seed/seed_test_tenants.sql              2 tenants, RBAC catalog, teams, support grants,
                                           + Phase 3B (scoring/versions, point_ledger) + comp + bonus fixtures
                                           (periods/pools + components/eligibility + calc run/allocations/snapshot
@@ -226,6 +245,7 @@ supabase/
                                           + Phase 4 task fixtures (walked to submitted/in_progress)
                                           + Phase 5 policy multipliers/penalty rule (doc-04 values on d2/b-d2)
                                           + Phase 6 dedicated Org C (ceres) worked-example fixtures (05 §8)
+                                          + Phase 6-b Org C auditor (for the 0016 accrual RLS assertion)
   tests/
     0001_phase3a_rls.test.sql             blocking pgTAP — RLS/RBAC (Phase 3A)
     0002_phase3b_scoring_policies.test.sql blocking pgTAP — scoring policy/version (Phase 3B-A)
@@ -242,6 +262,7 @@ supabase/
     0013_phase4_tasks_reviews.test.sql    blocking pgTAP — tasks state machine/review-driven transition/self-approval/D3/AD4 timing/append-only/RLS (Phase 4)
     0014_phase5_scoring.test.sql          blocking pgTAP — scoring determinism (187.5)/SI-1 idempotency/AD4/AD5/D3/AD7/Finance-excluded/no-bonus (Phase 5)
     0015_phase6_bonus_engine.test.sql     blocking pgTAP — bonus engine worked example (05 §8)/idempotency/cap+D6 residual/AD8 top-up/T_org=0/Σadj=0/single-eligible/AD6 pending/SI-13/no-bonus_ledger/Finance-excluded (Phase 6)
+    0016_phase6b_bonus_ledger_accrual.test.sql blocking pgTAP — accrual worked example (05 §8)/approval boundary/idempotency/BL-2 Σaccrual≤pool_ref/AD6 gate/append-only/Finance+Auditor RLS (Phase 6-b)
 ```
 
 ## Apply & test (local)
@@ -250,8 +271,8 @@ Requires Docker + the Supabase CLI. From the repo root:
 
 ```bash
 supabase start            # boots local dev stack (Docker)
-supabase db reset         # applies migrations 0001..0021 then seed
-supabase test db          # runs the pgTAP suites in tests/ (0001..0015)
+supabase db reset         # applies migrations 0001..0022 then seed
+supabase test db          # runs the pgTAP suites in tests/ (0001..0016)
 ```
 
 If the `supabase` binary is not on PATH (e.g. a fresh install not yet picked up), the project-local
@@ -419,11 +440,26 @@ re-runnable (on-conflict guards).
 > (20)**; Finance cannot read raw allocations (SI-12). One in-slice **test-only** fix qualified an ambiguous
 > `top_up_applied` reference to `s.top_up_applied` in the snapshot subquery.
 >
+> **Phase 6-b bonus_ledger accrual: VERIFIED / DONE** (2026-08-09, npx Supabase CLI **2.109.1**; commit `a65013d`).
+> `db reset` applied migrations **0001..0022** + seed cleanly; `test db` → **Files=16, Tests=690, Result=PASS,
+> Failed=0** (`0001`..`0016` ok). Invariants proven (ADR-006/017; D2/AD6/AD8; BL-1/BL-2; SI-3/SI-7/SI-12/SI-13):
+> the **snapshot-approval boundary** — `post_bonus_accrual()` is rejected (`23514`) while the period is
+> `calculated`, and only after HR moves it `calculated→approved` (`period.manage`, existing transition; the
+> immutable snapshot is never mutated) does it post; the **worked-example accrual** reproduces doc-05 §8 (credits
+> 3,177,630 / 3,177,629 / 953,289 / 2,691,452; `debit pool = Σfinal = 10,000,000`; `Σdebit = Σcredit`); the post
+> is **idempotent** per snapshot (a re-post adds no rows); **BL-2** — an accrual whose `Σaccrual` exceeds
+> `pool_ref` is rejected (`23514`, deferred trigger); **AD6 gate** — a `pending_missing_cap_basis` allocation
+> blocks the accrual (`23514`); **BL-1** append-only (UPDATE → `23001`); the money ledger raw read stays **Finance
+> and Auditor only** (HR / employee / manager read 0; cross-tenant reads 0 — SI-12/SI-7); the **permission catalog
+> is unchanged (20)**. **BL-3** (payout ≤ accrual) stays deferred (no payout producer in this slice). Two in-slice
+> **test-only** fixes (org-scope the privileged Section-A queries; `::bigint` cast on a `Σaccrual`); no
+> migration/engine defect.
+>
 > **Phase 3 DB foundation is COMPLETE** (12 migrations `0001..0018` / 12 suites, Tests=523); the **Phase 4 task/
-> review core** (`0019`/`0013`), **Phase 5 scoring engine** (`0020`/`0014`) and **Phase 6 bonus calculation
-> engine** (`0021`/`0015`) are also done (**Files=15, Tests=665** total). **The `bonus_ledger` accrual (Phase
-> 6-b) and later phases (app UI/API) remain gated** (ADR-020). **Never run any of this against a production
-> project.**
+> review core** (`0019`/`0013`), **Phase 5 scoring engine** (`0020`/`0014`), **Phase 6 bonus calculation
+> engine** (`0021`/`0015`) and **Phase 6-b bonus_ledger accrual** (`0022`/`0016`) are also done (**Files=16,
+> Tests=690** total). **The payout/export engine (Phase 7+) and later phases (app UI/API) remain gated**
+> (ADR-020). **Never run any of this against a production project.**
 
 ### Prerequisites
 
@@ -439,13 +475,13 @@ re-runnable (on-conflict guards).
 
 ```bash
 supabase start        # 1. boot local stack; note the printed local URLs + dev-default keys
-supabase db reset     # 2. apply 0001..0021 + seed (expect clean apply)
+supabase db reset     # 2. apply 0001..0022 + seed (expect clean apply)
 supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
 ```
 
 ### Expected pass criteria
 
-- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=15, Tests=665, PASS**). Blocking.
+- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=16, Tests=690, PASS**). Blocking.
 - [ ] Green coverage: cross-tenant isolation (SI-7), non-recursive memberships read (§7A), support
   active-vs-expired grant (D4), append-only audit + append-only `point_ledger` (SI-2), helper
   correctness, scoring-policy `policy.manage` gating + published-version immutability (AD7), point_ledger
@@ -605,12 +641,11 @@ supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
 
 ## Out of scope (later slices / phases — still gated, ADR-020)
 
-The **`bonus_ledger` accrual/posting engine** (approved immutable snapshot → double-entry `bonus_accrual`) +
-snapshot-approval workflow (**Phase 6-b**), manual point override/adjustment
+Manual point override/adjustment
 (`point.override` 2-step → `manual_adjustment`), the **export generation engine**
 (CSV/XLSX/storage write, checksum/row_count, status progression `requested→generated→downloaded`, the
-period=`approved` gate) + `payout_exported`/`payout_marked_paid` ledger wiring + mark-paid + Finance aggregate
-views (`v_finance_*`), clawback workflow, dispute post-decision effects (point_ledger `dispute_adjustment` /
+period=`approved` gate) + `payout_exported`/`payout_marked_paid` ledger wiring (+ **BL-3** `payout ≤ accrual`
+hard-enforce) + mark-paid + Finance aggregate views (`v_finance_*`), clawback workflow, dispute post-decision effects (point_ledger `dispute_adjustment` /
 recalculation / bonus_ledger reversal), the anti-gaming rule **detection engine** + `anomaly_baselines`, the
 notification **delivery engine** (email/push/realtime) + notification preferences + retention job, projects,
 objectives, integrations, webhook_events, UI/dashboard, API routes. Each needs its own phase-scoped, verbatim
@@ -636,10 +671,14 @@ authorization (ADR-020).
 > The **Phase 6 bonus calculation engine** (`0021`/`0015`, commit `0c54fba`) is also **done**:
 > `run_bonus_calculation()` populates `bonus_allocations` + an immutable snapshot from a locked period+pool
 > (Safe Pro-Rata + cap + T_org/top-up + largest-remainder kuruş; Σ invariant SI-13; period locked→calculated;
-> idempotent) — but writes **NO `bonus_ledger` accrual**. `db reset` `0001..0021` + seed; `test db` →
-> **Files=15, Tests=665, PASS, Failed=0**. **Next major step:** **Phase 6-b — `bonus_ledger` accrual**
-> (approved immutable snapshot → double-entry `bonus_accrual`; snapshot-approval boundary) — or, once the 6-b
-> boundary is locked, **Phase 7**. A scope-lock is recommended. **Not authorized yet.**
+> idempotent). Finally the **Phase 6-b `bonus_ledger` accrual** (`0022`/`0016`, commit `a65013d`) is **done**:
+> after HR approves the period (`calculated→approved`, `period.manage`), `post_bonus_accrual()` posts one balanced
+> double-entry accrual (debit pool = Σfinal / credit accrual per employee) from the approved snapshot — idempotent;
+> AD6 gate; **BL-2** `Σaccrual ≤ pool_ref` (deferred trigger); the snapshot stays immutable and no new permission
+> is added. `db reset` `0001..0022` + seed; `test db` → **Files=16, Tests=690, PASS, Failed=0**. **Next major
+> step:** **Phase 7 — anti-gaming detection + dispute post-decision** (or the intermediate **payout/export
+> engine** — `payout_exported`/`payout_marked_paid` + `v_finance_*` + BL-3). A scope-lock is recommended. **Not
+> authorized yet.**
 
 ## Notes for reviewers
 
