@@ -939,3 +939,28 @@ update public.bonus_pools set status = 'locked', t_org = 1, locked_at = now(),
 update public.bonus_periods set status = 'locked', locked_at = now(),
        locked_by = 'c0000000-0000-0000-0000-0000000000c3'
   where id = 'a0000000-0000-0000-0000-000000000230' and status = 'open';
+
+-- =============================================================================
+-- Phase 6-b seed — Org C auditor (DEV/STAGING ONLY)
+-- Additive only: one Org C auditor (c6) so the bonus_ledger accrual RLS suite (0016)
+-- can assert Auditor raw-read on the money ledger. No other change; no pinned count
+-- depends on Org C membership size.
+-- =============================================================================
+insert into auth.users (
+  instance_id, id, aud, role, email, encrypted_password,
+  email_confirmed_at, created_at, updated_at,
+  confirmation_token, recovery_token, email_change_token_new, email_change)
+values
+  ('00000000-0000-0000-0000-000000000000', 'c0000000-0000-0000-0000-0000000000c6',
+   'authenticated', 'authenticated', 'auditor-c@ceres.test',
+   extensions.crypt('password123', extensions.gen_salt('bf')),
+   now(), now(), now(), '', '', '', '')
+on conflict (id) do nothing;
+
+insert into public.profiles (id, display_name, alias) values
+  ('c0000000-0000-0000-0000-0000000000c6', 'Auditor C', 'auditor-c')
+on conflict (id) do nothing;
+
+insert into public.memberships (organization_id, profile_id, primary_role) values
+  ('c0000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-0000000000c6', 'auditor')
+on conflict (organization_id, profile_id) do nothing;
