@@ -20,7 +20,7 @@
   test `0018`. **Consequence — the dispute migration/test numbers below shift by one:** 7-B `0024`/`0018` →
   **`0025`/`0019`**, 7-C `0025`/`0019` → **`0026`/`0020`** (see §3 and §9). Current tip: migrations `0001..0024`,
   suites `0001..0018` (Files=18/Tests=720). 7-B/7-C remain **gated**.
-  
+
 ## 2. Purpose
 
 Phase 3 delivered `anti_gaming_flags` (0016) and `disputes`/`dispute_events` (0015) as **containers only** —
@@ -101,9 +101,7 @@ and **write only `anti_gaming_flags`** — no write path/FK/trigger to `point_le
 threshold columns; `self_approval_attempt` trail; app/UI/API. **Catalog stays 20** (scan is server/job — no
 new permission).
 
-### 5.2 Slice 7-B — dispute point adjustment
-
-(migration `0025`, was `0024`) — GATED
+### 5.2 Slice 7-B — dispute point adjustment (migration `0025`, was `0024`) — GATED
 
 - Widen `point_ledger.event_type` CHECK (**DROP+ADD**) to add `'dispute_adjustment'` (append-only preserved —
   only widens the allowed set); widen the conditional-audit trigger WHEN clause to include it.
