@@ -1,6 +1,6 @@
 # MeritFlow — Supabase (Database Foundation: Phase 3A–3B + comp + bonus periods/pools + components/eligibility + calc runs/allocations/snapshots + ledger + disputes + anti-gaming + notifications + exports)
 
-This directory is the **database foundation**. It currently implements twenty-three verified
+This directory is the **database foundation**. It currently implements twenty-four verified
 slices — the twelve Phase 3 DB slices (**Phase 3 DB foundation complete**), the
 **Phase 4 task/review core** (`tasks` + `task_events` + `task_reviews`), the
 **Phase 5 scoring engine** (approve → `point_ledger task_approved`), the
@@ -372,6 +372,14 @@ supabase/
                                           (reversal+run exist -> return new snap; reversal only -> pool+run;
                                           0020 test-only fix: _b7c_snap helper accrual-filtered + #6 scope
                                           + #10 expects new re-run snap); no new permission (catalog 20)
+    0030_manual_point_adjustment.sql      manual point override (Phase 5-b) —
+                                          apply_manual_point_adjustment() SECURITY DEFINER: two-person manual
+                                          point override — caller + p_actor + p_second_approver all hold
+                                          point.override (same org); distinct approvers; non-zero delta;
+                                          non-empty reason; employee + optional task same-org; writes one
+                                          manual_adjustment point_ledger row; audited by the existing trigger;
+                                          cross-tenant blocked; append-only; NO schema change; no new permission
+                                          (catalog 20)
   seed/seed_test_tenants.sql              2 tenants, RBAC catalog, teams, support grants,
                                           + Phase 3B (scoring/versions, point_ledger) + comp + bonus fixtures
                                           (periods/pools + components/eligibility + calc run/allocations/snapshot
@@ -423,6 +431,11 @@ supabase/
                                           bonus_period_id -> 23514; cross-org bonus_period_id -> 23503); gate +
                                           catalog (Section C: approved-period gate 23514; catalog stays 20);
                                           authz (Section D: Finance without period.manage -> 42501) (Phase 7-D) Section A happy path (approve+accrue period 230 -> produce_payout_export -> mark_payout_paid: exports record created, period approved->exported->closed, payout Σdebit=Σcredit, idempotency no-op, append-only 23001); Section B AD6 gate (pending_missing_cap_basis -> produce_payout_export -> 23514); Section C ledger guards (payout_exported 23514; clawback_pending 23514; payout_marked_paid without export_id 23514; BL-3 payout>accrual 23514; BL-3 reversal-aware net=0->payout blocked; set constraints all immediate passes); Section D authz+view+cross-tenant (employee without payout.export 42501; employee without payout.mark_paid 42501; Finance reads v_finance_payout; v_finance_payout no adjusted_score/cap_basis_minor; cross-tenant Finance A reads 0 Org C rows) (Phase 6-c)
+    0024_phase5b_manual_point_adjustment.test.sql blocking pgTAP — apply_manual_point_adjustment: 17
+                                          assertions — positive delta, negative delta, task_id, metadata,
+                                          audit row, guard failures (zero delta, empty reason, same approver,
+                                          missing override, cross-tenant caller/employee/task), append-only,
+                                          catalog invariant (Phase 5-b)
 ```
 
 ## Apply & test (local)
@@ -431,8 +444,8 @@ Requires Docker + the Supabase CLI. From the repo root:
 
 ```bash
 supabase start            # boots local dev stack (Docker)
-supabase db reset         # applies migrations 0001..0029 then seed
-supabase test db          # runs the pgTAP suites in tests/ (0001..0023)
+supabase db reset         # applies migrations 0001..0030 then seed
+supabase test db          # runs the pgTAP suites in tests/ (0001..0024)
 ```
 
 If the `supabase` binary is not on PATH (e.g. a fresh install not yet picked up), the project-local
@@ -738,15 +751,23 @@ re-runnable (on-conflict guards).
 > fixes): `_b7c_snap` helper gains accrual filter (prevents ambiguity with 7-E's new non-accrued re-run);
 > `#6` scoped via accrued snapshot; `#10` expects the new re-run snapshot (7-E semantics).
 >
+> ### Phase 5-b VERIFIED (commit `b719053`)
+>
+> - `supabase db reset` — 0001..0030 clean ✅
+> - `supabase test db` — Files=24, Tests=831, PASS ✅
+> - Değişen dosya: 2 (0030 + 0024) ✅
+> - Deviation: `team_memberships.profile_id` (not `employee_id`) — verified from 0004 before writing ✅
+>
 > **Phase 3 DB foundation is COMPLETE** (12 migrations `0001..0018` / 12 suites, Tests=523); the **Phase 4 task/
 > review core** (`0019`/`0013`), **Phase 5 scoring engine** (`0020`/`0014`), **Phase 6 bonus calculation
 > engine** (`0021`/`0015`), **Phase 6-b bonus_ledger accrual** (`0022`/`0016`), the **Phase 6-c payout/export
 > engine** (`0027`/`0021`), the **Phase 6-d bonus engine authz hardening** (`0024`/`0018`), the **Phase 7-A
 > anti-gaming detection engine** (`0023`/`0017`), the **Phase 7-B dispute point adjustment** (`0025`/`0019`),
 > the **Phase 7-C dispute bonus recalculation** (`0026`/`0020`), the **Phase 7-D dispute_adjustment → bonus
-> basis** (`0028`/`0022`) and the **Phase 7-E dispute bonus re-run orchestration** (`0029`/`0023`) are also done
-> (**Files=23, Tests=814** total). **Phase 5-b, Phase 8 and everything downstream (app UI/API) remain gated**
-> (ADR-020). **Never run any of this against a production project.**
+> basis** (`0028`/`0022`), the **Phase 7-E dispute bonus re-run orchestration** (`0029`/`0023`) and the
+> **Phase 5-b manual point override** (`0030`/`0024`) are also done (**Files=24, Tests=831** total). **Phase 8
+> and everything downstream (app UI/API) remain gated** (ADR-020). **Never run any of this against a production
+> project.**
 
 ### Prerequisites
 
@@ -762,7 +783,7 @@ re-runnable (on-conflict guards).
 
 ```bash
 supabase start        # 1. boot local stack; note the printed local URLs + dev-default keys
-supabase db reset     # 2. apply 0001..0027 + seed (expect clean apply)
+supabase db reset     # 2. apply 0001..0030 + seed (expect clean apply)
 supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
 ```
 

@@ -36,7 +36,10 @@
   NEW snapshot id (7-D engine folds `dispute_adjustment` into the recalc); period stays `'calculated'`
   (re-approval required before re-accrual — ADR-006 human re-approval preserved). 14 assertions. 0020 amended
   (3 test-only fixes). Current tip: migrations `0001..0029`, suites `0001..0023` (**Files=23/Tests=814**).
-  **All 7-A, 7-B, 7-C, 7-D and 7-E DB slices complete.** Phase 5-b / Phase 8+ gated.
+  **All 7-A, 7-B, 7-C, 7-D and 7-E DB slices complete.** **Phase 5-b is also DONE** (commit `b719053`;
+  `0030`/`0024`) — `apply_manual_point_adjustment()` two-person manual point override (caller + `p_actor` +
+  `p_second_approver` all hold `point.override`; one `manual_adjustment` ledger row; no schema change;
+  Files=24/Tests=831/PASS). Phase 8+ gated.
 - **Update (2026-08-10, later):** **7-D is DONE** (commit `31c226f`; `0028`/`0022`) — `point_ledger` gains nullable
   `bonus_period_id` (composite FK + CHECK: `dispute_adjustment → NOT NULL`; others → `NULL`);
   `apply_dispute_point_adjustment()` gains a 5th param `p_bonus_period_id` (DROP+CREATE; GRANTs re-issued);

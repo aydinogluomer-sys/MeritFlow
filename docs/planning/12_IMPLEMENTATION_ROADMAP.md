@@ -369,7 +369,13 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
   `recalculate_bonus_after_dispute()` CREATE OR REPLACE: 7-C mechanical adımları + yeni
   `run_bonus_calculation()` (pool DB'den; idempotency key 'disp-recalc-snap-'+reversed_snap; ADR-006 period
   'calculated' kalır); 0020 test-only fix (3 satır); Files=23/Tests=814/PASS).
-  **Tüm 7-A + 7-B + 7-C + 7-D + 7-E DB dilimleri tamamlandı.** Kalan gated: Phase 5-b / Phase 8+.
+  **Tüm 7-A + 7-B + 7-C + 7-D + 7-E DB dilimleri tamamlandı.** Kalan gated: Phase 8+.
+
+**Phase 5-b DONE** (`b719053`, 2026-08-10): `apply_manual_point_adjustment()` — two-person manual point override.
+Migration `0030` (function only, no schema change); test suite `0024` (17 assertions). Caller + `p_actor` +
+`p_second_approver` all hold `point.override`; distinct approvers; non-zero delta; non-empty reason; employee +
+optional task same-org validated; single `manual_adjustment` ledger row; audited by existing trigger. Files=24,
+Tests=831, PASS. Next gated: Phase 8 (Dashboards & UX).
 
 ### Phase 8 — Dashboards & UX
 

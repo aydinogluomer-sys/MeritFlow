@@ -48,10 +48,11 @@ Decision Lock = D1–D12 + AD1–AD10 (22 karar).
 | Phase 7-C dispute bonus recalculation | `recalculate_bonus_after_dispute()` SECURITY DEFINER server-only: completed run → **superseded** (0013 machine); period **`approved→calculated`** (re-approval required — `validate_bonus_period_transition` CREATE OR REPLACE ile bu geçiş eklendi); mevcut `bonus_ledger` accrual'ı **balanced reversal** (debit↔credit swap, yeni transaction_id, append-only); **paid-guard** — accrual satırı paid ise `23514` (D2 clawback-gated); **idempotent** (reversal varsa no-op); authz `has_permission('period.manage') OR auth.uid() IS NULL`; **C-c1 reduced scope** (yeni run/snapshot üretilmez — `run_bonus_calculation` approved period üzerinde çalışamıyor); `dispute_adjustment` → bonus bazına yansıma **Phase 7-D'de giderildi (`31c226f`)**; yeni permission yok — katalog 20; 16 pgTAP assertion | `migrations/0026`, `tests/0020` | ✅ **verified** | commit `8941089`; 2026-08-10 |
 | Phase 7-D dispute_adjustment → bonus basis | `point_ledger` + nullable `bonus_period_id` + same-org composite FK → `bonus_periods` (SI-7) + `point_ledger_bonus_period_event_chk` CHECK (`dispute_adjustment ⇒ bonus_period_id NOT NULL`; diğer event'ler ⇒ NULL); `apply_dispute_point_adjustment()` **DROP+CREATE** (imza değişti: +`p_bonus_period_id uuid DEFAULT NULL`; grant re-issue); `run_bonus_calculation()` **CREATE OR REPLACE** (aynı imza → grant/OID korundu): gate `IN('locked','calculated')` (OQ-7D-3; 0015 mesajı birebir korundu); **NET `approved_points` = `task_approved` (tasks.approved_at) + `dispute_adjustment` (bonus_period_id = p_bonus_period_id)** (OQ-7D-1; NULL task_id artık JOIN'de kaybolmaz); net ≤ 0 → `adjusted_score ≤ 0` → dışlanır, 0 prim (OQ-7D-4; D2 malus değil); `bonus_allocations.factors` + `dispute_adjustment_points` kırılımı (OQ-7D-5). 0019 test-only fix (3 satır: #2 positive apply / #7 23505 backstop insert / #12 cross-tenant — yeni CHECK için bonus_period_id eklendi). 15 pgTAP assertion (Section A: basis+net≤0+SI-13+idempotency; B: period-atıf CHECK+FK; C: gate+katalog; D: authz) | `migrations/0028`, `tests/0022` (+ `tests/0019` amended) | ✅ **verified** | commit `31c226f`; 2026-08-10 |
 | Phase 7-E dispute bonus re-run orchestration | `recalculate_bonus_after_dispute()` **CREATE OR REPLACE** (aynı 3-arg imza → grant/OID korundu): 7-C C-c1'i tam orkestrasyon'a yükseltir — reversal+supersede+`approved→calculated` (0026 gövdesi korundu) + **YENİ `run_bonus_calculation()` çağrısı** (pool DB'den `SELECT status='locked'`; bulunamazsa `23514`; idempotency key = `'disp-recalc-snap-'` + reversed snapshot id — deterministik, birden fazla dispute döngüsü güvenli); **YENİ snapshot id döner** (7-D engine ile `dispute_adjustment` bazda yansır). Period `'calculated'` **kalır** — HR ayrıca `approve` → `post_bonus_accrual()` (ADR-006 human re-approval korundu). **İdempotent**: reversal+run → yeni snap; reversal var/run yok → pool-fetch+run'a düşer; her ikisi varsa → yeni snap (no-op). 0020 test-only fix (3 assertion: `_b7c_snap` helper accrual-filtreli; `#6` supersede scope; `#10` yeni re-run snapshot). 14 pgTAP assertion (A: 8 full orchestration / B: 3 idempotency / C: re-accrual gated / D: pool guard / E: precondition / F: authz+katalog 20) | `migrations/0029`, `tests/0023` (+ `tests/0020` amended) | ✅ **verified** | commit `3efe95d`; 2026-08-10 |
+| Phase 5-b manual point override | `apply_manual_point_adjustment()` — two-person point override (caller + `p_actor` + `p_second_approver` all hold `point.override`, same org; distinct approvers; non-zero delta; non-empty reason; employee + optional task same-org) → tek `manual_adjustment` ledger satırı; mevcut audit trigger'ı yazar; **şema değişikliği yok** | `migrations/0030`, `tests/0024` | ✅ **verified** | commit `b719053`; 17 assertion; caller + dual-actor point.override; cross-tenant block; append-only; schema değişikliği yok |
 
 **Runtime verification (2026-08-10, local dev stack, npx Supabase CLI 2.109.1):** `supabase db reset`
-migrations **0001..0029** + seed temiz uyguladı; `supabase test db` → **Files=23, Tests=814, Result=PASS,
-Failed=0** (`0001`..`0023` ok). `db reset`'teki geçici container flake'leri (`ENOTFOUND`/timeout/"exit 1" —
+migrations **0001..0030** + seed temiz uyguladı; `supabase test db` → **Files=24, Tests=831, Result=PASS,
+Failed=0** (`0001`..`0024` ok). `db reset`'teki geçici container flake'leri (`ENOTFOUND`/timeout/"exit 1" —
 vector/analytics/storage unhealthy) `supabase stop/start` (gerekirse aux servisleri `-x` ile hariç bırakıp
 yalnız Postgres) + retry ile temiz geçti; kod/şema sorunu değil.
 
@@ -422,16 +423,21 @@ Kural: güvenlik temeli (RLS/ledger) bitmeden feature fazı ilerlemez.
 `'calculated'` kalır — ADR-006 human re-approval. 0020 test-only fix (3 satır). Tüm önceki dilimler korunur: Phase 3 DB
 foundation + Phase 3.5 app scaffold (`a8b05ac`) + Phase 4 (`148667e`) + Phase 5 (`aa47e40`) + Phase 6 (`0c54fba`) +
 Phase 6-b (`a65013d`) + Phase 6-c (`77615e3`) + Phase 6-d (`0b8b34a`) + Phase 7-A (`ffdea06`) + Phase 7-B (`70ba400`) +
-Phase 7-C (`8941089`) + Phase 7-D (`31c226f`) + **Phase 7-E (`3efe95d`)** — hepsi tamam.
+Phase 7-C (`8941089`) + Phase 7-D (`31c226f`) + Phase 7-E (`3efe95d`) — hepsi tamam.
+
+**Phase 5-b manual point override verified + committed** (commit `b719053`; Phase 7-E'den sonra tamamlandı; db reset
+0001..0030 + seed, test db **Files=24/Tests=831/PASS/Failed=0**). `apply_manual_point_adjustment()` — two-person point
+override: caller + `p_actor` + `p_second_approver` üçü de `point.override` taşır (aynı org); distinct approvers; non-zero
+delta; non-empty reason; employee + optional task same-org; tek `manual_adjustment` ledger satırı; mevcut audit trigger'ı
+yazar; **şema değişikliği yok**; katalog 20. Deviation: employee-in-org kontrolü `team_memberships.profile_id` kullanır
+(bu tabloda `employee_id` kolonu yok — 0004'ten doğrulandı).
 
 **Gated adaylar (her biri ayrı `implementation authorized` ve scope-lock ister — ADR-020):**
 
-- **Phase 5-b** (manual override/adjustment): `point.override` 2-step → `manual_adjustment`; breakdown UI.
 - **Phase 8** (Dashboards & UX), **Phase 9** (Testing & Security), **Phase 10** (Production Readiness).
 
-**Henüz yetkili değil.** Başlatmak için (önce scope-lock önerilir) örnek yetki cümleleri:
+**Henüz yetkili değil.** Başlatmak için (önce scope-lock önerilir) örnek yetki cümlesi:
 
-`implementation authorized only for Phase 5-b — manual point override`
 `implementation authorized only for Phase 8 — dashboards and UX`
 
 > Bu cümle gelene kadar hiçbir kod/migration/test yazılmaz; sonraki her faz/dilim ayrı, faz-sınırlı yetki ister (ADR-020).
