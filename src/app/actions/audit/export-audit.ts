@@ -6,6 +6,7 @@ import { ExportAuditSchema } from '@/lib/validation/schemas/audit';
 import { requirePermission, getPermissions } from '@/lib/auth/rbac';
 import { getActiveOrg } from '@/lib/auth/org';
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 type AuditExportRow = {
   id: string;
@@ -90,6 +91,20 @@ export const exportAudit = validatedAction(ExportAuditSchema, async (input) => {
   });
 
   const csv = [CSV_HEADER, ...lines].join('\n');
+
+  // AD3: audit the raw comp/sensitive access — but ONLY when a sensitive row was
+  // actually exported in raw form. `canSeeRaw` merely means the caller is *allowed*
+  // to unmask; the "raw access" audit must fire only when raw sensitive data was
+  // truly included. Fail-closed: no unaudited raw access.
+  if (canSeeRaw && rows.some((r) => r.is_sensitive === true)) {
+    const admin = createAdminClient();
+    const { error: auditError } = await admin.rpc('log_comp_access', {
+      p_organization_id: org!.organization_id,
+      p_actor_id: org!.profile_id, // actor = caller (getActiveOrg().profile_id)
+      p_reason: 'audit CSV export — raw sensitive payload included',
+    });
+    if (auditError) throw new Error(auditError.message);
+  }
 
   return { csv, rowCount: rows.length };
 });
