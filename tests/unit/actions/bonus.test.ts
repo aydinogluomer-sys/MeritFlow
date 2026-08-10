@@ -57,7 +57,7 @@ describe('runCalculation', () => {
       'run_bonus_calculation',
       expect.objectContaining({ p_bonus_pool_id: POOL_ID, p_triggered_by: 'u1' }),
     );
-    const arg = rpc.mock.calls[0][1] as Record<string, unknown>;
+    const arg = rpc.mock.calls[0]![1] as Record<string, unknown>;
     expect(arg).toHaveProperty('p_bonus_pool_id');
     expect(arg).not.toHaveProperty('p_pool_id');
   });
@@ -153,7 +153,7 @@ describe('runScan', () => {
       'run_anti_gaming_scan',
       expect.objectContaining({ p_organization_id: 'o1' }),
     );
-    const arg = rpc.mock.calls[0][1] as Record<string, unknown>;
+    const arg = rpc.mock.calls[0]![1] as Record<string, unknown>;
     expect(arg).not.toHaveProperty('p_triggered_by');
     expect(arg).toHaveProperty('p_bonus_period_id', PERIOD_ID);
   });
@@ -161,7 +161,7 @@ describe('runScan', () => {
   it('periodId omitted -> p_bonus_period_id null', async () => {
     const { rpc } = mockRpc({ data: 0, error: null });
     await runScan({});
-    const arg = rpc.mock.calls[0][1] as Record<string, unknown>;
+    const arg = rpc.mock.calls[0]![1] as Record<string, unknown>;
     expect(arg.p_bonus_period_id).toBeNull();
   });
 

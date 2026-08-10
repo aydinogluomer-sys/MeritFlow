@@ -93,7 +93,7 @@ describe('openDispute', () => {
         complainant_id: 'u1',
       }),
     );
-    const payload = insert.mock.calls[0][0] as Record<string, unknown>;
+    const payload = insert.mock.calls[0]![0] as Record<string, unknown>;
     expect(payload).not.toHaveProperty('description');
   });
 
