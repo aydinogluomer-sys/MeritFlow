@@ -25,6 +25,7 @@ const SECTIONS: NavItem[] = [
   { label: 'Puan Override', href: '/points/override', permission: 'point.override' },
   { label: 'Anti-Gaming', href: '/anti-gaming', permission: 'period.manage' },
   { label: 'Denetim Kaydı', href: '/audit', permission: 'audit.read' },
+  { label: 'Destek Erişimi', href: '/admin/support-access', permission: 'support.grant' },
 ];
 
 export function AppNav({

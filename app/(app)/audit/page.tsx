@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/card';
 import { EmptyState } from '@/components/features/shared/empty-state';
 import { ErrorState } from '@/components/features/shared/error-state';
+import { ExportButton } from '@/components/features/audit/export-button';
 
 const dateFormatter = new Intl.DateTimeFormat('tr-TR', {
   dateStyle: 'medium',
@@ -57,12 +58,15 @@ export default async function AuditPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Denetim kayıtları</h1>
-        <p className="text-sm text-muted-foreground">
-          Değiştirilemez, yalnızca eklenebilir denetim izi. Kritik mutasyonlar (düzeltme,
-          onay, karar, dışa aktarım, rol değişimi vb.) burada iz bırakır.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">Denetim kayıtları</h1>
+          <p className="text-sm text-muted-foreground">
+            Değiştirilemez, yalnızca eklenebilir denetim izi. Kritik mutasyonlar (düzeltme,
+            onay, karar, dışa aktarım, rol değişimi vb.) burada iz bırakır.
+          </p>
+        </div>
+        <ExportButton />
       </div>
 
       <Card>
