@@ -14,7 +14,9 @@
 begin;
 select no_plan();
 
--- helper: the accrued snapshot id for a period (Org C).
+-- helper: the ACCRUED snapshot id for a period (Org C). Scoped to the run whose snapshot
+-- has bonus_accrual rows so it stays deterministic after 7-E (which adds a second, non-accrued
+-- re-run for the same period).
 create function _b7c_snap(p_period uuid)
 returns uuid language sql as $$
   select s.id
@@ -22,6 +24,9 @@ returns uuid language sql as $$
   join public.bonus_calculation_runs r
     on r.id = s.calculation_run_id and r.organization_id = s.organization_id
   where r.bonus_period_id = p_period and r.organization_id = 'c0000000-0000-0000-0000-000000000003'
+    and exists (select 1 from public.bonus_ledger bl
+                where bl.snapshot_id = s.id and bl.organization_id = 'c0000000-0000-0000-0000-000000000003'
+                  and bl.event_type = 'bonus_accrual')
   limit 1;
 $$;
 
@@ -62,9 +67,12 @@ select is(
   (select coalesce(sum(amount_minor) filter (where entry_type = 'credit'), 0) from public.bonus_ledger where snapshot_id = _b7c_snap('a0000000-0000-0000-0000-000000000230') and event_type = 'bonus_accrual'),
   'reversal debit total = original accrual credit total');
 
--- (#6) The old run is superseded.
+-- (#6) The old (accrued) run is superseded. Scoped via the accrued snapshot so 7-E's new
+-- (completed) re-run for the same period is not picked up.
 select is(
-  (select status from public.bonus_calculation_runs where bonus_period_id = 'a0000000-0000-0000-0000-000000000230' and organization_id = 'c0000000-0000-0000-0000-000000000003' limit 1),
+  (select r.status from public.bonus_calculation_runs r
+   join public.bonus_allocation_snapshots s on s.calculation_run_id = r.id and s.organization_id = r.organization_id
+   where s.id = _b7c_snap('a0000000-0000-0000-0000-000000000230')),
   'superseded', 'old completed run is superseded');
 
 -- (#7) The period moved approved -> calculated (re-approval required).
@@ -82,11 +90,15 @@ select throws_ok(
   $$ select public.post_bonus_accrual('c0000000-0000-0000-0000-000000000003','a0000000-0000-0000-0000-000000000230','c0000000-0000-0000-0000-0000000000c3') $$,
   '23514', NULL, 'post_bonus_accrual blocked while period is calculated (re-approval required)');
 
--- (#10) Idempotency: a second recalc is a no-op (same snapshot, no duplicate reversal).
+-- (#10) Idempotency: a second recalc is a no-op — it returns the (new) re-run snapshot
+-- deterministically (7-E returns the NEW snapshot from the auto re-run).
 select is(
   (select public.recalculate_bonus_after_dispute('c0000000-0000-0000-0000-000000000003','a0000000-0000-0000-0000-000000000230','c0000000-0000-0000-0000-0000000000c3')),
-  _b7c_snap('a0000000-0000-0000-0000-000000000230'),
-  'second recalc returns the same snapshot (idempotent no-op)');
+  (select s.id from public.bonus_allocation_snapshots s
+   join public.bonus_calculation_runs r on r.id = s.calculation_run_id and r.organization_id = s.organization_id
+   where r.organization_id = 'c0000000-0000-0000-0000-000000000003'
+     and r.idempotency_key = 'disp-recalc-snap-' || _b7c_snap('a0000000-0000-0000-0000-000000000230')::text),
+  'second recalc returns the new re-run snapshot idempotently (7-E)');
 select is(
   (select count(*) from public.bonus_ledger where snapshot_id = _b7c_snap('a0000000-0000-0000-0000-000000000230') and event_type = 'reversal'),
   (select count(*) from public.bonus_ledger where snapshot_id = _b7c_snap('a0000000-0000-0000-0000-000000000230') and event_type = 'bonus_accrual'),
