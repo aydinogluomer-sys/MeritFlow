@@ -2,17 +2,29 @@ import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { SignOutButton } from '@/components/sign-out-button';
 
-type NavItem = { label: string; permission?: string };
+type NavItem = { label: string; href: string; permission?: string };
 
-// Placeholder role-based IA (doc 09). The real screens arrive in later phases; gated
-// items render as "yakında" (soon) and are filtered by DB-derived permissions (AD1).
+const LINK_CLASS =
+  'rounded-md px-3 py-2 font-medium hover:bg-accent hover:text-accent-foreground';
+
+// Role-based IA (doc 09). Every item now has a live route (<Link>). Items with a
+// `permission` are shown only when the DB-derived permission set (AD1) includes it;
+// items without a permission are always visible.
 const SECTIONS: NavItem[] = [
-  { label: 'İnceleme Kuyruğu', permission: 'task.review' },
-  { label: 'Bonus Dönemleri', permission: 'period.manage' },
-  { label: 'Ödeme Export', permission: 'payout.export' },
-  { label: 'İtirazlar', permission: 'dispute.resolve' },
-  { label: 'Denetim Kaydı', permission: 'audit.read' },
-  { label: 'Ücret', permission: 'comp.read' },
+  // Employee-facing (task.submit)
+  { label: 'Görevler', href: '/tasks', permission: 'task.submit' },
+  // Reviewer-facing (task.review) — same route, different gate (intended).
+  { label: 'İnceleme Kuyruğu', href: '/tasks', permission: 'task.review' },
+  // Always visible
+  { label: 'Puanlarım', href: '/points' },
+  { label: 'Liderlik Tablosu', href: '/leaderboard' },
+  // Manager / HR / Finance / Auditor
+  { label: 'Bonus Dönemleri', href: '/bonus/periods', permission: 'period.manage' },
+  { label: 'İtirazlar', href: '/disputes', permission: 'dispute.open' },
+  { label: 'Ödeme Export', href: '/payroll/exports', permission: 'payout.export' },
+  { label: 'Puan Override', href: '/points/override', permission: 'point.override' },
+  { label: 'Anti-Gaming', href: '/anti-gaming', permission: 'period.manage' },
+  { label: 'Denetim Kaydı', href: '/audit', permission: 'audit.read' },
 ];
 
 export function AppNav({
@@ -35,20 +47,18 @@ export function AppNav({
       <nav className="flex flex-col gap-1 text-sm">
         <Link
           href="/dashboard"
-          className="rounded-md px-3 py-2 font-medium hover:bg-accent hover:text-accent-foreground"
+          className={LINK_CLASS}
         >
           Pano
         </Link>
         {visible.map((section) => (
-          <span
-            key={section.label}
-            className="flex items-center justify-between rounded-md px-3 py-2 text-muted-foreground"
+          <Link
+            key={`${section.href}:${section.label}`}
+            href={section.href}
+            className={LINK_CLASS}
           >
             {section.label}
-            <Badge variant="outline" className="text-[10px]">
-              yakında
-            </Badge>
-          </span>
+          </Link>
         ))}
       </nav>
       <div className="mt-auto">
