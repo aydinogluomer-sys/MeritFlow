@@ -1,5 +1,5 @@
-import { getUser } from '@/lib/auth/session';
 import { createClient } from '@/lib/supabase/server';
+import { getActiveOrg } from '@/lib/auth/org';
 import {
   Card,
   CardContent,
@@ -7,59 +7,33 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/features/shared/empty-state';
-import {
-  LeaderboardTable,
-  type LeaderboardRow,
-} from '@/components/features/leaderboard/leaderboard-table';
 
 const pointFormatter = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 0 });
 
-type LedgerRow = { employee_id: string; points_delta: number };
+type LeaderboardRpcRow = {
+  rank: number;
+  display_name: string;
+  total_points: number;
+  is_self: boolean;
+};
 
 export default async function LeaderboardPage() {
-  // Any authenticated user. RLS enforces privacy: a plain employee only reads their OWN
-  // task_approved rows → one aggregated row; managers/HR/admin read their team/org →
-  // many rows. We NEVER use adminClient and never fabricate rows we cannot see.
+  // createClient() uses the user's session (anon key + cookies) — NOT adminClient.
+  // get_leaderboard is granted to `authenticated` only; service_role would get 42501.
+  // auth.uid() inside the SECURITY DEFINER function resolves to the calling user,
+  // enabling the privacy-first anonymisation (AD5) and the cross-tenant guard.
   const supabase = await createClient();
-  const user = await getUser();
+  const org = await getActiveOrg();
 
-  const { data, error } = await supabase
-    .from('point_ledger')
-    .select('employee_id, points_delta')
-    .eq('event_type', 'task_approved');
+  const { data, error } = org
+    ? await supabase.rpc('get_leaderboard', {
+        p_organization_id: org.organization_id,
+      })
+    : { data: null, error: null };
 
-  const ledgerRows = (data ?? []) as LedgerRow[];
-
-  // Aggregate approved points per employee (client-side; RLS already scoped the rows).
-  const totals = new Map<string, number>();
-  for (const row of ledgerRows) {
-    totals.set(
-      row.employee_id,
-      (totals.get(row.employee_id) ?? 0) + (Number(row.points_delta) || 0),
-    );
-  }
-
-  const employeeIds = [...totals.keys()];
-
-  // Resolve display names (profiles is RLS-scoped identity).
-  const nameById = new Map<string, string>();
-  if (employeeIds.length > 0) {
-    const { data: profiles } = await supabase
-      .from('profiles')
-      .select('id, display_name')
-      .in('id', employeeIds);
-    for (const p of (profiles ?? []) as Array<{ id: string; display_name: string }>) {
-      nameById.set(p.id, p.display_name);
-    }
-  }
-
-  const rows: LeaderboardRow[] = employeeIds.map((employeeId) => ({
-    employeeId,
-    name: nameById.get(employeeId) ?? employeeId,
-    totalPoints: totals.get(employeeId) ?? 0,
-    isSelf: user?.id === employeeId,
-  }));
+  const rows = (data ?? []) as LeaderboardRpcRow[];
 
   return (
     <div className="flex flex-col gap-6">
@@ -75,7 +49,7 @@ export default async function LeaderboardPage() {
         <CardHeader>
           <CardTitle>Puan sıralaması</CardTitle>
           <CardDescription>
-            Karşılaştırmalı sıralama yalnızca yetkili roller (yönetici/İK) için görünür.
+            Kendi adın görünür; diğer çalışanlar gizlilik amacıyla anonimleştirilmiştir.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -83,31 +57,51 @@ export default async function LeaderboardPage() {
             <EmptyState message="Sıralama şu anda gösterilemiyor." />
           ) : rows.length === 0 ? (
             <EmptyState message="Sıralama için henüz puan yok" />
-          ) : rows.length === 1 ? (
-            // RLS returned only the caller's own aggregate → show own standing only.
-            <OwnStanding row={rows[0]!} />
           ) : (
-            <LeaderboardTable rows={rows} />
+            <div className="overflow-x-auto rounded-xl border">
+              <table className="w-full border-collapse text-sm">
+                <caption className="sr-only">Puan sıralaması</caption>
+                <thead>
+                  <tr className="border-b bg-muted/50 text-left text-xs text-muted-foreground">
+                    <th scope="col" className="px-4 py-3 font-medium">
+                      Sıra
+                    </th>
+                    <th scope="col" className="px-4 py-3 font-medium">
+                      Çalışan
+                    </th>
+                    <th scope="col" className="px-4 py-3 text-right font-medium">
+                      Puan
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => (
+                    <tr
+                      key={`${row.rank}-${row.display_name}`}
+                      className={`border-b last:border-0 ${
+                        row.is_self ? 'bg-primary/5 font-medium' : 'hover:bg-muted/30'
+                      }`}
+                    >
+                      <td className="px-4 py-3 tabular-nums">{row.rank}</td>
+                      <td className="px-4 py-3">
+                        {row.display_name}
+                        {row.is_self ? (
+                          <Badge variant="secondary" className="ml-2 text-xs">
+                            Sen
+                          </Badge>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums">
+                        {pointFormatter.format(row.total_points)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </CardContent>
       </Card>
-    </div>
-  );
-}
-
-function OwnStanding({ row }: { row: LeaderboardRow }) {
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="rounded-xl border p-6">
-        <p className="text-xs text-muted-foreground">{row.name}</p>
-        <p className="mt-1 text-3xl font-semibold tabular-nums">
-          {pointFormatter.format(row.totalPoints)} puan
-        </p>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        Yalnızca kendi puan durumun gösteriliyor. Karşılaştırmalı sıralama için ek yetki
-        (yönetici/İK) gereklidir.
-      </p>
     </div>
   );
 }
