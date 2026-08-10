@@ -186,11 +186,13 @@ Migrations `0001..0030` + seed apply cleanly; blocking pgTAP suites (`0001`..`00
 `bonus_ledger` accrual, the Phase 6-c payout/export engine, the Phase 6-d authz hardening, the Phase 7-A
 anti-gaming detection engine, the Phase 7-B dispute point adjustment, the Phase 7-C dispute bonus recalculation,
 the Phase 7-D dispute_adjustment → bonus basis and the Phase 7-E dispute bonus re-run orchestration
-are all done; Phase 9 and everything downstream (app API) remain gated** (see "Out of scope").
+are all done; Phase 10 only remains gated** (see "Out of scope").
 
 > **Phase 8 UI layer complete** (commit `7f51cfd`; app server-actions + pages + nav; **no migration/test** — this
 > directory is unchanged, still migrations `0001..0030` + suites `0001..0024`; tsc clean). The app UI layer lives
 > outside `supabase/` and adds no DB slice.
+>
+> **Phase 9 app-layer test suite complete** (commit `cae487a`; 8 test files / 98 Vitest tests; no migration/DB change — supabase/ unchanged).
 
 ## ⚠️ Environment rule (non-negotiable — ADR-014 / CLAUDE.md)
 

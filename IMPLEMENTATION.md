@@ -50,6 +50,7 @@ Decision Lock = D1–D12 + AD1–AD10 (22 karar).
 | Phase 7-E dispute bonus re-run orchestration | `recalculate_bonus_after_dispute()` **CREATE OR REPLACE** (aynı 3-arg imza → grant/OID korundu): 7-C C-c1'i tam orkestrasyon'a yükseltir — reversal+supersede+`approved→calculated` (0026 gövdesi korundu) + **YENİ `run_bonus_calculation()` çağrısı** (pool DB'den `SELECT status='locked'`; bulunamazsa `23514`; idempotency key = `'disp-recalc-snap-'` + reversed snapshot id — deterministik, birden fazla dispute döngüsü güvenli); **YENİ snapshot id döner** (7-D engine ile `dispute_adjustment` bazda yansır). Period `'calculated'` **kalır** — HR ayrıca `approve` → `post_bonus_accrual()` (ADR-006 human re-approval korundu). **İdempotent**: reversal+run → yeni snap; reversal var/run yok → pool-fetch+run'a düşer; her ikisi varsa → yeni snap (no-op). 0020 test-only fix (3 assertion: `_b7c_snap` helper accrual-filtreli; `#6` supersede scope; `#10` yeni re-run snapshot). 14 pgTAP assertion (A: 8 full orchestration / B: 3 idempotency / C: re-accrual gated / D: pool guard / E: precondition / F: authz+katalog 20) | `migrations/0029`, `tests/0023` (+ `tests/0020` amended) | ✅ **verified** | commit `3efe95d`; 2026-08-10 |
 | Phase 5-b manual point override | `apply_manual_point_adjustment()` — two-person point override (caller + `p_actor` + `p_second_approver` all hold `point.override`, same org; distinct approvers; non-zero delta; non-empty reason; employee + optional task same-org) → tek `manual_adjustment` ledger satırı; mevcut audit trigger'ı yazar; **şema değişikliği yok** | `migrations/0030`, `tests/0024` | ✅ **verified** | commit `b719053`; 17 assertion; caller + dual-actor point.override; cross-tenant block; append-only; schema değişikliği yok |
 | Phase 8 UI layer | Next.js App Router dashboards & UX layer — **8-A** 5 Zod schema (`src/lib/validation/schemas/`), **8-B** 12 server action (`src/app/actions/`), **8-C** 35 sayfa+feature component, **8-D** nav activation (`src/components/app-nav.tsx`), **8-E** dashboard role summary; server-side `requirePermission`/RLS; Finance view'ları `createClient` ile; app UI layer — migration yok / test yok | app UI layer — migration yok · test yok (—) | ✅ **verified (tsc)** | commit `7f51cfd`; Files=54; **tsc clean** (`npx tsc --noEmit`); 8-A..8-E ✓; DB değişikliği yok. Bilinen sınır: leaderboard employee view = own-standing only (RLS) |
+| Phase 9 app-layer test suite | **9-A** 38 Zod schema tests, **9-B** 43 server action tests, **9-C** 4 security-boundary invariants, **9-D** 10 E2E route-guard specs (Playwright, env-gated); 11 Vitest test files / 98 tests; no migration / no DB change | `src/` test files (8 new) | ✅ **Vitest pass; E2E authored env-gated** | commit `cae487a`; 8 files / 98 tests (11 files total); 9-A schemas + 9-B actions + 9-C boundary + 9-D E2E smoke; Vitest pass; E2E authored env-gated; no migration/DB change |
 
 **Runtime verification (2026-08-10, local dev stack, npx Supabase CLI 2.109.1):** `supabase db reset`
 migrations **0001..0030** + seed temiz uyguladı; `supabase test db` → **Files=24, Tests=831, Result=PASS,
@@ -398,7 +399,7 @@ Kural: güvenlik temeli (RLS/ledger) bitmeden feature fazı ilerlemez.
   - [x] **Phase 7-C — Dispute Bonus Recalculation** ✅ (commit `8941089`, verified 2026-08-10; `recalculate_bonus_after_dispute()` SECURITY DEFINER server-only; run **superseded** + period **`approved→calculated`** + mevcut bonus_ledger accrual **balanced reversal** (debit↔credit swap, yeni txn_id; BL-1 append-only; Σdebit=Σcredit); **paid-guard** 23514 (OQ-4/D2); idempotent (reversal varsa no-op); authz `has_permission('period.manage') OR auth.uid() IS NULL`; **C-c1 reduced scope** — yeni run/snapshot üretilmez; dispute_adjustment → bonus bazı **Phase 7-D'de giderildi**; katalog 20; Files=20/Tests=753).
   - [x] **Phase 7-D — Dispute_adjustment → Bonus Basis** ✅ (commit `31c226f`, verified 2026-08-10; `point_ledger` + nullable `bonus_period_id` + same-org composite FK + `point_ledger_bonus_period_event_chk` CHECK; `apply_dispute_point_adjustment()` DROP+CREATE +`p_bonus_period_id`; `run_bonus_calculation()` CREATE OR REPLACE — gate `IN('locked','calculated')` + NET `approved_points` (task_approved + dispute_adjustment by bonus_period_id) + `dispute_adjustment_points` factors kırılımı; net≤0 dışlanır; 0019 test-only fix (3 satır); 15 assertion; katalog 20; Files=22/Tests=797/PASS).
 - [x] **Phase 8 — Dashboards & UX** ✅ (commit `7f51cfd`, verified tsc 2026-08-10; app UI layer — migration/DB değişikliği yok; 54 dosya; 8-A 5 Zod schema + 8-B 12 server action + 8-C 35 sayfa/feature component + 8-D nav activation + 8-E dashboard role summary; server-side `requirePermission`/RLS; Finance view'ları `createClient` ile; `npx tsc --noEmit` temiz). **Bilinen sınır:** leaderboard employee view = own-standing only (RLS); tam anonimleştirilmiş sıralama gelecekte bir ranking read-model gerektirir.
-- [ ] **Phase 9 — Testing & Security**: tam suite; cross-tenant + self-approval bloklayıcı; AD1–AD10 testleri; audit coverage.
+- [x] **Phase 9 — Testing & Security** ✅ DONE (commit `cae487a`, 2026-08-10): app-layer test suite — 9-A schemas (38 tests) + 9-B actions (43 tests) + 9-C security-boundary (4 invariants) + 9-D E2E route-guards (10 specs, env-gated); 98 Vitest tests / 11 files pass; E2E authored env-gated; no migration/DB change.
 - [ ] **Phase 10 — Production Readiness**: monitoring, audit export, deploy checklist, support access workflow.
 
 ---
@@ -440,12 +441,14 @@ değişikliği yok — migration `0001..0030` + suite `0001..0024`/831 test ayn�
 `createClient` ile. **Bilinen sınır:** leaderboard employee görünümü = yalnız own-standing (RLS); tam
 anonimleştirilmiş cross-employee sıralama gelecekte bir SECURITY DEFINER ranking read-model (gated DB dilimi) gerektirir.
 
+**Phase 9 tamamlandı** (commit `cae487a`, 2026-08-10): app-layer test suite — 9-A schemas + 9-B actions + 9-C boundary + 9-D E2E smoke; 98 Vitest tests / 11 files pass; E2E authored env-gated; no migration/DB change.
+
 **Gated adaylar (her biri ayrı `implementation authorized` ve scope-lock ister — ADR-020):**
 
-- **Phase 9** (Testing & Security), **Phase 10** (Production Readiness).
+- **Phase 10** (Production Readiness) — tek kalan gated faz.
 
 **Henüz yetkili değil.** Başlatmak için (önce scope-lock önerilir) örnek yetki cümlesi:
 
-`implementation authorized only for Phase 9 — testing and security`
+`implementation authorized only for Phase 10 — production readiness`
 
 > Bu cümle gelene kadar hiçbir kod/migration/test yazılmaz; sonraki her faz/dilim ayrı, faz-sınırlı yetki ister (ADR-020).

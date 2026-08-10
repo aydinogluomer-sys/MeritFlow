@@ -369,7 +369,7 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
   `recalculate_bonus_after_dispute()` CREATE OR REPLACE: 7-C mechanical adımları + yeni
   `run_bonus_calculation()` (pool DB'den; idempotency key 'disp-recalc-snap-'+reversed_snap; ADR-006 period
   'calculated' kalır); 0020 test-only fix (3 satır); Files=23/Tests=814/PASS).
-  **Tüm 7-A + 7-B + 7-C + 7-D + 7-E DB dilimleri tamamlandı.** Kalan gated: Phase 9+ (Phase 8 UI DONE — `7f51cfd`).
+  **Tüm 7-A + 7-B + 7-C + 7-D + 7-E DB dilimleri tamamlandı.** Kalan gated: Phase 10 only (Phase 8 UI DONE — `7f51cfd`; Phase 9 test suite DONE — `cae487a`).
 
 **Phase 5-b DONE** (`b719053`, 2026-08-10): `apply_manual_point_adjustment()` — two-person manual point override.
 Migration `0030` (function only, no schema change); test suite `0024` (17 assertions). Caller + `p_actor` +
@@ -394,6 +394,8 @@ change; 54 files. Known limit: leaderboard employee view own-standing only (RLS)
 - Deliverable: business/RLS/permission/anti-gaming/E2E/security testleri.
 - Acceptance: cross-tenant + self-approval bloklayıcı yeşil; audit coverage tam; AD1–AD10 testleri geçer.
 - Test: tüm suite. Risk: kapsam boşluğu. Dep: Phase 3–8. Difficulty: L.
+
+**Phase 9 DONE** (cae487a, 2026-08-10): app-layer test suite — 9-A schemas + 9-B actions + 9-C boundary + 9-D E2E smoke; 98 Vitest tests / 11 files pass; E2E authored env-gated; no migration/DB change. Next: Phase 10 (Production Readiness).
 
 ### Phase 10 — Production Readiness
 
