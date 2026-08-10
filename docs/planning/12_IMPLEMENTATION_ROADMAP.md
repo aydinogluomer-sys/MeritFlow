@@ -322,9 +322,6 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
     `tests/0020_phase7c_dispute_bonus_recalculation.test.sql`. **Verified 2026-08-10** (`db reset` 0001..0026 +
     seed; `test db` **Files=20 Tests=753 PASS Failed=0**; 16 assertion — worked example/paid-guard/authz/
     append-only/DB balance). D2/OQ-4/OQ-6/ADR-006/ADR-017/BL-1 kanıtlı.
-  - **Phase 7-D — dispute_adjustment → bonus bazı [GATED]:** `dispute_adjustment` satırlarının (`NULL task_id`)
-    `run_bonus_calculation()` motor girdisine dahil edilmesi; period-atıf kuralı + engine genişletme.
-    Her dilim/faz ayrı `implementation authorized` ister. **Henüz yetkili değil.**
   - **Phase 6-c — payout/export engine** [VERIFIED/DONE — bkz. yukarı `0027`/`0021`].
     **UI/API** ayrı yetki ister.
 
@@ -405,6 +402,10 @@ change; 54 files. Known limit: leaderboard employee view own-standing only (RLS)
 - Test: smoke + export. Risk: ops. Dep: Phase 9. Difficulty: M.
 
 **Phase 10 DONE** (`0403811`, 2026-08-10): production readiness — Sentry hook (Decision C, scaffolded — no-op until @sentry/nextjs supports Next 16), audit CSV export (AD3 masking), support access workflow (D4 time-bounded grants), nav item; 12 files / 634 insertions; tsc clean + vitest 98/98 PASS; no migration/DB change. Known: Sentry no-op until @sentry/nextjs supports Next 16; audit raw-access log needs future DB function. **Tüm fazlar tamamlandı.**
+
+**Post-10-B — AD3 comp access audit log DONE** (`1475798`, 2026-08-11): `log_comp_access(org, actor, reason)` SECURITY DEFINER (migration `0031`) — appends one `audit_logs` row (action=comp.raw_access, is_sensitive=true) when raw sensitive payload is actually exported; revoked from public/anon, granted to authenticated+service_role. `export-audit.ts` wired with fail-closed guard (`canSeeRaw && rows.some(is_sensitive)`). pgTAP suite `0025` (4 assertions: shape / anon-42501 / UPDATE-23001 / DELETE-23001). DB: Files=25 Tests=835 PASS. AD3 kanıtlı.
+
+**Post-10-C — Privacy-first leaderboard read-model DONE** (`9859d89`, 2026-08-11): `get_leaderboard(org, start?, end?)` SECURITY DEFINER (migration `0032`) — net points (task_approved+dispute_adjustment+manual_adjustment); cross-tenant blocked via `memberships` EXISTS guard; caller sees own display_name, others anonymized as 'Çalışan #N'; granted to authenticated only (enforces createClient/session path so auth.uid() resolves). `app/(app)/leaderboard/page.tsx` updated to use RPC. pgTAP suite `0026` (3 assertions: is_self display_name / anonymization / cross-tenant block). DB: Files=26 Tests=838 PASS. AD5/cross-tenant isolation kanıtlı.
 
 ## Edge cases
 
