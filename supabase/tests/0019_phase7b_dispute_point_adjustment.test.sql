@@ -49,7 +49,7 @@ select has_function('public', 'apply_dispute_point_adjustment', 'apply_dispute_p
 
 -- (#2) Positive: resolved+accepted dispute -> one dispute_adjustment delta for the complainant.
 select lives_ok(
-  $$ select public.apply_dispute_point_adjustment('c0000000-0000-0000-0000-0000000007b1', 50, 'accepted: +50', 'c0000000-0000-0000-0000-0000000000c3') $$,
+  $$ select public.apply_dispute_point_adjustment('c0000000-0000-0000-0000-0000000007b1', 50, 'accepted: +50', 'c0000000-0000-0000-0000-0000000000c3', 'a0000000-0000-0000-0000-000000000230') $$,
   'apply on a resolved+accepted dispute succeeds');
 select is(
   (select count(*) from public.point_ledger where dispute_id = 'c0000000-0000-0000-0000-0000000007b1' and event_type = 'dispute_adjustment'),
@@ -87,8 +87,8 @@ select is(
 
 -- (#7) Idempotency backstop: a direct duplicate dispute_adjustment for the same dispute -> 23505.
 select throws_ok(
-  $$ insert into public.point_ledger (organization_id, employee_id, event_type, points_delta, reason, dispute_id, created_by)
-     values ('c0000000-0000-0000-0000-000000000003','a0000000-0000-0000-0000-000000000201','dispute_adjustment',10,'dup','c0000000-0000-0000-0000-0000000007b1','c0000000-0000-0000-0000-0000000000c3') $$,
+  $$ insert into public.point_ledger (organization_id, employee_id, event_type, points_delta, reason, dispute_id, bonus_period_id, created_by)
+     values ('c0000000-0000-0000-0000-000000000003','a0000000-0000-0000-0000-000000000201','dispute_adjustment',10,'dup','c0000000-0000-0000-0000-0000000007b1','a0000000-0000-0000-0000-000000000230','c0000000-0000-0000-0000-0000000000c3') $$,
   '23505', NULL, 'duplicate dispute_adjustment for the same dispute -> 23505 (unique index)');
 
 -- (#8) Constraint: a dispute_adjustment WITHOUT a dispute_id is rejected.
@@ -120,8 +120,8 @@ select throws_ok(
 -- (#12) Cross-tenant (SI-7): a dispute_adjustment pairing an Org C dispute with Org A is
 -- rejected by the same-org composite FK (dispute_id, organization_id) -> disputes.
 select throws_ok(
-  $$ insert into public.point_ledger (organization_id, employee_id, event_type, points_delta, reason, dispute_id, created_by)
-     values ('a0000000-0000-0000-0000-000000000001','a0000000-0000-0000-0000-0000000000a7','dispute_adjustment',10,'x-tenant','c0000000-0000-0000-0000-0000000007b3','a0000000-0000-0000-0000-0000000000a3') $$,
+  $$ insert into public.point_ledger (organization_id, employee_id, event_type, points_delta, reason, dispute_id, bonus_period_id, created_by)
+     values ('a0000000-0000-0000-0000-000000000001','a0000000-0000-0000-0000-0000000000a7','dispute_adjustment',10,'x-tenant','c0000000-0000-0000-0000-0000000007b3','a0000000-0000-0000-0000-0000000000fa','a0000000-0000-0000-0000-0000000000a3') $$,
   '23503', NULL, 'cross-org dispute_id/organization_id pairing rejected by same-org FK (SI-7)');
 
 -- =============================================================================
