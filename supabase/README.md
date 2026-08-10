@@ -181,12 +181,16 @@ slices — the twelve Phase 3 DB slices (**Phase 3 DB foundation complete**), th
   not a paid-money clawback — the money side is 7-C), **D9** is enforced at the resolve step (0015) — pgTAP (`0019`).
 - **Phase 6-c — payout/export engine** (`06 §2`, ADR-017; D2/AD6; BL-3; SI-12): the **payout producer** over the existing `exports` (0018) and `bonus_ledger` (0014) containers (no new table/permission — catalog 20). `produce_payout_export(org, period, snapshot, format, actor)` (SECURITY DEFINER, server-only) requires `period.export OR auth.uid() IS NULL`, gates on `period='approved'`, re-uses the 0018 AD6/SI-15 trigger (pending_missing_cap_basis → `23514`), inserts the `exports` record (SECURITY DEFINER — Finance lacks `period.manage`), and transitions the period `approved→exported`. `mark_payout_paid(org, period, export_id, actor)` (SECURITY DEFINER, server-only) checks **idempotency BEFORE the period gate** (if the export is already paid, returns the existing `transaction_id` — safe re-call), requires `period='exported'`, posts per-employee balanced `payout_marked_paid` rows (one `debit accrual` + one `credit payout` per employee, same `transaction_id`; doc-06 §2 double-entry), and closes the period `exported→closed`. **BL-3** is added as a new `DEFERRABLE INITIALLY DEFERRED` trigger `enforce_bonus_ledger_payout_cap()`: it computes net accrual per employee (Σ credit accrual − Σ debit reversal) and rejects any payout that exceeds it (`23514`). `bonus_ledger`: `payout_marked_paid` is unlocked in `validate_bonus_ledger_event()` (now requires `export_id NOT NULL`); `payout_exported` and `clawback_*` remain blocked. `exports` gains `UNIQUE(id, organization_id)` for the `bonus_ledger export_id` same-org composite FK (mirrors the `(dispute_id, organization_id) → disputes` pattern from 7-B). Finance views: `v_finance_payout` (employee_id, display_name, bonus_period_id, final_amount_minor, paid_amount_minor, status, paid_at — ledger-sourced) and `v_finance_period_totals` (bonus_period_id, period_status, pool_amount, distributable, undistributed_remainder, total_accrued, total_paid) — both `security_invoker`, **NO raw points/quality/cap_basis/comp** (SI-12). 0020 test-only amendment: paid-guard fixture now injects `payout_exported` (not `payout_marked_paid`) because the new `bonus_ledger_payout_export_chk` CHECK requires `export_id IS NOT NULL` for `payout_marked_paid` rows — `payout_exported` is still rejected by `validate_bonus_ledger_event()` (`23514`), so the paid-guard fires correctly — pgTAP (`0021`; + `0020` amended).
 
-Migrations `0001..0028` + seed apply cleanly; blocking pgTAP suites (`0001`..`0022`) are green (see
+Migrations `0001..0030` + seed apply cleanly; blocking pgTAP suites (`0001`..`0024`) are green (see
 "Verification"). **Phase 3 DB foundation, Phase 4/5, the Phase 6 bonus calculation engine, the Phase 6-b
 `bonus_ledger` accrual, the Phase 6-c payout/export engine, the Phase 6-d authz hardening, the Phase 7-A
 anti-gaming detection engine, the Phase 7-B dispute point adjustment, the Phase 7-C dispute bonus recalculation,
 the Phase 7-D dispute_adjustment → bonus basis and the Phase 7-E dispute bonus re-run orchestration
-are all done; Phase 5-b, Phase 8 and everything downstream (app UI/API) remain gated** (see "Out of scope").
+are all done; Phase 9 and everything downstream (app API) remain gated** (see "Out of scope").
+
+> **Phase 8 UI layer complete** (commit `7f51cfd`; app server-actions + pages + nav; **no migration/test** — this
+> directory is unchanged, still migrations `0001..0030` + suites `0001..0024`; tsc clean). The app UI layer lives
+> outside `supabase/` and adds no DB slice.
 
 ## ⚠️ Environment rule (non-negotiable — ADR-014 / CLAUDE.md)
 
