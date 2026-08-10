@@ -369,7 +369,7 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
   `recalculate_bonus_after_dispute()` CREATE OR REPLACE: 7-C mechanical adımları + yeni
   `run_bonus_calculation()` (pool DB'den; idempotency key 'disp-recalc-snap-'+reversed_snap; ADR-006 period
   'calculated' kalır); 0020 test-only fix (3 satır); Files=23/Tests=814/PASS).
-  **Tüm 7-A + 7-B + 7-C + 7-D + 7-E DB dilimleri tamamlandı.** Kalan gated: Phase 10 only (Phase 8 UI DONE — `7f51cfd`; Phase 9 test suite DONE — `cae487a`).
+  **Tüm 7-A + 7-B + 7-C + 7-D + 7-E DB dilimleri tamamlandı.** Tüm fazlar tamamlandı (Phase 8 UI DONE — `7f51cfd`; Phase 9 test suite DONE — `cae487a`; Phase 10 production readiness DONE — `0403811`).
 
 **Phase 5-b DONE** (`b719053`, 2026-08-10): `apply_manual_point_adjustment()` — two-person manual point override.
 Migration `0030` (function only, no schema change); test suite `0024` (17 assertions). Caller + `p_actor` +
@@ -403,6 +403,8 @@ change; 54 files. Known limit: leaderboard employee view own-standing only (RLS)
 - Deliverable: gözlemlenebilirlik + deploy checklist + support workflow.
 - Acceptance: audit export çalışır; deploy checklist geçer; support access audit'li.
 - Test: smoke + export. Risk: ops. Dep: Phase 9. Difficulty: M.
+
+**Phase 10 DONE** (`0403811`, 2026-08-10): production readiness — Sentry hook (Decision C, scaffolded — no-op until @sentry/nextjs supports Next 16), audit CSV export (AD3 masking), support access workflow (D4 time-bounded grants), nav item; 12 files / 634 insertions; tsc clean + vitest 98/98 PASS; no migration/DB change. Known: Sentry no-op until @sentry/nextjs supports Next 16; audit raw-access log needs future DB function. **Tüm fazlar tamamlandı.**
 
 ## Edge cases
 

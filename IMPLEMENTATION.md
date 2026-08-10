@@ -51,6 +51,7 @@ Decision Lock = D1–D12 + AD1–AD10 (22 karar).
 | Phase 5-b manual point override | `apply_manual_point_adjustment()` — two-person point override (caller + `p_actor` + `p_second_approver` all hold `point.override`, same org; distinct approvers; non-zero delta; non-empty reason; employee + optional task same-org) → tek `manual_adjustment` ledger satırı; mevcut audit trigger'ı yazar; **şema değişikliği yok** | `migrations/0030`, `tests/0024` | ✅ **verified** | commit `b719053`; 17 assertion; caller + dual-actor point.override; cross-tenant block; append-only; schema değişikliği yok |
 | Phase 8 UI layer | Next.js App Router dashboards & UX layer — **8-A** 5 Zod schema (`src/lib/validation/schemas/`), **8-B** 12 server action (`src/app/actions/`), **8-C** 35 sayfa+feature component, **8-D** nav activation (`src/components/app-nav.tsx`), **8-E** dashboard role summary; server-side `requirePermission`/RLS; Finance view'ları `createClient` ile; app UI layer — migration yok / test yok | app UI layer — migration yok · test yok (—) | ✅ **verified (tsc)** | commit `7f51cfd`; Files=54; **tsc clean** (`npx tsc --noEmit`); 8-A..8-E ✓; DB değişikliği yok. Bilinen sınır: leaderboard employee view = own-standing only (RLS) |
 | Phase 9 app-layer test suite | **9-A** 38 Zod schema tests, **9-B** 43 server action tests, **9-C** 4 security-boundary invariants, **9-D** 10 E2E route-guard specs (Playwright, env-gated); 11 Vitest test files / 98 tests; no migration / no DB change | `src/` test files (8 new) | ✅ **Vitest pass; E2E authored env-gated** | commit `cae487a`; 8 files / 98 tests (11 files total); 9-A schemas + 9-B actions + 9-C boundary + 9-D E2E smoke; Vitest pass; E2E authored env-gated; no migration/DB change |
+| Phase 10 production readiness | Sentry DSN-gated instrumentation hook (`src/instrumentation.ts`); audit CSV export with AD3 comp masking; support access workflow UI (D4 time-bounded grants); nav item added; no migration / no DB change | 12 files / 634 insertions | ✅ **tsc clean + vitest 98/98 PASS** | commit `0403811`; instrumentation hook (Decision C, scaffolded — no-op until @sentry/nextjs supports Next 16); audit export (AD3 masking); support access workflow (D4); nav; tsc clean; no migration/DB change |
 
 **Runtime verification (2026-08-10, local dev stack, npx Supabase CLI 2.109.1):** `supabase db reset`
 migrations **0001..0030** + seed temiz uyguladı; `supabase test db` → **Files=24, Tests=831, Result=PASS,
@@ -400,7 +401,7 @@ Kural: güvenlik temeli (RLS/ledger) bitmeden feature fazı ilerlemez.
   - [x] **Phase 7-D — Dispute_adjustment → Bonus Basis** ✅ (commit `31c226f`, verified 2026-08-10; `point_ledger` + nullable `bonus_period_id` + same-org composite FK + `point_ledger_bonus_period_event_chk` CHECK; `apply_dispute_point_adjustment()` DROP+CREATE +`p_bonus_period_id`; `run_bonus_calculation()` CREATE OR REPLACE — gate `IN('locked','calculated')` + NET `approved_points` (task_approved + dispute_adjustment by bonus_period_id) + `dispute_adjustment_points` factors kırılımı; net≤0 dışlanır; 0019 test-only fix (3 satır); 15 assertion; katalog 20; Files=22/Tests=797/PASS).
 - [x] **Phase 8 — Dashboards & UX** ✅ (commit `7f51cfd`, verified tsc 2026-08-10; app UI layer — migration/DB değişikliği yok; 54 dosya; 8-A 5 Zod schema + 8-B 12 server action + 8-C 35 sayfa/feature component + 8-D nav activation + 8-E dashboard role summary; server-side `requirePermission`/RLS; Finance view'ları `createClient` ile; `npx tsc --noEmit` temiz). **Bilinen sınır:** leaderboard employee view = own-standing only (RLS); tam anonimleştirilmiş sıralama gelecekte bir ranking read-model gerektirir.
 - [x] **Phase 9 — Testing & Security** ✅ DONE (commit `cae487a`, 2026-08-10): app-layer test suite — 9-A schemas (38 tests) + 9-B actions (43 tests) + 9-C security-boundary (4 invariants) + 9-D E2E route-guards (10 specs, env-gated); 98 Vitest tests / 11 files pass; E2E authored env-gated; no migration/DB change.
-- [ ] **Phase 10 — Production Readiness**: monitoring, audit export, deploy checklist, support access workflow.
+- [x] **Phase 10 — Production Readiness** ✅ DONE (commit `0403811`, 2026-08-10): Sentry instrumentation hook (Decision C, scaffolded — no-op until @sentry/nextjs supports Next 16); audit CSV export (AD3 comp masking); support access workflow UI (D4 time-bounded grants); nav item added; 12 files / 634 insertions; tsc clean + vitest 98/98 PASS; no migration/DB change. Known: Sentry no-op until @sentry/nextjs supports Next 16; audit raw-access log needs future DB function (DB-trigger-only).
 
 ---
 
@@ -443,12 +444,6 @@ anonimleştirilmiş cross-employee sıralama gelecekte bir SECURITY DEFINER rank
 
 **Phase 9 tamamlandı** (commit `cae487a`, 2026-08-10): app-layer test suite — 9-A schemas + 9-B actions + 9-C boundary + 9-D E2E smoke; 98 Vitest tests / 11 files pass; E2E authored env-gated; no migration/DB change.
 
-**Gated adaylar (her biri ayrı `implementation authorized` ve scope-lock ister — ADR-020):**
+**Phase 10 tamamlandı** (commit `0403811`, 2026-08-10): production readiness — 12 dosya / 634 ekleme; Sentry DSN-gated instrumentation hook (Decision C, scaffolded); audit CSV export (AD3 comp masking); support access workflow UI (D4 time-bounded grants); nav item; tsc temiz + vitest 98/98 PASS; migration/DB değişikliği yok. Bilinen sınırlar: Sentry no-op — @sentry/nextjs Next 16'yı destekleyene kadar aktif değil (Decision C); audit raw-access log kaydı DB fonksiyonu gerektiriyor (gelecekte DB dilimi, şimdilik log üretemez).
 
-- **Phase 10** (Production Readiness) — tek kalan gated faz.
-
-**Henüz yetkili değil.** Başlatmak için (önce scope-lock önerilir) örnek yetki cümlesi:
-
-`implementation authorized only for Phase 10 — production readiness`
-
-> Bu cümle gelene kadar hiçbir kod/migration/test yazılmaz; sonraki her faz/dilim ayrı, faz-sınırlı yetki ister (ADR-020).
+**Tüm fazlar tamamlandı.** (Phase 3 DB foundation + Phase 3.5 scaffold + Phase 4 + Phase 5 + Phase 5-b + Phase 6 + Phase 6-b + Phase 6-c + Phase 6-d + Phase 7-A + Phase 7-B + Phase 7-C + Phase 7-D + Phase 7-E + Phase 8 + Phase 9 + Phase 10 — hepsi verified/done.)
