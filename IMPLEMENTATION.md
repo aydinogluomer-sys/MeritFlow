@@ -3,7 +3,7 @@
 > **Yaşayan durum/todo takip dosyası.** Detaylı "neden/nasıl" için kaynak: `docs/planning/` (00–18),
 > `docs/adr/` (ADR-001…020), `CLAUDE.md`. Çelişki olursa `docs/planning/00_DECISION_LOCK.md` kazanır.
 > Bu dosya **kod değildir**; yalnızca nerede olduğumuzu ve ne yapacağımızı izler.
-> Son güncelleme: 2026-08-10 (Phase 7-C dispute bonus recalculation verified + committed + docs sync).
+> Son güncelleme: 2026-08-10 (Phase 6-c payout/export engine verified + committed + docs sync).
 
 ## 0. Yönetişim kuralı (her şeyden önce)
 
@@ -40,15 +40,16 @@ Decision Lock = D1–D12 + AD1–AD10 (22 karar).
 | Phase 4 task/review core | `tasks` + `task_events` + `task_reviews` (status machine draft→…→approved/rejected, DELETE forbidden; task_events auto-written append-only history — AD4; task_reviews append-only decisions; **review-driven transition** — task_reviews INSERT applies the task status via SECURITY DEFINER trigger; direct client approve/reject/needs_revision blocked; **self-approval hard block** — AD4; D3 approve⇒quality≠poor; complexity/impact/quality/timeliness enums from doc 04; same-org composite FKs; RLS assignee/creator/reviewer/team-manager/HR/Auditor/support-grant, **Finance excluded**; no new permission — catalog 20) | `migrations/0019`, `tests/0013` | ✅ verified | commit `148667e`; 2026-08-01 |
 | Phase 5 scoring engine | `point_ledger` +`task_id`/`task_approved` + SI-1 idempotency; `tasks.final_points`→numeric (approve→`point_ledger task_approved` earning row + `final_points` cache + breakdown in `metadata`; SECURITY DEFINER BEFORE UPDATE trigger on the approved transition; doc-04 formula from published `scoring_policy_versions` multipliers/`revision_penalty_rule`; raw numeric no rounding; timeliness from the approving review — AD4; collaboration non-scoring — AD5; D3/AD7 guards; trusted direct-approve without review skips; Finance excluded; no new permission — catalog 20; no bonus changes) | `migrations/0020`, `tests/0014` | ✅ **verified** | commit `aa47e40`; 2026-08-01 |
 | Phase 6 bonus engine | `run_bonus_calculation()` SECURITY DEFINER server-only: locked period+pool (AD10); approved points from `point_ledger task_approved` × `tasks.approved_at` in period; Safe Pro-Rata W_individual=1.0 (D1/D2); cap from `compensation_records`×cap_rate×proration (AD6 `pending_missing_cap_basis`, no unlimited cap); T_org+AD8 top-up; largest-remainder kuruş (tie-break employee_id); writes `bonus_allocations` + immutable snapshot; run completed + period locked→calculated; idempotent `(org,key)`; Σfinal+undistributed=pool_ref (SI-13); accrual → **Phase 6-b** (`a65013d`); Finance raw-excluded (SI-12); catalog 20 | `migrations/0021`, `tests/0015` | ✅ **verified** | commit `0c54fba`; 2026-08-09 |
-| Phase 6-b bonus_ledger accrual | `post_bonus_accrual()` SECURITY DEFINER server-only: approved period (ADR-006 snapshot-approval boundary — period calculated→approved via `period.manage`) → tek balanced accrual (debit pool=Σfinal / credit accrual per employee) from the completed run's snapshot; idempotent per snapshot; **AD6 gate** (pending_missing_cap_basis → blok); **BL-2** deferred trigger Σaccrual≤pool_ref (AD8-aware); BL-3 payout fazına ertelendi; snapshot immutable (approval period-level); no new permission — catalog 20; Finance raw-excluded (SI-12) | `migrations/0022`, `seed` (Org C auditor), `tests/0016` | ✅ **verified** | commit `a65013d`; 2026-08-09 |
+| Phase 6-b bonus_ledger accrual | `post_bonus_accrual()` SECURITY DEFINER server-only: approved period (ADR-006 snapshot-approval boundary — period calculated→approved via `period.manage`) → tek balanced accrual (debit pool=Σfinal / credit accrual per employee) from the completed run's snapshot; idempotent per snapshot; **AD6 gate** (pending_missing_cap_basis → blok); **BL-2** deferred trigger Σaccrual≤pool_ref (AD8-aware); BL-3 → **Phase 6-c done**; snapshot immutable (approval period-level); no new permission — catalog 20; Finance raw-excluded (SI-12) | `migrations/0022`, `seed` (Org C auditor), `tests/0016` | ✅ **verified** | commit `a65013d`; 2026-08-09 |
+| Phase 6-c payout/export engine | `produce_payout_export()` SECURITY DEFINER server-only (Finance/trusted server): approved period (AD6 gate 0018 trigger — pending_missing_cap_basis → blok) → `exports` record + period **`approved→exported`**. `mark_payout_paid()` SECURITY DEFINER server-only: exported period → per-employee balanced `payout_marked_paid` (debit accrual / credit payout — doc-06 §2) + **BL-3** DEFERRABLE INITIALLY DEFERRED trigger `enforce_bonus_ledger_payout_cap()` (payout ≤ net accrual, reversal-aware) + period **`exported→closed`**; idempotency guard **BEFORE period gate** (D2 safe). `bonus_ledger`: `payout_marked_paid` unlocked (`export_id NOT NULL` CHECK); `payout_exported` + `clawback_*` hâlâ bloklu. `exports` → `unique(id, organization_id)` kısıtı; `bonus_ledger` → `export_id` same-org composite FK → exports (0026 precedent). Finance views: `v_finance_payout` + `v_finance_period_totals` (security_invoker — raw points/quality/cap_basis/comp **yok** — SI-12). No new permission — catalog 20. 0020 test-only fix: paid-guard fixture `payout_marked_paid`→`payout_exported` (yeni `bonus_ledger_payout_export_chk` CHECK gerektirdi — `payout_exported` yine validate_bonus_ledger_event ile 23514; guard aynı). 20 pgTAP assertion (4 bölüm: A happy-path / B AD6 gate / C ledger guards / D authz+view+cross-tenant) | `migrations/0027`, `tests/0021` (+ `tests/0020` amended) | ✅ **verified** | commit `77615e3`; 2026-08-10 |
 | Phase 6-d bonus engine authz hardening | `run_bonus_calculation()` + `post_bonus_accrual()` giriş-authz'ı `CREATE OR REPLACE` ile düzeltildi: `current_user not in ('authenticated','anon')` → **`auth.uid() is null`** (SECURITY DEFINER'da `current_user`=owner olduğundan eski kontrol etkisizdi; `period.manage` fiilen zorlanmıyordu). AD1 uyum; **gövde/mantık/imza/grant değişmedi** (aynı OID → grant+comment korundu); no new permission — catalog 20; regresyon yok (0015/0016 trusted bağlamda geçer) | `migrations/0024`, `tests/0018` | ✅ **verified** | commit `0b8b34a`; 2026-08-09 |
 | Phase 7-A anti-gaming detection engine | `run_anti_gaming_scan()` SECURITY DEFINER server-only orkestratör + 4 `detect_*` fonksiyonu (duplicate_task, tiny_task_splitting, same_reviewer_concentration, period_end_spike); `anti_gaming_flags`'a FK-less `bonus_period_id` kolonu + **dual idempotency** partial unique index (OQ-2: task-scoped `related_task_id` / period-scoped `bonus_period_id`); **D5 izolasyon** — yalnız flag yazar, ledger/bonus/comp'a dokunmaz (scan finansal yan-etkisiz); authz `has_role('hr') OR auth.uid() IS NULL`; hardcoded eşikler (OQ-1); no new permission — catalog 20 | `docs/planning/19`, `migrations/0023`, `tests/0017` | ✅ **verified** | commit `ffdea06`; 2026-08-09 |
 | Phase 7-B dispute point adjustment | `apply_dispute_point_adjustment()` SECURITY DEFINER server-only: resolved+accepted dispute → mevcut `point_ledger`'a **tek `dispute_adjustment` delta** (employee=complainant); fail-closed 23514 (accepted değilse); idempotent per dispute (partial unique index); non-zero delta (OQ-7B-5); `point_ledger`'a FK-less olmayan `dispute_id` + **same-org composite FK → disputes** (SI-7); event_type CHECK DROP+ADD (aynı isim, 0020 precedent); audit WHEN clause genişletildi (`dispute_adjustment` eklendi, `task_approved` hariç); authz `has_permission('dispute.resolve') OR auth.uid() IS NULL`; D2/D9 ihlali yok; no new permission — catalog 20 | `migrations/0025`, `tests/0019` | ✅ **verified** | commit `70ba400`; 2026-08-09 |
-| Phase 7-C dispute bonus recalculation | `recalculate_bonus_after_dispute()` SECURITY DEFINER server-only: completed run → **superseded** (0013 machine); period **`approved→calculated`** (re-approval required — `validate_bonus_period_transition` CREATE OR REPLACE ile bu geçiş eklendi); mevcut `bonus_ledger` accrual'ı **balanced reversal** (debit↔credit swap, yeni transaction_id, append-only); **paid-guard** — accrual satırı paid ise `23514` (D2 clawback-gated); **idempotent** (reversal varsa no-op); authz `has_permission('period.manage') OR auth.uid() IS NULL`; **C-c1 reduced scope** (yeni run/snapshot üretilmez — `run_bonus_calculation` approved period üzerinde çalışamıyor); `dispute_adjustment` → bonus bazına yansıma **Phase 7-D'ye ertelendi**; yeni permission yok — katalog 20; BL-3 payout fazında; 16 pgTAP assertion | `migrations/0026`, `tests/0020` | ✅ **verified** | commit `8941089`; 2026-08-10 |
+| Phase 7-C dispute bonus recalculation | `recalculate_bonus_after_dispute()` SECURITY DEFINER server-only: completed run → **superseded** (0013 machine); period **`approved→calculated`** (re-approval required — `validate_bonus_period_transition` CREATE OR REPLACE ile bu geçiş eklendi); mevcut `bonus_ledger` accrual'ı **balanced reversal** (debit↔credit swap, yeni transaction_id, append-only); **paid-guard** — accrual satırı paid ise `23514` (D2 clawback-gated); **idempotent** (reversal varsa no-op); authz `has_permission('period.manage') OR auth.uid() IS NULL`; **C-c1 reduced scope** (yeni run/snapshot üretilmez — `run_bonus_calculation` approved period üzerinde çalışamıyor); `dispute_adjustment` → bonus bazına yansıma **Phase 7-D'ye ertelendi**; yeni permission yok — katalog 20; 16 pgTAP assertion | `migrations/0026`, `tests/0020` | ✅ **verified** | commit `8941089`; 2026-08-10 |
 
 **Runtime verification (2026-08-10, local dev stack, npx Supabase CLI 2.109.1):** `supabase db reset`
-migrations **0001..0026** + seed temiz uyguladı; `supabase test db` → **Files=20, Tests=753, Result=PASS,
-Failed=0** (`0001`..`0020` ok). `db reset`'teki geçici container flake'leri (`ENOTFOUND`/timeout/"exit 1" —
+migrations **0001..0027** + seed temiz uyguladı; `supabase test db` → **Files=21, Tests=780, Result=PASS,
+Failed=0** (`0001`..`0021` ok). `db reset`'teki geçici container flake'leri (`ENOTFOUND`/timeout/"exit 1" —
 vector/analytics/storage unhealthy) `supabase stop/start` (gerekirse aux servisleri `-x` ile hariç bırakıp
 yalnız Postgres) + retry ile temiz geçti; kod/şema sorunu değil.
 
@@ -89,9 +90,8 @@ reversal — BL-1); **deferred (DEFERRABLE INITIALLY DEFERRED) balance trigger**
 approved-gate Phase 6'ya ertelendi); idempotent accrual `unique(snapshot_id, employee_id, account)`; bu
 dilimde **yalnız `bonus_accrual` + `reversal`** yazılabilir (payout/clawback/approval event'leri guard'lı);
 raw SELECT **yalnız Finance + Auditor** (HR/Employee/Manager/**Support** hariç — SI-12); yazımlar
-**server-only**; same-org composite FK'ler (pool/run/snapshot/employee); INSERT audit (BL-4). **Motor yok:**
-posting engine / payout-export / clawback workflow yazılmadı; BL-2 (Σaccrual ≤ pool) / BL-3 (payout ≤ accrual)
-yalnız seed/test-verified.
+**server-only**; same-org composite FK'ler (pool/run/snapshot/employee); INSERT audit (BL-4). **BL-2**
+`DEFERRABLE INITIALLY DEFERRED` trigger (0022 `enforce_bonus_ledger_balance`) Σaccrual≤pool_ref AD8-aware hard-enforce eder. **BL-3** `enforce_bonus_ledger_payout_cap()` DEFERRABLE trigger (payout ≤ net accrual, reversal-aware) **Phase 6-c (`0027`)'te eklendi**; `payout_marked_paid` artık yazılabilir (`export_id NOT NULL` kısıtı ile); `payout_exported` / `clawback_*` hâlâ guard'lı. **Clawback** (D2 gated) ve app/UI/API hâlâ hariç.
 
 **disputes + dispute_events invariant'ları (D9/SI-6/SI-7 + ADR-006):** `disputes` **mutable state machine**
 (`open→under_review→needs_info→under_review→resolved→closed`) — yasak geçişler + open sonrası kimlik
@@ -140,10 +140,11 @@ DEFINER trigger `snapshot.calculation_run_id → bonus_allocations` üzerinde `p
 diye bakar (status **veya** cap_applied) — yalnız snapshot satırına bakmaz; varsa export **bloklanır**. **E:**
 `exports.bonus_period_id` = snapshot'ın period'u. **Append-only client posture:** authenticated **UPDATE/DELETE
 yok**; **`prevent_delete`** retention (finansal iz, silinmez). **Audit on INSERT** (`exports.insert`). RLS:
-**Finance + Auditor SELECT** — **HR/Manager/Employee/Support hariç**. **Hariç:** export generation motoru,
-CSV/XLSX/storage yazımı, checksum hesabı, status progression motoru, **period=`approved` gate** (export
-engine'e ertelendi), bonus_ledger `payout_exported`/`payout_marked_paid` wiring, mark-paid, Finance aggregate
-`v_finance_*` view'ları, notifications, app/API/UI.
+**Finance + Auditor SELECT** — **HR/Manager/Employee/Support hariç**. **Phase 6-c (`77615e3`)'te eklendi:**
+`produce_payout_export()` (period `approved→exported` + exports record); `mark_payout_paid()` (period
+`exported→closed` + per-employee `payout_marked_paid` ledger); BL-3 deferred payout-cap trigger;
+`v_finance_payout` + `v_finance_period_totals` (security_invoker). **Hâlâ hariç:** CSV/XLSX/storage dosya yazımı, checksum,
+notifications, clawback (D2 gated), app/API/UI.
 
 **Phase 4 task/review core invariant'ları (04/14/15/16; D3/AD4/AD5):** `tasks` **status machine**
 (`draft→assigned→in_progress→submitted→needs_revision↺→approved|rejected`; cancelled/archived terminal) — yasak
@@ -208,8 +209,8 @@ OQ-3 onay audit_logs ile). Engine: approved period + **tek completed run** (OQ-5
 `pending_missing_cap_basis` ise blok — provisional accrual yok) → **tek balanced transaction** (`debit pool = Σfinal` /
 `credit accrual` per employee; `bonus_accrual`). **Idempotent** per snapshot (varsa no-op). **BL-1** append-only (0014);
 **Σdebit=Σcredit** (0014 deferred balance); **BL-2** yeni **`DEFERRABLE INITIALLY DEFERRED` trigger** `Σaccrual ≤ pool_ref`
-(AD8-aware: snapshot `pool_ref_minor` / top-up bütçesi). **BL-3** (payout ≤ accrual) **payout fazına ertelendi** (6-b'de
-producer yok — OQ-2). **OQ-1:** approval + posting **iki ayrı adım**. **Finance+Auditor raw read; server-only** (SI-12).
+(AD8-aware: snapshot `pool_ref_minor` / top-up bütçesi). **BL-3** (payout ≤ accrual) **Phase 6-c (`0027`)'te eklendi**
+(6-b'de producer yoktu — OQ-2). **OQ-1:** approval + posting **iki ayrı adım**. **Finance+Auditor raw read; server-only** (SI-12).
 **Verified:** worked example accrual birebir (credits 3.177.630 / 3.177.629 / 953.289 / 2.691.452; debit pool 10.000.000;
 Σdebit=Σcredit) + approval gate + idempotency + BL-2 red + AD6 blok + append-only + RLS. İki in-slice **test-only** fix
 (Section A query'lerini Org C'ye scope + `::bigint` cast); **migration/engine bug yok**. **Hariç (sonraki):** payout/export
@@ -304,15 +305,17 @@ scoring/bonus/export/notification engine'leri, production deploy. **Doğrulama:*
 deprecated-middleware uyarısı yok).
 
 **✅ Doküman senkron güncel (2026-08-10):** `supabase/README.md`, `docs/planning/12`, `docs/planning/19`, bu dosya —
-0001..0026 (3A/3B/comp/bonus-P/P/bonus-C/E/bonus-C/R/A/S/bonus-ledger/disputes/anti-gaming/notifications/exports,
+0001..0027 (3A/3B/comp/bonus-P/P/bonus-C/E/bonus-C/R/A/S/bonus-ledger/disputes/anti-gaming/notifications/exports,
 **Phase 4 task/review core** `148667e`, **Phase 5 scoring engine** `aa47e40`, **Phase 6 bonus engine** `0c54fba`,
-**Phase 6-b bonus_ledger accrual** `a65013d`, **Phase 6-d bonus engine authz hardening** `0b8b34a`,
+**Phase 6-b bonus_ledger accrual** `a65013d`, **Phase 6-c payout/export engine** `77615e3`,
+**Phase 6-d bonus engine authz hardening** `0b8b34a`,
 **Phase 7-A anti-gaming detection engine** `ffdea06`, **Phase 7-B dispute point adjustment** `70ba400`,
 **Phase 7-C dispute bonus recalculation** `8941089`) verified
-(**Files=20/Tests=753/PASS**), **Phase 3.5 app scaffold** (`a8b05ac`) durumunu yansıtıyor. **Phase 3 DB foundation +
+(**Files=21/Tests=780/PASS**), **Phase 3.5 app scaffold** (`a8b05ac`) durumunu yansıtıyor. **Phase 3 DB foundation +
 app scaffold + Phase 4 core + Phase 5 scoring + Phase 6 bonus calculation engine + Phase 6-b bonus_ledger accrual +
-Phase 6-d authz hardening + Phase 7-A anti-gaming detection engine + Phase 7-B dispute point adjustment +
-Phase 7-C dispute bonus recalculation tamamlandı; payout/export engine + Phase 7-D (dispute_adjustment → bonus bazı) + UI/API gated.** `docs/planning/18`
+Phase 6-c payout/export engine + Phase 6-d authz hardening + Phase 7-A anti-gaming detection engine + Phase 7-B
+dispute point adjustment + Phase 7-C dispute bonus recalculation tamamlandı; Phase 7-D (dispute_adjustment → bonus
+bazı) + UI/API gated.** `docs/planning/18`
 Phase 3B DB planı olarak **korunur** (dokunulmadı); `docs/planning/19` Phase 7 planı (7-A + 7-B + 7-C done;
 migration numaraları 6-d sonrası **7-B→`0025` / 7-C→`0026`**). Ayrıca `docs/planning/14` idempotency + markdownlint
 sync `dae4c6b`; `docs/adr/ADR-020` markdownlint `53d90de`; **docs hijyen (ADR-014 + Decision Lock) `17a964d`,
@@ -363,7 +366,8 @@ Kural: güvenlik temeli (RLS/ledger) bitmeden feature fazı ilerlemez.
 - [x] **Phase 4 — Task & Review Core (DB çekirdeği)** ✅ (commit `148667e`, verified 2026-08-01; `tasks` + `task_events` + `task_reviews`; status machine + DELETE yasak; auto-written append-only history; review-driven transition trigger — direct approve/reject/needs_revision blocked; self-approval hard block AD4; D3 approve⇒quality≠poor; AD4 timing; Finance excluded; support-grant top-level OR; no new permission — catalog 20; approve point_ledger üretmez — Phase 5 sınırı). **Ertelenen (feature-fazı):** `task_assignments`/`task_comments`/`task_attachments`, submit/review **Server Actions + UI** (ayrı yetki).
 - [x] **Phase 5 — Scoring Engine** ✅ (commit `aa47e40`, verified 2026-08-01; approve→`point_ledger task_approved` + `tasks.final_points` numeric cache + breakdown metadata; `point_ledger` +`task_id`/`task_approved` + **SI-1 partial unique idempotency**; SECURITY DEFINER BEFORE UPDATE scoring trigger; doc-04 formula from published policy multipliers/`revision_penalty_rule`; raw numeric no rounding; timeliness from approving review — AD4; collaboration non-scoring — AD5; D3/AD7 guards; direct-approve-without-review skips; Finance excluded; no new permission — catalog 20; no bonus changes). **Ertelenen (5-b):** manual override/adjustment (`point.override` 2-step → `manual_adjustment`); breakdown UI.
 - [x] **Phase 6 — Bonus Engine (Safe Pro-Rata calculation)** ✅ (commit `0c54fba`, verified 2026-08-09; `run_bonus_calculation()` locked period+pool → allocations + immutable snapshot; approved points from `point_ledger task_approved` × period; cap/AD6 pending; T_org/AD8 top-up; largest-remainder kuruş; Σ invariant SI-13; period locked→calculated; idempotent; `09` §8 worked example birebir; Files=15/Tests=665). **`bonus_ledger` accrual → Phase 6-b done (`a65013d`).**
-- [x] **Phase 6-b — Bonus Ledger Accrual** ✅ (commit `a65013d`, verified 2026-08-09; `post_bonus_accrual()` SECURITY DEFINER server-only; approved period (`period.manage` `calculated→approved`) → tek balanced accrual (debit pool=Σfinal / credit accrual per employee); idempotent per snapshot; AD6 gate (pending → blok); **BL-2** deferred trigger Σaccrual≤pool_ref (AD8-aware); BL-3 payout fazına ertelendi; snapshot immutable; catalog 20; Finance raw-excluded; Files=16/Tests=690). **Ertelenen (Phase 7+):** payout/export engine, clawback, dispute→reversal.
+- [x] **Phase 6-b — Bonus Ledger Accrual** ✅ (commit `a65013d`, verified 2026-08-09; `post_bonus_accrual()` SECURITY DEFINER server-only; approved period (`period.manage` `calculated→approved`) → tek balanced accrual (debit pool=Σfinal / credit accrual per employee); idempotent per snapshot; AD6 gate (pending → blok); **BL-2** deferred trigger Σaccrual≤pool_ref (AD8-aware); BL-3 → **Phase 6-c done**; snapshot immutable; catalog 20; Finance raw-excluded; Files=16/Tests=690). **Ertelenen:** clawback (D2 gated), dispute→reversal. **Payout/export engine → Phase 6-c done (`77615e3`).**
+- [x] **Phase 6-c — Payout/Export Engine** ✅ (commit `77615e3`, verified 2026-08-10; `produce_payout_export()` SECURITY DEFINER server-only: approved period + AD6 gate → `exports` record + period `approved→exported`; `mark_payout_paid()` SECURITY DEFINER server-only: exported period → per-employee balanced `payout_marked_paid` (debit accrual / credit payout; doc-06 §2); **BL-3** DEFERRABLE INITIALLY DEFERRED trigger (payout ≤ net accrual, reversal-aware); idempotency BEFORE period gate; `payout_marked_paid` unlocked (`export_id NOT NULL` CHECK); `payout_exported`+`clawback_*` still blocked; `exports unique(id,org)` + `bonus_ledger export_id` same-org composite FK; `v_finance_payout`+`v_finance_period_totals` (security_invoker, NO raw points/quality/cap_basis/comp — SI-12); catalog 20; Files=21/Tests=780/PASS). **Ertelenen:** CSV/XLSX/storage dosya yazımı, clawback (D2 gated), app/API/UI.
 - [x] **Phase 6-d — Bonus Engine Authz Hardening** ✅ (commit `0b8b34a`, verified 2026-08-09; `run_bonus_calculation` + `post_bonus_accrual` giriş-authz'ı `current_user not in (...)` → **`auth.uid() IS NULL`** — SECURITY DEFINER'da `current_user`=owner olduğundan eski kontrol etkisizdi; AD1 uyum; `CREATE OR REPLACE`, gövde/mantık/imza/grant değişmedi, aynı OID; catalog 20; no seed; regresyon yok (0015/0016 trusted bağlamda geçer); Files=18/Tests=720). 0021/0022/0023 artık aynı doğru deseni kullanıyor.
 - [x] **Phase 7 — Anti-Gaming & Disputes** ✅ (7-A + 7-B + 7-C done; 7-D gated):
   - [x] **Phase 7-A — Anti-Gaming Detection Engine** ✅ (commit `ffdea06`, verified 2026-08-09; `run_anti_gaming_scan()` SECURITY DEFINER server-only orkestratör + 4 `detect_*` kuralı (duplicate_task/tiny_task_splitting/same_reviewer_concentration/period_end_spike); FK-less `bonus_period_id` + dual idempotency partial unique index (OQ-2); D5 izolasyon — yalnız flag yazar, ledger'a dokunmaz, scan finansal yan-etkisiz; authz `has_role('hr') OR auth.uid() IS NULL`; hardcoded eşikler OQ-1; no auto-punish/no auto-dispute — human-in-loop; katalog 20; Files=17/Tests=712).
@@ -390,28 +394,28 @@ Kural: güvenlik temeli (RLS/ledger) bitmeden feature fazı ilerlemez.
 
 ## 5. Mevcut durum ve sıradaki adım
 
-**Phase 7-C dispute bonus recalculation verified + committed + synced** (commit `8941089`; db reset 0001..0026 + seed,
-test db **Files=20/Tests=753/PASS/Failed=0**). `recalculate_bonus_after_dispute()` SECURITY DEFINER server-only:
-approved period + accrued run → run **superseded** + period **`approved→calculated`** (re-approval zorunlu) +
-mevcut `bonus_ledger` accrual **balanced reversal** (debit↔credit swap, yeni txn_id; BL-1; Σdebit=Σcredit);
-**paid-guard** 23514 (OQ-4/D2); idempotent (reversal varsa no-op); authz `period.manage OR auth.uid() IS NULL`;
-**C-c1 reduced scope** — yeni run/snapshot üretilmez (engine approved period üzerinde çalışamıyor);
-`dispute_adjustment` → bonus bazı **Phase 7-D'ye ertelendi**. Tüm önceki dilimler korunur:
-Phase 3 DB foundation + Phase 3.5 app scaffold (`a8b05ac`) + Phase 4 (`148667e`) + Phase 5 (`aa47e40`) +
-Phase 6 (`0c54fba`) + Phase 6-b (`a65013d`) + Phase 6-d (`0b8b34a`) + Phase 7-A (`ffdea06`) +
-Phase 7-B (`70ba400`) + Phase 7-C (`8941089`) — hepsi tamam. **Phase 7 (7-A + 7-B + 7-C) DB tarafı tamamlandı.**
+**Phase 6-c payout/export engine verified + committed + synced** (commit `77615e3`; db reset 0001..0027 + seed,
+test db **Files=21/Tests=780/PASS/Failed=0**). `produce_payout_export()` SECURITY DEFINER server-only: approved
+period + AD6 gate (0018 trigger — pending_missing_cap_basis → blok) → `exports` record + period `approved→exported`.
+`mark_payout_paid()` SECURITY DEFINER server-only: exported period → per-employee balanced `payout_marked_paid`
+(debit accrual / credit payout — doc-06 §2) + **BL-3** DEFERRABLE INITIALLY DEFERRED trigger
+`enforce_bonus_ledger_payout_cap()` (payout ≤ net accrual, reversal-aware) + period `exported→closed`;
+idempotency guard **BEFORE period gate** (safe re-call; same txn_id returned). `payout_marked_paid` artık
+yazılabilir (`export_id NOT NULL` CHECK ile); `payout_exported` + `clawback_*` hâlâ bloklu. `v_finance_payout` +
+`v_finance_period_totals` (security_invoker; NO raw points/quality/cap_basis/comp — SI-12). Tüm önceki dilimler
+korunur: Phase 3 DB foundation + Phase 3.5 app scaffold (`a8b05ac`) + Phase 4 (`148667e`) + Phase 5 (`aa47e40`) +
+Phase 6 (`0c54fba`) + Phase 6-b (`a65013d`) + **Phase 6-c (`77615e3`)** + Phase 6-d (`0b8b34a`) + Phase 7-A
+(`ffdea06`) + Phase 7-B (`70ba400`) + Phase 7-C (`8941089`) — hepsi tamam.
 
 **Gated adaylar (her biri ayrı `implementation authorized` ve scope-lock ister — ADR-020):**
 
-- **Payout/export engine** (`payout_exported`/`payout_marked_paid` + `v_finance_*` views + BL-3 hard-enforce):
-  `post_bonus_accrual` yapısal olarak hazır; payout producer ve Finance view katmanı eksik.
 - **Phase 7-D** (dispute_adjustment → bonus bazı): `dispute_adjustment` satırlarının (`NULL task_id`) `run_bonus_calculation()` motor girdisine dahil edilmesi; period-atıf kuralı + engine genişletme.
 - **Phase 5-b** (manual override/adjustment): `point.override` 2-step → `manual_adjustment`; breakdown UI.
 - **Phase 8** (Dashboards & UX), **Phase 9** (Testing & Security), **Phase 10** (Production Readiness).
 
 **Henüz yetkili değil.** Başlatmak için (önce scope-lock önerilir) örnek yetki cümleleri:
 
-`implementation authorized only for Phase 6-c — payout/export engine`
 `implementation authorized only for Phase 7-D — dispute_adjustment bonus basis`
+`implementation authorized only for Phase 5-b — manual point override`
 
 > Bu cümle gelene kadar hiçbir kod/migration/test yazılmaz; sonraki her faz/dilim ayrı, faz-sınırlı yetki ister (ADR-020).

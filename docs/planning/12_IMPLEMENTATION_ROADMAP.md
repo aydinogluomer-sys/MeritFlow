@@ -225,12 +225,36 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
     immutable kaldı** (approval period-level). Engine: approved period + **tek completed run** (OQ-5 fail-closed) →
     **AD6 gate** (allocation `pending_missing_cap_basis` → blok) → **tek balanced accrual** (`debit pool = Σfinal` /
     `credit accrual` per employee); idempotent per snapshot. **BL-1** append-only; **Σdebit=Σcredit** (0014); **BL-2**
-    yeni deferred trigger `Σaccrual ≤ pool_ref` (AD8-aware); **BL-3** payout fazına ertelendi (OQ-2). OQ-1 approval+
+    yeni deferred trigger `Σaccrual ≤ pool_ref` (AD8-aware); **BL-3** → **Phase 6-c (`0027`)'te eklendi**. OQ-1 approval+
     posting iki adım; OQ-3 onay audit_logs ile. Finance+Auditor raw read; server-only (SI-12). Kod:
     `migrations/0022_bonus_ledger_accrual.sql`, `seed` (Org C auditor), `tests/0016_phase6b_bonus_ledger_accrual.test.sql`.
     **Verified 2026-08-09** (`db reset` 0001..0022 + seed; `test db` **Files=16 Tests=690 PASS Failed=0**; worked
     example accrual birebir). İki in-slice **test-only** fix (Section A org-scope + `::bigint` cast).
     (Ayrıca docs hijyen: `17a964d` (ADR-014+Decision Lock), `98c0b59` (ADR-006+017) — repo temizliği.)
+  - **Phase 6-c — Payout/Export Engine** [VERIFIED/DONE] (commit `77615e3`, 2026-08-10):
+    `produce_payout_export(org, period, snapshot, format, actor)` **SECURITY DEFINER, server-only** — approved
+    period + AD6 gate (0018 trigger; `pending_missing_cap_basis` → `23514`) → `exports` record (yeni tablo yok,
+    0018 container kullanılıyor) + period **`approved→exported`** (SECURITY DEFINER — Finance lacks `period.manage`).
+    `mark_payout_paid(org, period, export_id, actor)` **SECURITY DEFINER, server-only** — **idempotency BEFORE
+    period gate** (safe re-call; returns existing `transaction_id` if already paid) → `exported` period →
+    per-employee balanced `payout_marked_paid` (debit accrual / credit payout per employee — doc-06 §2,
+    same `transaction_id`) + **BL-3** `DEFERRABLE INITIALLY DEFERRED` trigger `enforce_bonus_ledger_payout_cap()`
+    (payout ≤ net accrual, reversal-aware: net = Σcredit-accrual − Σdebit-reversal; `23514` otherwise) + period
+    **`exported→closed`**. **Schema (additive):** `exports` gains `UNIQUE(id, organization_id)` (same-org FK
+    anchor for bonus_ledger); `bonus_ledger` gains `export_id` nullable col + same-org composite FK →
+    `exports(id, organization_id)` + `bonus_ledger_payout_export_chk` (`payout_marked_paid ⇒ export_id IS NOT
+    NULL`). `validate_bonus_ledger_event()` **CREATE OR REPLACE**: `payout_marked_paid` artık yazılabilir;
+    `payout_exported` + `clawback_*` hâlâ bloklu. **Finance views (security_invoker; NOT SECURITY DEFINER):**
+    `v_finance_payout` (employee_id, display_name, bonus_period_id, final_amount_minor, paid_amount_minor,
+    status, paid_at — ledger-sourced; **NO raw points/quality/cap_basis/comp** — SI-12) +
+    `v_finance_period_totals` (bonus_period_id, period_status, pool/distributable/undistributed/accrued/paid).
+    **authz:** `payout.export OR auth.uid() IS NULL` / `payout.mark_paid OR auth.uid() IS NULL`; yeni permission
+    yok (katalog 20). 0020 test-only amendment: paid-guard fixture changed `payout_marked_paid` →
+    `payout_exported` (new CHECK constraint). Kod: `migrations/0027_payout_export_engine.sql`,
+    `tests/0021_phase6c_payout_export.test.sql` (+ `tests/0020` amended).
+    **Verified 2026-08-10** (`db reset` 0001..0027 + seed; `test db` **Files=21 Tests=780 PASS Failed=0**;
+    20 assertion — Section A happy-path / B AD6 gate / C ledger guards / D authz+view+cross-tenant).
+    BL-3/D2/AD6/SI-12 kanıtlı.
   - **Phase 6-d — Bonus Engine Authz Hardening** [VERIFIED/DONE] (commit `0b8b34a`, 2026-08-09):
     `run_bonus_calculation` (0021) + `post_bonus_accrual` (0022) giriş-authz'ı
     `has_permission('period.manage') OR current_user not in ('authenticated','anon')` idi; **SECURITY DEFINER
@@ -301,8 +325,8 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
   - **Phase 7-D — dispute_adjustment → bonus bazı [GATED]:** `dispute_adjustment` satırlarının (`NULL task_id`)
     `run_bonus_calculation()` motor girdisine dahil edilmesi; period-atıf kuralı + engine genişletme.
     Her dilim/faz ayrı `implementation authorized` ister. **Henüz yetkili değil.**
-  - **Kalan ara-dilim [GATED]: payout/export engine** (`payout_exported`/`payout_marked_paid` +
-    `v_finance_*` + BL-3 hard-enforce) + UI/API. Her dilim ayrı `implementation authorized` ister.
+  - **Phase 6-c — payout/export engine** [VERIFIED/DONE — bkz. yukarı `0027`/`0021`].
+    **UI/API** ayrı yetki ister.
 
 ### Phase 4 — Task & Review Core
 
@@ -336,8 +360,9 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
   **7-B Dispute Point Adjustment ✅ VERIFIED/DONE** (commit `70ba400`, 2026-08-09;
   `apply_dispute_point_adjustment()` — resolved+accepted → point_ledger `dispute_adjustment`; fail-closed;
   idempotent; SI-7; Files=19/Tests=737/PASS).
-  **Kalan gated:** 7-C bonus recalculation + reversal (`0026`/`tests/0020`). Ara-dilim 0021/0022 authz hardening
-  **Phase 6-d'de yapıldı** (`0b8b34a`). Her dilim ayrı `implementation authorized` ister.
+  **7-C** de **VERIFIED/DONE** (commit `8941089`, 2026-08-10; `recalculate_bonus_after_dispute()` — run
+  superseded + period `approved→calculated` + bonus_ledger balanced reversal; paid-guard D2; idempotent; C-c1 reduced scope;
+  Files=20/Tests=753/PASS). **Tüm 7-A + 7-B + 7-C DB dilimleri tamamlandı.** Kalan gated: Phase 7-D.
 
 ### Phase 8 — Dashboards & UX
 

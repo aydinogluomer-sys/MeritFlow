@@ -1,6 +1,6 @@
 # MeritFlow — Supabase (Database Foundation: Phase 3A–3B + comp + bonus periods/pools + components/eligibility + calc runs/allocations/snapshots + ledger + disputes + anti-gaming + notifications + exports)
 
-This directory is the **database foundation**. It currently implements twenty verified
+This directory is the **database foundation**. It currently implements twenty-one verified
 slices — the twelve Phase 3 DB slices (**Phase 3 DB foundation complete**), the
 **Phase 4 task/review core** (`tasks` + `task_events` + `task_reviews`), the
 **Phase 5 scoring engine** (approve → `point_ledger task_approved`), the
@@ -9,7 +9,8 @@ slices — the twelve Phase 3 DB slices (**Phase 3 DB foundation complete**), th
 **Phase 6-d bonus engine authz hardening** (`run_bonus_calculation`/`post_bonus_accrual` → `auth.uid() IS NULL` trusted-context authz), the
 **Phase 7-A anti-gaming detection engine** (`run_anti_gaming_scan()` → 4 deterministic rules → `anti_gaming_flags`, ledger-isolated), and the
 **Phase 7-B dispute point adjustment** (`apply_dispute_point_adjustment()` → resolved+accepted dispute → `point_ledger dispute_adjustment`), and the
-**Phase 7-C dispute bonus recalculation** (`recalculate_bonus_after_dispute()` → run superseded + period `approved→calculated` + `bonus_ledger` reversal; paid-guard D2; idempotent; C-c1 reduced scope — dispute_adjustment → bonus basis deferred to Phase 7-D):
+**Phase 7-C dispute bonus recalculation** (`recalculate_bonus_after_dispute()` → run superseded + period `approved→calculated` + `bonus_ledger` reversal; paid-guard D2; idempotent; C-c1 reduced scope — dispute_adjustment → bonus basis deferred to Phase 7-D), and the
+**Phase 6-c payout/export engine** (`produce_payout_export()` + `mark_payout_paid()` → `exports` record + period `approved→exported→closed` + per-employee `payout_marked_paid` double-entry + BL-3 deferred payout-cap trigger + `v_finance_payout`/`v_finance_period_totals` security_invoker views):
 
 - **Phase 3A — Database Foundation & RBAC** (`17_PHASE_3A_...md`): 11 foundation/RBAC
   tables, RLS helpers, RLS (ENABLED + FORCE), constraints, test-tenant seed, blocking pgTAP.
@@ -130,7 +131,7 @@ slices — the twelve Phase 3 DB slices (**Phase 3 DB foundation complete**), th
   `pending_missing_cap_basis` allocation (**AD6 gate**), and posts **one balanced transaction**: `debit pool =
   Σfinal`, `credit accrual` per employee (`bonus_accrual`). **Idempotent** per snapshot; append-only (**BL-1**);
   `Σdebit = Σcredit` (0014); a new **`DEFERRABLE INITIALLY DEFERRED` trigger** enforces **BL-2** `Σaccrual ≤
-  pool_ref` (AD8-aware); **BL-3** (payout ≤ accrual) is deferred to the payout phase (no producer here). Finance +
+  pool_ref` (AD8-aware); **BL-3** (payout ≤ accrual) is added in **Phase 6-c (`0027`)** — no payout producer in this slice. Finance +
   Auditor raw read; server-only — pgTAP (`0016`).
 - **Phase 6-d — bonus engine authz hardening** (`0021`/`0022`, AD1): both engines gated their entry on
   `has_permission('period.manage') OR current_user not in ('authenticated','anon')`, but inside a SECURITY DEFINER
@@ -176,12 +177,13 @@ slices — the twelve Phase 3 DB slices (**Phase 3 DB foundation complete**), th
   INSERT audit WHEN clause is widened (DROP+CREATE) to audit `dispute_adjustment`; **`task_approved` stays un-audited**
   (0020 behaviour). Append-only is preserved (UPDATE/DELETE → `23001`); **D2** is not violated (a point correction is
   not a paid-money clawback — the money side is 7-C), **D9** is enforced at the resolve step (0015) — pgTAP (`0019`).
+- **Phase 6-c — payout/export engine** (`06 §2`, ADR-017; D2/AD6; BL-3; SI-12): the **payout producer** over the existing `exports` (0018) and `bonus_ledger` (0014) containers (no new table/permission — catalog 20). `produce_payout_export(org, period, snapshot, format, actor)` (SECURITY DEFINER, server-only) requires `period.export OR auth.uid() IS NULL`, gates on `period='approved'`, re-uses the 0018 AD6/SI-15 trigger (pending_missing_cap_basis → `23514`), inserts the `exports` record (SECURITY DEFINER — Finance lacks `period.manage`), and transitions the period `approved→exported`. `mark_payout_paid(org, period, export_id, actor)` (SECURITY DEFINER, server-only) checks **idempotency BEFORE the period gate** (if the export is already paid, returns the existing `transaction_id` — safe re-call), requires `period='exported'`, posts per-employee balanced `payout_marked_paid` rows (one `debit accrual` + one `credit payout` per employee, same `transaction_id`; doc-06 §2 double-entry), and closes the period `exported→closed`. **BL-3** is added as a new `DEFERRABLE INITIALLY DEFERRED` trigger `enforce_bonus_ledger_payout_cap()`: it computes net accrual per employee (Σ credit accrual − Σ debit reversal) and rejects any payout that exceeds it (`23514`). `bonus_ledger`: `payout_marked_paid` is unlocked in `validate_bonus_ledger_event()` (now requires `export_id NOT NULL`); `payout_exported` and `clawback_*` remain blocked. `exports` gains `UNIQUE(id, organization_id)` for the `bonus_ledger export_id` same-org composite FK (mirrors the `(dispute_id, organization_id) → disputes` pattern from 7-B). Finance views: `v_finance_payout` (employee_id, display_name, bonus_period_id, final_amount_minor, paid_amount_minor, status, paid_at — ledger-sourced) and `v_finance_period_totals` (bonus_period_id, period_status, pool_amount, distributable, undistributed_remainder, total_accrued, total_paid) — both `security_invoker`, **NO raw points/quality/cap_basis/comp** (SI-12). 0020 test-only amendment: paid-guard fixture now injects `payout_exported` (not `payout_marked_paid`) because the new `bonus_ledger_payout_export_chk` CHECK requires `export_id IS NOT NULL` for `payout_marked_paid` rows — `payout_exported` is still rejected by `validate_bonus_ledger_event()` (`23514`), so the paid-guard fires correctly — pgTAP (`0021`; + `0020` amended).
 
-Migrations `0001..0026` + seed apply cleanly; blocking pgTAP suites (`0001`..`0020`) are green (see
+Migrations `0001..0027` + seed apply cleanly; blocking pgTAP suites (`0001`..`0021`) are green (see
 "Verification"). **Phase 3 DB foundation + Phase 4/5 + the Phase 6 bonus calculation engine + the Phase 6-b
-`bonus_ledger` accrual + the Phase 6-d authz hardening + the Phase 7-A anti-gaming detection engine + the Phase 7-B
-dispute point adjustment + the Phase 7-C dispute bonus recalculation are done; the payout/export engine,
-Phase 7-D (dispute_adjustment → bonus basis), and everything downstream (app UI/API) remain gated** (see "Out of scope").
+`bonus_ledger` accrual + the Phase 6-c payout/export engine + the Phase 6-d authz hardening + the Phase 7-A
+anti-gaming detection engine + the Phase 7-B dispute point adjustment + the Phase 7-C dispute bonus recalculation
+are done; Phase 7-D (dispute_adjustment → bonus basis) and everything downstream (app UI/API) remain gated** (see "Out of scope").
 
 ## ⚠️ Environment rule (non-negotiable — ADR-014 / CLAUDE.md)
 
@@ -325,6 +327,22 @@ supabase/
                                           auth.uid() IS NULL; C-c1 reduced scope (no new run/snapshot;
                                           dispute_adjustment->bonus basis deferred to Phase 7-D); no new
                                           permission (catalog 20)
+    0027_payout_export_engine.sql         payout/export engine (Phase 6-c) —
+                                          exports unique(id,org) composite constraint for bonus_ledger export_id FK;
+                                          bonus_ledger: export_id FK col + payout_export_chk (payout_marked_paid
+                                          requires export_id NOT NULL); validate_bonus_ledger_event() CREATE OR
+                                          REPLACE: unlocks payout_marked_paid (payout_exported+clawback_* stay
+                                          blocked); BL-3 DEFERRABLE INITIALLY DEFERRED trigger
+                                          enforce_bonus_ledger_payout_cap() (payout ≤ net accrual, reversal-aware);
+                                          produce_payout_export(org,period,snapshot,format,actor) SECURITY DEFINER
+                                          server-only: payout.export OR auth.uid() IS NULL; approved period gate;
+                                          exports record + period approved->exported; mark_payout_paid(org,period,
+                                          export_id,actor) SECURITY DEFINER server-only: payout.mark_paid OR
+                                          auth.uid() IS NULL; idempotency BEFORE period gate; exported period ->
+                                          per-employee payout_marked_paid (debit accrual/credit payout, same txn);
+                                          period exported->closed; v_finance_payout + v_finance_period_totals
+                                          (security_invoker, NO raw points/quality/cap_basis/comp — SI-12);
+                                          no new permission (catalog 20)
   seed/seed_test_tenants.sql              2 tenants, RBAC catalog, teams, support grants,
                                           + Phase 3B (scoring/versions, point_ledger) + comp + bonus fixtures
                                           (periods/pools + components/eligibility + calc run/allocations/snapshot
@@ -357,6 +375,7 @@ supabase/
     0018_phase6d_authz_hardening.test.sql blocking pgTAP — run_bonus_calculation + post_bonus_accrual authz: authenticated w/o period.manage (Finance c4) -> 42501; authenticated w/ period.manage (HR c3) -> authz passes -> 23503; trusted context (auth.uid() null) -> authz passes -> 23503 (Phase 6-d)
     0019_phase7b_dispute_point_adjustment.test.sql blocking pgTAP — apply_dispute_point_adjustment: positive (one dispute_adjustment delta, employee=complainant)/negative rejected+under_review+zero-delta 23514/idempotency (no-op + 23505 backstop)/missing dispute_id 23514 + invalid event_type 23514 (0003 regression)/audit row/append-only 23001/cross-tenant FK 23503/employee-without-dispute.resolve 42501 (Phase 7-B)
     0020_phase7c_dispute_bonus_recalculation.test.sql blocking pgTAP — recalculate_bonus_after_dispute: worked example (approve+accrue period 230 then recalc: reversal balanced Σdebit=Σcredit, magnitude=accrual total, run superseded, period->calculated, snapshot immutable 23001, re-approval required post_bonus_accrual->23514); idempotency (no-op, no duplicate reversal); paid-guard (manual accrual fixture + disabled trigger for payout row injection -> 23514); authz (employee->42501); append-only (reversal UPDATE->23001); DB balance check (Phase 7-C)
+    0021_phase6c_payout_export.test.sql  blocking pgTAP — payout/export engine: Section A happy path (approve+accrue period 230 -> produce_payout_export -> mark_payout_paid: exports record created, period approved->exported->closed, payout Σdebit=Σcredit, idempotency no-op, append-only 23001); Section B AD6 gate (pending_missing_cap_basis -> produce_payout_export -> 23514); Section C ledger guards (payout_exported 23514; clawback_pending 23514; payout_marked_paid without export_id 23514; BL-3 payout>accrual 23514; BL-3 reversal-aware net=0->payout blocked; set constraints all immediate passes); Section D authz+view+cross-tenant (employee without payout.export 42501; employee without payout.mark_paid 42501; Finance reads v_finance_payout; v_finance_payout no adjusted_score/cap_basis_minor; cross-tenant Finance A reads 0 Org C rows) (Phase 6-c)
 ```
 
 ## Apply & test (local)
@@ -365,8 +384,8 @@ Requires Docker + the Supabase CLI. From the repo root:
 
 ```bash
 supabase start            # boots local dev stack (Docker)
-supabase db reset         # applies migrations 0001..0026 then seed
-supabase test db          # runs the pgTAP suites in tests/ (0001..0019)
+supabase db reset         # applies migrations 0001..0027 then seed
+supabase test db          # runs the pgTAP suites in tests/ (0001..0021)
 ```
 
 If the `supabase` binary is not on PATH (e.g. a fresh install not yet picked up), the project-local
@@ -615,16 +634,39 @@ re-runnable (on-conflict guards).
 > run or snapshot is produced; dispute_adjustment rows have `NULL task_id` so the engine would compute an
 > unchanged bonus basis anyway — that correction path is **deferred to Phase 7-D**. `validate_bonus_period_transition()`
 > is CREATE OR REPLACEd to add the `approved→calculated` transition required by recalculation. No new permission
-> (catalog 20); BL-3 remains deferred to the payout phase.
+> (catalog 20); BL-3 is added in Phase 6-c (`0027`).
+>
+> **Phase 6-c payout/export engine: VERIFIED / DONE** (2026-08-10, npx Supabase CLI **2.109.1**; commit
+> `77615e3`). `db reset` applied migrations **0001..0027** + seed cleanly; `test db` → **Files=21, Tests=780,
+> Result=PASS, Failed=0** (`0001`..`0021` ok). Invariants proven (06 §2; D2/AD6; BL-3; SI-12):
+> `produce_payout_export()` on an **approved period** (AD6 gate: `pending_missing_cap_basis` → `23514`) inserts
+> the `exports` record and transitions the period **`approved→exported`** (SECURITY DEFINER — Finance lacks
+> `period.manage`); an **`exported` period** passed to `mark_payout_paid()` posts **per-employee balanced
+> `payout_marked_paid`** rows (one debit-accrual + one credit-payout per employee, same `transaction_id`; the
+> deferred balance trigger confirms `Σdebit=Σcredit`) and closes the period **`exported→closed`**; the post is
+> **idempotent** — a second `mark_payout_paid` call returns the existing `transaction_id` without inserting new
+> rows (idempotency guard fires **before** the period gate, so the call succeeds even when the period is already
+> `closed`); **BL-3** — `enforce_bonus_ledger_payout_cap()` (DEFERRABLE INITIALLY DEFERRED) rejects a payout
+> that exceeds net accrual (`23514`, reversal-aware: net = Σcredit-accrual − Σdebit-reversal), and a net-zero
+> accrual blocks all payout; **AD6 gate** — a `pending_missing_cap_basis` allocation blocks
+> `produce_payout_export()` (`23514`); `payout_exported` and `clawback_pending` are still blocked by
+> `validate_bonus_ledger_event()` (`23514`); a `payout_marked_paid` row without `export_id` → `23514`; Finance
+> without `payout.export` → `42501`; Finance without `payout.mark_paid` → `42501`; Finance reads the worked
+> example in `v_finance_payout` (final_amount_minor + paid_amount_minor + status); `v_finance_payout` has **no
+> `adjusted_score`, `cap_basis_minor`** (SI-12 clean); cross-tenant Finance A reads **0 rows** from Org C.
+> 0020 test-only amendment: paid-guard fixture changed `payout_marked_paid` → `payout_exported` (the new
+> `bonus_ledger_payout_export_chk` CHECK requires `export_id IS NOT NULL` for `payout_marked_paid` rows —
+> `payout_exported` is still rejected by `validate_bonus_ledger_event()` with `23514`, so the paid-guard in
+> `recalculate_bonus_after_dispute()` still fires correctly). **No migration/engine defect** in any prior slice.
 >
 > **Phase 3 DB foundation is COMPLETE** (12 migrations `0001..0018` / 12 suites, Tests=523); the **Phase 4 task/
 > review core** (`0019`/`0013`), **Phase 5 scoring engine** (`0020`/`0014`), **Phase 6 bonus calculation
-> engine** (`0021`/`0015`), **Phase 6-b bonus_ledger accrual** (`0022`/`0016`), the **Phase 6-d bonus engine authz
-> hardening** (`0024`/`0018`), the **Phase 7-A anti-gaming detection engine** (`0023`/`0017`), the **Phase 7-B
-> dispute point adjustment** (`0025`/`0019`) and the **Phase 7-C dispute bonus recalculation** (`0026`/`0020`) are
-> also done (**Files=20, Tests=753** total). **The payout/export engine (BL-3), Phase 7-D (dispute_adjustment →
-> bonus basis), and everything downstream (app UI/API) remain gated** (ADR-020). **Never run any of this against a
-> production project.**
+> engine** (`0021`/`0015`), **Phase 6-b bonus_ledger accrual** (`0022`/`0016`), the **Phase 6-c payout/export
+> engine** (`0027`/`0021`), the **Phase 6-d bonus engine authz hardening** (`0024`/`0018`), the **Phase 7-A
+> anti-gaming detection engine** (`0023`/`0017`), the **Phase 7-B dispute point adjustment** (`0025`/`0019`)
+> and the **Phase 7-C dispute bonus recalculation** (`0026`/`0020`) are also done (**Files=21, Tests=780**
+> total). **Phase 7-D (dispute_adjustment → bonus basis) and everything downstream (app UI/API) remain gated**
+> (ADR-020). **Never run any of this against a production project.**
 
 ### Prerequisites
 
@@ -640,13 +682,13 @@ re-runnable (on-conflict guards).
 
 ```bash
 supabase start        # 1. boot local stack; note the printed local URLs + dev-default keys
-supabase db reset     # 2. apply 0001..0026 + seed (expect clean apply)
+supabase db reset     # 2. apply 0001..0027 + seed (expect clean apply)
 supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
 ```
 
 ### Expected pass criteria
 
-- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=20, Tests=753, PASS**). Blocking.
+- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=21, Tests=780, PASS**). Blocking.
 - [ ] Green coverage: cross-tenant isolation (SI-7), non-recursive memberships read (§7A), support
   active-vs-expired grant (D4), append-only audit + append-only `point_ledger` (SI-2), helper
   correctness, scoring-policy `policy.manage` gating + published-version immutability (AD7), point_ledger
