@@ -3,7 +3,7 @@
 > **Yaşayan durum/todo takip dosyası.** Detaylı "neden/nasıl" için kaynak: `docs/planning/` (00–18),
 > `docs/adr/` (ADR-001…020), `CLAUDE.md`. Çelişki olursa `docs/planning/00_DECISION_LOCK.md` kazanır.
 > Bu dosya **kod değildir**; yalnızca nerede olduğumuzu ve ne yapacağımızı izler.
-> Son güncelleme: 2026-08-10 (Phase 7-D dispute_adjustment → bonus basis verified + committed + docs sync).
+> Son güncelleme: 2026-08-10 (Phase 7-E dispute bonus re-run orchestration verified + committed + docs sync).
 
 ## 0. Yönetişim kuralı (her şeyden önce)
 
@@ -47,10 +47,11 @@ Decision Lock = D1–D12 + AD1–AD10 (22 karar).
 | Phase 7-B dispute point adjustment | `apply_dispute_point_adjustment()` SECURITY DEFINER server-only: resolved+accepted dispute → mevcut `point_ledger`'a **tek `dispute_adjustment` delta** (employee=complainant); fail-closed 23514 (accepted değilse); idempotent per dispute (partial unique index); non-zero delta (OQ-7B-5); `point_ledger`'a FK-less olmayan `dispute_id` + **same-org composite FK → disputes** (SI-7); event_type CHECK DROP+ADD (aynı isim, 0020 precedent); audit WHEN clause genişletildi (`dispute_adjustment` eklendi, `task_approved` hariç); authz `has_permission('dispute.resolve') OR auth.uid() IS NULL`; D2/D9 ihlali yok; no new permission — catalog 20 | `migrations/0025`, `tests/0019` | ✅ **verified** | commit `70ba400`; 2026-08-09 |
 | Phase 7-C dispute bonus recalculation | `recalculate_bonus_after_dispute()` SECURITY DEFINER server-only: completed run → **superseded** (0013 machine); period **`approved→calculated`** (re-approval required — `validate_bonus_period_transition` CREATE OR REPLACE ile bu geçiş eklendi); mevcut `bonus_ledger` accrual'ı **balanced reversal** (debit↔credit swap, yeni transaction_id, append-only); **paid-guard** — accrual satırı paid ise `23514` (D2 clawback-gated); **idempotent** (reversal varsa no-op); authz `has_permission('period.manage') OR auth.uid() IS NULL`; **C-c1 reduced scope** (yeni run/snapshot üretilmez — `run_bonus_calculation` approved period üzerinde çalışamıyor); `dispute_adjustment` → bonus bazına yansıma **Phase 7-D'de giderildi (`31c226f`)**; yeni permission yok — katalog 20; 16 pgTAP assertion | `migrations/0026`, `tests/0020` | ✅ **verified** | commit `8941089`; 2026-08-10 |
 | Phase 7-D dispute_adjustment → bonus basis | `point_ledger` + nullable `bonus_period_id` + same-org composite FK → `bonus_periods` (SI-7) + `point_ledger_bonus_period_event_chk` CHECK (`dispute_adjustment ⇒ bonus_period_id NOT NULL`; diğer event'ler ⇒ NULL); `apply_dispute_point_adjustment()` **DROP+CREATE** (imza değişti: +`p_bonus_period_id uuid DEFAULT NULL`; grant re-issue); `run_bonus_calculation()` **CREATE OR REPLACE** (aynı imza → grant/OID korundu): gate `IN('locked','calculated')` (OQ-7D-3; 0015 mesajı birebir korundu); **NET `approved_points` = `task_approved` (tasks.approved_at) + `dispute_adjustment` (bonus_period_id = p_bonus_period_id)** (OQ-7D-1; NULL task_id artık JOIN'de kaybolmaz); net ≤ 0 → `adjusted_score ≤ 0` → dışlanır, 0 prim (OQ-7D-4; D2 malus değil); `bonus_allocations.factors` + `dispute_adjustment_points` kırılımı (OQ-7D-5). 0019 test-only fix (3 satır: #2 positive apply / #7 23505 backstop insert / #12 cross-tenant — yeni CHECK için bonus_period_id eklendi). 15 pgTAP assertion (Section A: basis+net≤0+SI-13+idempotency; B: period-atıf CHECK+FK; C: gate+katalog; D: authz) | `migrations/0028`, `tests/0022` (+ `tests/0019` amended) | ✅ **verified** | commit `31c226f`; 2026-08-10 |
+| Phase 7-E dispute bonus re-run orchestration | `recalculate_bonus_after_dispute()` **CREATE OR REPLACE** (aynı 3-arg imza → grant/OID korundu): 7-C C-c1'i tam orkestrasyon'a yükseltir — reversal+supersede+`approved→calculated` (0026 gövdesi korundu) + **YENİ `run_bonus_calculation()` çağrısı** (pool DB'den `SELECT status='locked'`; bulunamazsa `23514`; idempotency key = `'disp-recalc-snap-'` + reversed snapshot id — deterministik, birden fazla dispute döngüsü güvenli); **YENİ snapshot id döner** (7-D engine ile `dispute_adjustment` bazda yansır). Period `'calculated'` **kalır** — HR ayrıca `approve` → `post_bonus_accrual()` (ADR-006 human re-approval korundu). **İdempotent**: reversal+run → yeni snap; reversal var/run yok → pool-fetch+run'a düşer; her ikisi varsa → yeni snap (no-op). 0020 test-only fix (3 assertion: `_b7c_snap` helper accrual-filtreli; `#6` supersede scope; `#10` yeni re-run snapshot). 14 pgTAP assertion (A: 8 full orchestration / B: 3 idempotency / C: re-accrual gated / D: pool guard / E: precondition / F: authz+katalog 20) | `migrations/0029`, `tests/0023` (+ `tests/0020` amended) | ✅ **verified** | commit `3efe95d`; 2026-08-10 |
 
 **Runtime verification (2026-08-10, local dev stack, npx Supabase CLI 2.109.1):** `supabase db reset`
-migrations **0001..0028** + seed temiz uyguladı; `supabase test db` → **Files=22, Tests=797, Result=PASS,
-Failed=0** (`0001`..`0022` ok). `db reset`'teki geçici container flake'leri (`ENOTFOUND`/timeout/"exit 1" —
+migrations **0001..0029** + seed temiz uyguladı; `supabase test db` → **Files=23, Tests=814, Result=PASS,
+Failed=0** (`0001`..`0023` ok). `db reset`'teki geçici container flake'leri (`ENOTFOUND`/timeout/"exit 1" —
 vector/analytics/storage unhealthy) `supabase stop/start` (gerekirse aux servisleri `-x` ile hariç bırakıp
 yalnız Postgres) + retry ile temiz geçti; kod/şema sorunu değil.
 
@@ -329,12 +330,13 @@ deprecated-middleware uyarısı yok).
 **Phase 6-b bonus_ledger accrual** `a65013d`, **Phase 6-c payout/export engine** `77615e3`,
 **Phase 6-d bonus engine authz hardening** `0b8b34a`,
 **Phase 7-A anti-gaming detection engine** `ffdea06`, **Phase 7-B dispute point adjustment** `70ba400`,
-**Phase 7-C dispute bonus recalculation** `8941089`, **Phase 7-D dispute_adjustment → bonus basis** `31c226f`) verified
-(**Files=22/Tests=797/PASS**), **Phase 3.5 app scaffold** (`a8b05ac`) durumunu yansıtıyor. **Phase 3 DB foundation +
-app scaffold + Phase 4 core + Phase 5 scoring + Phase 6 bonus calculation engine + Phase 6-b bonus_ledger accrual +
-Phase 6-c payout/export engine + Phase 6-d authz hardening + Phase 7-A anti-gaming detection engine + Phase 7-B
-dispute point adjustment + Phase 7-C dispute bonus recalculation + Phase 7-D dispute_adjustment → bonus basis
-tamamlandı; UI/API + Phase 7-E auto-orchestration gated.** `docs/planning/18`
+**Phase 7-C dispute bonus recalculation** `8941089`, **Phase 7-D dispute_adjustment → bonus basis** `31c226f`,
+**Phase 7-E dispute bonus re-run orchestration** `3efe95d`) verified (**Files=23/Tests=814/PASS**), **Phase 3.5
+app scaffold** (`a8b05ac`) durumunu yansıtıyor. **Phase 3 DB foundation + app scaffold + Phase 4 core + Phase 5
+scoring + Phase 6 bonus calculation engine + Phase 6-b bonus_ledger accrual + Phase 6-c payout/export engine +
+Phase 6-d authz hardening + Phase 7-A anti-gaming detection engine + Phase 7-B dispute point adjustment +
+Phase 7-C dispute bonus recalculation + Phase 7-D dispute_adjustment → bonus basis + Phase 7-E dispute bonus
+re-run orchestration tamamlandı; UI/API + Phase 5-b/8/9/10 gated.** `docs/planning/18`
 Phase 3B DB planı olarak **korunur** (dokunulmadı); `docs/planning/19` Phase 7 planı (7-A + 7-B + 7-C + 7-D done;
 migration numaraları 6-d sonrası **7-B→`0025` / 7-C→`0026` / 7-D→`0028`**). Ayrıca `docs/planning/14` idempotency + markdownlint
 sync `dae4c6b`; `docs/adr/ADR-020` markdownlint `53d90de`; **docs hijyen (ADR-014 + Decision Lock) `17a964d`,
@@ -413,26 +415,23 @@ Kural: güvenlik temeli (RLS/ledger) bitmeden feature fazı ilerlemez.
 
 ## 5. Mevcut durum ve sıradaki adım
 
-**Phase 7-D dispute_adjustment → bonus basis verified + committed + synced** (commit `31c226f`; db reset
-0001..0028 + seed, test db **Files=22/Tests=797/PASS/Failed=0**). `point_ledger` + nullable `bonus_period_id` +
-same-org composite FK → `bonus_periods` (SI-7) + event-consistency CHECK. `apply_dispute_point_adjustment()` DROP+CREATE
-(imza +`p_bonus_period_id`; grant re-issue). `run_bonus_calculation()` CREATE OR REPLACE: gate `IN('locked','calculated')`;
-NET `approved_points` = `task_approved` (tasks.approved_at) + `dispute_adjustment` (bonus_period_id); net≤0 → dışlanır;
-`dispute_adjustment_points` factors kırılımı. 0019 test-only fix (3 satır). Tüm önceki dilimler korunur: Phase 3 DB
+**Phase 7-E dispute bonus re-run orchestration verified + committed + synced** (commit `3efe95d`; db reset
+0001..0029 + seed, test db **Files=23/Tests=814/PASS/Failed=0**). `recalculate_bonus_after_dispute()` CREATE OR REPLACE:
+7-C C-c1 reversal/supersede/approved→calculated + YENİ `run_bonus_calculation()` çağrısı (pool DB'den; idempotency key =
+'disp-recalc-snap-'+reversed_snap). Döner: yeni snapshot id (7-D engine ile dispute_adjustment bazda). Period
+`'calculated'` kalır — ADR-006 human re-approval. 0020 test-only fix (3 satır). Tüm önceki dilimler korunur: Phase 3 DB
 foundation + Phase 3.5 app scaffold (`a8b05ac`) + Phase 4 (`148667e`) + Phase 5 (`aa47e40`) + Phase 6 (`0c54fba`) +
 Phase 6-b (`a65013d`) + Phase 6-c (`77615e3`) + Phase 6-d (`0b8b34a`) + Phase 7-A (`ffdea06`) + Phase 7-B (`70ba400`) +
-Phase 7-C (`8941089`) + **Phase 7-D (`31c226f`)** — hepsi tamam.
+Phase 7-C (`8941089`) + Phase 7-D (`31c226f`) + **Phase 7-E (`3efe95d`)** — hepsi tamam.
 
 **Gated adaylar (her biri ayrı `implementation authorized` ve scope-lock ister — ADR-020):**
 
-- **Phase 7-E** (auto-orchestration): `recalculate_bonus_after_dispute()` tam re-run zinciri (reversal, yeni run/snapshot,
-  re-accrual — 7-C C-c1'i tam yükseltme). Scope-lock gerektirir.
 - **Phase 5-b** (manual override/adjustment): `point.override` 2-step → `manual_adjustment`; breakdown UI.
 - **Phase 8** (Dashboards & UX), **Phase 9** (Testing & Security), **Phase 10** (Production Readiness).
 
 **Henüz yetkili değil.** Başlatmak için (önce scope-lock önerilir) örnek yetki cümleleri:
 
-`implementation authorized only for Phase 7-E — auto-orchestration after dispute`
 `implementation authorized only for Phase 5-b — manual point override`
+`implementation authorized only for Phase 8 — dashboards and UX`
 
 > Bu cümle gelene kadar hiçbir kod/migration/test yazılmaz; sonraki her faz/dilim ayrı, faz-sınırlı yetki ister (ADR-020).

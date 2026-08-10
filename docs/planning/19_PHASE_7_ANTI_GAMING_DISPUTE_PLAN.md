@@ -28,6 +28,15 @@
   reversal+supersede only; no new run/snapshot — engine requires `locked` period; `dispute_adjustment` → bonus basis
   handled in Phase 7-D). 16 assertions. Current tip at that point: migrations `0001..0026`, suites `0001..0020`
   (**Files=20/Tests=753**). **Phase 7 (7-A + 7-B + 7-C) DB slices complete.** 7-D was gated.
+- **Update (2026-08-10, even later):** **7-E is DONE** (commit `3efe95d`; `0029`/`0023`) —
+  `recalculate_bonus_after_dispute()` CREATE OR REPLACE (same 3-arg signature, grant/OID kept): upgrades 7-C C-c1
+  to full orchestration. Mechanical steps (reversal, run superseded, `approved→calculated`) unchanged; NEW: locked
+  pool fetched from DB (`none → 23514`); `run_bonus_calculation()` called with idempotency key
+  `'disp-recalc-snap-'||reversed_snapshot_id` (deterministic — safe across multiple dispute cycles); returns the
+  NEW snapshot id (7-D engine folds `dispute_adjustment` into the recalc); period stays `'calculated'`
+  (re-approval required before re-accrual — ADR-006 human re-approval preserved). 14 assertions. 0020 amended
+  (3 test-only fixes). Current tip: migrations `0001..0029`, suites `0001..0023` (**Files=23/Tests=814**).
+  **All 7-A, 7-B, 7-C, 7-D and 7-E DB slices complete.** Phase 5-b / Phase 8+ gated.
 - **Update (2026-08-10, later):** **7-D is DONE** (commit `31c226f`; `0028`/`0022`) — `point_ledger` gains nullable
   `bonus_period_id` (composite FK + CHECK: `dispute_adjustment → NOT NULL`; others → `NULL`);
   `apply_dispute_point_adjustment()` gains a 5th param `p_bonus_period_id` (DROP+CREATE; GRANTs re-issued);
@@ -52,6 +61,7 @@ correction chain (7-B/7-C).
 | **7-B** | Dispute post-decision **points**: `point_ledger dispute_adjustment` | `0025` / `tests/0019` — **DONE** (`70ba400`) |
 | **7-C** | Dispute post-decision **money**: reversal + supersede + period rollback (C-c1 reduced scope — no new run/snapshot; dispute_adjustment → bonus basis handled in Phase 7-D) | `0026` / `tests/0020` — **DONE** (`8941089`) |
 | **7-D** | `dispute_adjustment` → bonus basis: `point_ledger.bonus_period_id` + engine aggregation + `factors.dispute_adjustment_points` | `0028` / `tests/0022` — **DONE** (`31c226f`) |
+| **7-E** | Full re-run orchestration: `recalculate_bonus_after_dispute()` C-c1 → auto `run_bonus_calculation()` + new run/snapshot; period stays `calculated` (ADR-006) | `0029` / `tests/0023` — **DONE** (`3efe95d`) |
 
 > **Numbering note:** `0024`/`tests/0018` were consumed by the out-of-band **Phase 6-d authz hardening** slice
 > (commit `0b8b34a`), so the dispute slices shift up by one.

@@ -365,7 +365,11 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
   Files=20/Tests=753/PASS). **7-D de VERIFIED/DONE** (commit `31c226f`, 2026-08-10;
   `point_ledger.bonus_period_id` + `apply_dispute_point_adjustment()` 5. param + `run_bonus_calculation()`
   dispute_adjustment basis + `factors.dispute_adjustment_points`; OQ-7D-1..7D-7; 0015 #18 regression ok;
-  Files=22/Tests=797/PASS). **Tüm 7-A + 7-B + 7-C + 7-D DB dilimleri tamamlandı.** Kalan gated: Phase 7-E.
+  Files=22/Tests=797/PASS). **7-E de VERIFIED/DONE** (commit `3efe95d`, 2026-08-10;
+  `recalculate_bonus_after_dispute()` CREATE OR REPLACE: 7-C mechanical adımları + yeni
+  `run_bonus_calculation()` (pool DB'den; idempotency key 'disp-recalc-snap-'+reversed_snap; ADR-006 period
+  'calculated' kalır); 0020 test-only fix (3 satır); Files=23/Tests=814/PASS).
+  **Tüm 7-A + 7-B + 7-C + 7-D + 7-E DB dilimleri tamamlandı.** Kalan gated: Phase 5-b / Phase 8+.
 
 ### Phase 8 — Dashboards & UX
 
