@@ -362,7 +362,10 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
   idempotent; SI-7; Files=19/Tests=737/PASS).
   **7-C** de **VERIFIED/DONE** (commit `8941089`, 2026-08-10; `recalculate_bonus_after_dispute()` — run
   superseded + period `approved→calculated` + bonus_ledger balanced reversal; paid-guard D2; idempotent; C-c1 reduced scope;
-  Files=20/Tests=753/PASS). **Tüm 7-A + 7-B + 7-C DB dilimleri tamamlandı.** Kalan gated: Phase 7-D.
+  Files=20/Tests=753/PASS). **7-D de VERIFIED/DONE** (commit `31c226f`, 2026-08-10;
+  `point_ledger.bonus_period_id` + `apply_dispute_point_adjustment()` 5. param + `run_bonus_calculation()`
+  dispute_adjustment basis + `factors.dispute_adjustment_points`; OQ-7D-1..7D-7; 0015 #18 regression ok;
+  Files=22/Tests=797/PASS). **Tüm 7-A + 7-B + 7-C + 7-D DB dilimleri tamamlandı.** Kalan gated: Phase 7-E.
 
 ### Phase 8 — Dashboards & UX
 

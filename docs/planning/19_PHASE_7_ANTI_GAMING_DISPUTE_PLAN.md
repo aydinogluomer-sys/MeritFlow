@@ -26,8 +26,16 @@
   reverses the approved period's accrual with a balanced `bonus_ledger reversal`, supersedes the completed run, and
   rolls the period back to `approved→calculated` (re-approval required). **C-c1 reduced scope** (mechanical
   reversal+supersede only; no new run/snapshot — engine requires `locked` period; `dispute_adjustment` → bonus basis
-  deferred to Phase 7-D). 16 assertions. Current tip: migrations `0001..0026`, suites `0001..0020`
-  (**Files=20/Tests=753**). **Phase 7 (7-A + 7-B + 7-C) DB slices complete.** 7-D gated.
+  handled in Phase 7-D). 16 assertions. Current tip at that point: migrations `0001..0026`, suites `0001..0020`
+  (**Files=20/Tests=753**). **Phase 7 (7-A + 7-B + 7-C) DB slices complete.** 7-D was gated.
+- **Update (2026-08-10, later):** **7-D is DONE** (commit `31c226f`; `0028`/`0022`) — `point_ledger` gains nullable
+  `bonus_period_id` (composite FK + CHECK: `dispute_adjustment → NOT NULL`; others → `NULL`);
+  `apply_dispute_point_adjustment()` gains a 5th param `p_bonus_period_id` (DROP+CREATE; GRANTs re-issued);
+  `run_bonus_calculation()` sums `dispute_adjustment` rows via `WHERE bonus_period_id = p_bonus_period_id` alongside
+  the task-JOIN path, and the `factors` jsonb gains `dispute_adjustment_points` (OQ-7D-5). Gate widened to
+  `IN('locked','calculated')` (OQ-7D-3); 0015 #18 regression verified; 0019 amended (3 in-suite fixes for new CHECK).
+  15 assertions. Current tip: migrations `0001..0028`, suites `0001..0022` (**Files=22/Tests=797**). **All 7-A,
+  7-B, 7-C and 7-D DB slices complete.** Phase 7-E gated.
 
 ## 2. Purpose
 
@@ -42,7 +50,8 @@ correction chain (7-B/7-C).
 | --- | --- | --- |
 | **7-A** | Anti-gaming detection engine (4 deterministic rules → flags); isolated, no financial wiring | `0023` / `tests/0017` — **DONE** (`ffdea06`) |
 | **7-B** | Dispute post-decision **points**: `point_ledger dispute_adjustment` | `0025` / `tests/0019` — **DONE** (`70ba400`) |
-| **7-C** | Dispute post-decision **money**: reversal + supersede + period rollback (C-c1 reduced scope — no new run/snapshot; dispute_adjustment → bonus basis deferred to Phase 7-D) | `0026` / `tests/0020` — **DONE** (`8941089`) |
+| **7-C** | Dispute post-decision **money**: reversal + supersede + period rollback (C-c1 reduced scope — no new run/snapshot; dispute_adjustment → bonus basis handled in Phase 7-D) | `0026` / `tests/0020` — **DONE** (`8941089`) |
+| **7-D** | `dispute_adjustment` → bonus basis: `point_ledger.bonus_period_id` + engine aggregation + `factors.dispute_adjustment_points` | `0028` / `tests/0022` — **DONE** (`31c226f`) |
 
 > **Numbering note:** `0024`/`tests/0018` were consumed by the out-of-band **Phase 6-d authz hardening** slice
 > (commit `0b8b34a`), so the dispute slices shift up by one.

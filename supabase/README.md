@@ -1,15 +1,16 @@
 # MeritFlow — Supabase (Database Foundation: Phase 3A–3B + comp + bonus periods/pools + components/eligibility + calc runs/allocations/snapshots + ledger + disputes + anti-gaming + notifications + exports)
 
-This directory is the **database foundation**. It currently implements twenty-one verified
+This directory is the **database foundation**. It currently implements twenty-two verified
 slices — the twelve Phase 3 DB slices (**Phase 3 DB foundation complete**), the
 **Phase 4 task/review core** (`tasks` + `task_events` + `task_reviews`), the
 **Phase 5 scoring engine** (approve → `point_ledger task_approved`), the
 **Phase 6 bonus engine** (`run_bonus_calculation()` → allocations + immutable snapshot), the
 **Phase 6-b bonus_ledger accrual** (`post_bonus_accrual()` → double-entry accrual from an approved snapshot), the
 **Phase 6-d bonus engine authz hardening** (`run_bonus_calculation`/`post_bonus_accrual` → `auth.uid() IS NULL` trusted-context authz), the
-**Phase 7-A anti-gaming detection engine** (`run_anti_gaming_scan()` → 4 deterministic rules → `anti_gaming_flags`, ledger-isolated), and the
-**Phase 7-B dispute point adjustment** (`apply_dispute_point_adjustment()` → resolved+accepted dispute → `point_ledger dispute_adjustment`), and the
-**Phase 7-C dispute bonus recalculation** (`recalculate_bonus_after_dispute()` → run superseded + period `approved→calculated` + `bonus_ledger` reversal; paid-guard D2; idempotent; C-c1 reduced scope — dispute_adjustment → bonus basis deferred to Phase 7-D), and the
+**Phase 7-A anti-gaming detection engine** (`run_anti_gaming_scan()` → 4 deterministic rules → `anti_gaming_flags`, ledger-isolated), the
+**Phase 7-B dispute point adjustment** (`apply_dispute_point_adjustment()` → resolved+accepted dispute → `point_ledger dispute_adjustment`), the
+**Phase 7-C dispute bonus recalculation** (`recalculate_bonus_after_dispute()` → run superseded + period `approved→calculated` + `bonus_ledger` reversal; paid-guard D2; idempotent; C-c1 reduced scope), the
+**Phase 7-D dispute_adjustment → bonus basis** (`point_ledger` + `bonus_period_id` attribution column; `run_bonus_calculation()` NET approved_points = task_approved + dispute_adjustment; gate `IN('locked','calculated')`; `dispute_adjustment_points` factors breakdown), and the
 **Phase 6-c payout/export engine** (`produce_payout_export()` + `mark_payout_paid()` → `exports` record + period `approved→exported→closed` + per-employee `payout_marked_paid` double-entry + BL-3 deferred payout-cap trigger + `v_finance_payout`/`v_finance_period_totals` security_invoker views):
 
 - **Phase 3A — Database Foundation & RBAC** (`17_PHASE_3A_...md`): 11 foundation/RBAC
@@ -179,11 +180,12 @@ slices — the twelve Phase 3 DB slices (**Phase 3 DB foundation complete**), th
   not a paid-money clawback — the money side is 7-C), **D9** is enforced at the resolve step (0015) — pgTAP (`0019`).
 - **Phase 6-c — payout/export engine** (`06 §2`, ADR-017; D2/AD6; BL-3; SI-12): the **payout producer** over the existing `exports` (0018) and `bonus_ledger` (0014) containers (no new table/permission — catalog 20). `produce_payout_export(org, period, snapshot, format, actor)` (SECURITY DEFINER, server-only) requires `period.export OR auth.uid() IS NULL`, gates on `period='approved'`, re-uses the 0018 AD6/SI-15 trigger (pending_missing_cap_basis → `23514`), inserts the `exports` record (SECURITY DEFINER — Finance lacks `period.manage`), and transitions the period `approved→exported`. `mark_payout_paid(org, period, export_id, actor)` (SECURITY DEFINER, server-only) checks **idempotency BEFORE the period gate** (if the export is already paid, returns the existing `transaction_id` — safe re-call), requires `period='exported'`, posts per-employee balanced `payout_marked_paid` rows (one `debit accrual` + one `credit payout` per employee, same `transaction_id`; doc-06 §2 double-entry), and closes the period `exported→closed`. **BL-3** is added as a new `DEFERRABLE INITIALLY DEFERRED` trigger `enforce_bonus_ledger_payout_cap()`: it computes net accrual per employee (Σ credit accrual − Σ debit reversal) and rejects any payout that exceeds it (`23514`). `bonus_ledger`: `payout_marked_paid` is unlocked in `validate_bonus_ledger_event()` (now requires `export_id NOT NULL`); `payout_exported` and `clawback_*` remain blocked. `exports` gains `UNIQUE(id, organization_id)` for the `bonus_ledger export_id` same-org composite FK (mirrors the `(dispute_id, organization_id) → disputes` pattern from 7-B). Finance views: `v_finance_payout` (employee_id, display_name, bonus_period_id, final_amount_minor, paid_amount_minor, status, paid_at — ledger-sourced) and `v_finance_period_totals` (bonus_period_id, period_status, pool_amount, distributable, undistributed_remainder, total_accrued, total_paid) — both `security_invoker`, **NO raw points/quality/cap_basis/comp** (SI-12). 0020 test-only amendment: paid-guard fixture now injects `payout_exported` (not `payout_marked_paid`) because the new `bonus_ledger_payout_export_chk` CHECK requires `export_id IS NOT NULL` for `payout_marked_paid` rows — `payout_exported` is still rejected by `validate_bonus_ledger_event()` (`23514`), so the paid-guard fires correctly — pgTAP (`0021`; + `0020` amended).
 
-Migrations `0001..0027` + seed apply cleanly; blocking pgTAP suites (`0001`..`0021`) are green (see
-"Verification"). **Phase 3 DB foundation + Phase 4/5 + the Phase 6 bonus calculation engine + the Phase 6-b
-`bonus_ledger` accrual + the Phase 6-c payout/export engine + the Phase 6-d authz hardening + the Phase 7-A
-anti-gaming detection engine + the Phase 7-B dispute point adjustment + the Phase 7-C dispute bonus recalculation
-are done; Phase 7-D (dispute_adjustment → bonus basis) and everything downstream (app UI/API) remain gated** (see "Out of scope").
+Migrations `0001..0028` + seed apply cleanly; blocking pgTAP suites (`0001`..`0022`) are green (see
+"Verification"). **Phase 3 DB foundation, Phase 4/5, the Phase 6 bonus calculation engine, the Phase 6-b
+`bonus_ledger` accrual, the Phase 6-c payout/export engine, the Phase 6-d authz hardening, the Phase 7-A
+anti-gaming detection engine, the Phase 7-B dispute point adjustment, the Phase 7-C dispute bonus recalculation,
+and the Phase 7-D dispute_adjustment → bonus basis are all done; Phase 7-E auto-orchestration and everything
+downstream (app UI/API) remain gated** (see "Out of scope").
 
 ## ⚠️ Environment rule (non-negotiable — ADR-014 / CLAUDE.md)
 
@@ -328,6 +330,18 @@ supabase/
                                           dispute_adjustment->bonus basis deferred to Phase 7-D); no new
                                           permission (catalog 20)
     0027_payout_export_engine.sql         payout/export engine (Phase 6-c) —
+    0028_dispute_bonus_basis.sql          dispute_adjustment → bonus basis (Phase 7-D) —
+                                          point_ledger gains nullable bonus_period_id + same-org composite FK
+                                          to bonus_periods (SI-7) + point_ledger_bonus_period_event_chk (dispute_
+                                          adjustment => bonus_period_id NOT NULL; all other events => NULL);
+                                          apply_dispute_point_adjustment DROP+CREATE (adds p_bonus_period_id,
+                                          grant re-issued); run_bonus_calculation() CREATE OR REPLACE: gate
+                                          IN('locked','calculated') (OQ-7D-3); NET approved_points = task_approved
+                                          (tasks.approved_at in period) + dispute_adjustment (bonus_period_id =
+                                          p_bonus_period_id — NULL task_id no longer dropped by JOIN); net<=0 ->
+                                          excluded (0 bonus, OQ-7D-4); factors gains dispute_adjustment_points
+                                          breakdown (OQ-7D-5); 0019 test-only fix (3 lines); no new permission
+                                          (catalog 20)
                                           exports unique(id,org) composite constraint for bonus_ledger export_id FK;
                                           bonus_ledger: export_id FK col + payout_export_chk (payout_marked_paid
                                           requires export_id NOT NULL); validate_bonus_ledger_event() CREATE OR
@@ -375,7 +389,15 @@ supabase/
     0018_phase6d_authz_hardening.test.sql blocking pgTAP — run_bonus_calculation + post_bonus_accrual authz: authenticated w/o period.manage (Finance c4) -> 42501; authenticated w/ period.manage (HR c3) -> authz passes -> 23503; trusted context (auth.uid() null) -> authz passes -> 23503 (Phase 6-d)
     0019_phase7b_dispute_point_adjustment.test.sql blocking pgTAP — apply_dispute_point_adjustment: positive (one dispute_adjustment delta, employee=complainant)/negative rejected+under_review+zero-delta 23514/idempotency (no-op + 23505 backstop)/missing dispute_id 23514 + invalid event_type 23514 (0003 regression)/audit row/append-only 23001/cross-tenant FK 23503/employee-without-dispute.resolve 42501 (Phase 7-B)
     0020_phase7c_dispute_bonus_recalculation.test.sql blocking pgTAP — recalculate_bonus_after_dispute: worked example (approve+accrue period 230 then recalc: reversal balanced Σdebit=Σcredit, magnitude=accrual total, run superseded, period->calculated, snapshot immutable 23001, re-approval required post_bonus_accrual->23514); idempotency (no-op, no duplicate reversal); paid-guard (manual accrual fixture + disabled trigger for payout row injection -> 23514); authz (employee->42501); append-only (reversal UPDATE->23001); DB balance check (Phase 7-C)
-    0021_phase6c_payout_export.test.sql  blocking pgTAP — payout/export engine: Section A happy path (approve+accrue period 230 -> produce_payout_export -> mark_payout_paid: exports record created, period approved->exported->closed, payout Σdebit=Σcredit, idempotency no-op, append-only 23001); Section B AD6 gate (pending_missing_cap_basis -> produce_payout_export -> 23514); Section C ledger guards (payout_exported 23514; clawback_pending 23514; payout_marked_paid without export_id 23514; BL-3 payout>accrual 23514; BL-3 reversal-aware net=0->payout blocked; set constraints all immediate passes); Section D authz+view+cross-tenant (employee without payout.export 42501; employee without payout.mark_paid 42501; Finance reads v_finance_payout; v_finance_payout no adjusted_score/cap_basis_minor; cross-tenant Finance A reads 0 Org C rows) (Phase 6-c)
+    0021_phase6c_payout_export.test.sql  blocking pgTAP — payout/export engine:
+    0022_phase7d_dispute_bonus_basis.test.sql blocking pgTAP — dispute_adjustment → bonus basis: dispute enters
+                                          net approved_points (Section A: baseline regression + positive dispute
+                                          delta + factors.dispute_adjustment_points + SI-13 Σ invariant + net<=0
+                                          excluded + idempotency); period attribution CHECK/FK (Section B:
+                                          dispute_adjustment without bonus_period_id -> 23514; non-dispute with
+                                          bonus_period_id -> 23514; cross-org bonus_period_id -> 23503); gate +
+                                          catalog (Section C: approved-period gate 23514; catalog stays 20);
+                                          authz (Section D: Finance without period.manage -> 42501) (Phase 7-D) Section A happy path (approve+accrue period 230 -> produce_payout_export -> mark_payout_paid: exports record created, period approved->exported->closed, payout Σdebit=Σcredit, idempotency no-op, append-only 23001); Section B AD6 gate (pending_missing_cap_basis -> produce_payout_export -> 23514); Section C ledger guards (payout_exported 23514; clawback_pending 23514; payout_marked_paid without export_id 23514; BL-3 payout>accrual 23514; BL-3 reversal-aware net=0->payout blocked; set constraints all immediate passes); Section D authz+view+cross-tenant (employee without payout.export 42501; employee without payout.mark_paid 42501; Finance reads v_finance_payout; v_finance_payout no adjusted_score/cap_basis_minor; cross-tenant Finance A reads 0 Org C rows) (Phase 6-c)
 ```
 
 ## Apply & test (local)
@@ -384,8 +406,8 @@ Requires Docker + the Supabase CLI. From the repo root:
 
 ```bash
 supabase start            # boots local dev stack (Docker)
-supabase db reset         # applies migrations 0001..0027 then seed
-supabase test db          # runs the pgTAP suites in tests/ (0001..0021)
+supabase db reset         # applies migrations 0001..0028 then seed
+supabase test db          # runs the pgTAP suites in tests/ (0001..0022)
 ```
 
 If the `supabase` binary is not on PATH (e.g. a fresh install not yet picked up), the project-local
@@ -632,7 +654,7 @@ re-runnable (on-conflict guards).
 > a plain employee without `period.manage` is rejected `42501`. **Append-only:** a reversal UPDATE → `23001`
 > (BL-1). **DB balance:** `Σ(original accrual + reversal) credits = Σ debits`. **C-c1 reduced scope:** no new
 > run or snapshot is produced; dispute_adjustment rows have `NULL task_id` so the engine would compute an
-> unchanged bonus basis anyway — that correction path is **deferred to Phase 7-D**. `validate_bonus_period_transition()`
+> unchanged bonus basis anyway — that correction path is **handled in Phase 7-D (`31c226f`)**. `validate_bonus_period_transition()`
 > is CREATE OR REPLACEd to add the `approved→calculated` transition required by recalculation. No new permission
 > (catalog 20); BL-3 is added in Phase 6-c (`0027`).
 >
@@ -659,14 +681,30 @@ re-runnable (on-conflict guards).
 > `payout_exported` is still rejected by `validate_bonus_ledger_event()` with `23514`, so the paid-guard in
 > `recalculate_bonus_after_dispute()` still fires correctly). **No migration/engine defect** in any prior slice.
 >
+> **Phase 7-D dispute_adjustment → bonus basis: VERIFIED / DONE** (2026-08-10, npx Supabase CLI **2.109.1**;
+> commit `31c226f`). `db reset` applied migrations **0001..0028** + seed cleanly; `test db` → **Files=22,
+> Tests=797, Result=PASS, Failed=0** (`0001`..`0022` ok). Invariants proven (plan `19`; OQ-7D-1..7D-7;
+> SI-13): `point_ledger` gains nullable `bonus_period_id` with composite FK to `bonus_periods` and a CHECK
+> enforcing `dispute_adjustment → NOT NULL / others → NULL`; `apply_dispute_point_adjustment()` gains a
+> 5th param `p_bonus_period_id` (DROP+CREATE; GRANTs re-issued); `run_bonus_calculation()` sums
+> `dispute_adjustment` rows via `WHERE bonus_period_id = p_bonus_period_id` in addition to the task-JOIN
+> path, and the `factors` jsonb gains `dispute_adjustment_points`; a +1,000,000 delta raises Ali's bonus
+> basis and shifts all allocations (SI-13 Σ invariant holds); a net ≤ 0 employee is excluded (existing `>0`
+> filter); the engine is idempotent from `calculated` state (OQ-7D-3: gate widened to `IN('locked',
+> 'calculated')`); the CHECK correctly rejects a `dispute_adjustment` with NULL `bonus_period_id` (`23514`),
+> a non-dispute row with non-NULL `bonus_period_id` (`23514`), and a cross-org FK pairing (`23503`); an
+> approved-period gate attempt raises `23514`; catalog stays 20 (OQ-7D-7); Finance without `period.manage`
+> raises `42501`. **0015 #18 regression verified**: gate message text preserved verbatim. **0019 amendments**:
+> 3 in-suite fixes for new CHECK (apply call + direct insert + cross-tenant insert now supply `bonus_period_id`).
+>
 > **Phase 3 DB foundation is COMPLETE** (12 migrations `0001..0018` / 12 suites, Tests=523); the **Phase 4 task/
 > review core** (`0019`/`0013`), **Phase 5 scoring engine** (`0020`/`0014`), **Phase 6 bonus calculation
 > engine** (`0021`/`0015`), **Phase 6-b bonus_ledger accrual** (`0022`/`0016`), the **Phase 6-c payout/export
 > engine** (`0027`/`0021`), the **Phase 6-d bonus engine authz hardening** (`0024`/`0018`), the **Phase 7-A
-> anti-gaming detection engine** (`0023`/`0017`), the **Phase 7-B dispute point adjustment** (`0025`/`0019`)
-> and the **Phase 7-C dispute bonus recalculation** (`0026`/`0020`) are also done (**Files=21, Tests=780**
-> total). **Phase 7-D (dispute_adjustment → bonus basis) and everything downstream (app UI/API) remain gated**
-> (ADR-020). **Never run any of this against a production project.**
+> anti-gaming detection engine** (`0023`/`0017`), the **Phase 7-B dispute point adjustment** (`0025`/`0019`),
+> the **Phase 7-C dispute bonus recalculation** (`0026`/`0020`) and the **Phase 7-D dispute_adjustment → bonus
+> basis** (`0028`/`0022`) are also done (**Files=22, Tests=797** total). **Phase 7-E (auto-orchestration) and
+> everything downstream (app UI/API) remain gated** (ADR-020). **Never run any of this against a production project.**
 
 ### Prerequisites
 
@@ -688,7 +726,7 @@ supabase test db      # 3. run pgTAP; expect TAP summary 0 failed
 
 ### Expected pass criteria
 
-- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=21, Tests=780, PASS**). Blocking.
+- [ ] **All pgTAP assertions pass** (TAP: `0` failed; currently **Files=22, Tests=797, PASS**). Blocking.
 - [ ] Green coverage: cross-tenant isolation (SI-7), non-recursive memberships read (§7A), support
   active-vs-expired grant (D4), append-only audit + append-only `point_ledger` (SI-2), helper
   correctness, scoring-policy `policy.manage` gating + published-version immutability (AD7), point_ledger
