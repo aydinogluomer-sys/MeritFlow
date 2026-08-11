@@ -33,9 +33,17 @@ const APP_DIR = join(ROOT, 'app', '(app)');
 // admin client and Finance views are actually used across actions and pages.
 describe('security / boundary invariants (Phase 8 Decision-Lock)', () => {
   // ── Invariant 1: server actions enforce server-side authz (AD1) ──────────────
-  it('every server action calls requirePermission( for server-side authz (AD1)', () => {
-    const files = tsFiles(ACTIONS_DIR);
-    // Sanity: the action surface exists and was actually scanned.
+  //
+  // Onboarding actions are a justified exception: they bootstrap a brand-new user who
+  // has no membership yet, so requirePermission() would resolve against an empty
+  // permission set and always deny. Instead they verify server-side identity via
+  // requireUser() — see the AUTHZ comment in each onboarding action (AD1).
+  it('every non-onboarding server action calls requirePermission( for server-side authz (AD1)', () => {
+    const ONBOARDING_DIR = join(ACTIONS_DIR, 'onboarding');
+    const files = tsFiles(ACTIONS_DIR).filter(
+      (f) => !f.startsWith(ONBOARDING_DIR + '\\') && !f.startsWith(ONBOARDING_DIR + '/'),
+    );
+    // Sanity: the non-onboarding action surface exists and was actually scanned.
     expect(files.length).toBeGreaterThan(0);
 
     const offenders = files.filter((f) => !readFileSync(f, 'utf8').includes('requirePermission('));
@@ -43,6 +51,22 @@ describe('security / boundary invariants (Phase 8 Decision-Lock)', () => {
     expect(
       offenders.map(rel),
       `Server action(s) missing requirePermission( — client-side authz is not source of truth (AD1):\n${offenders
+        .map(rel)
+        .join('\n')}`,
+    ).toEqual([]);
+  });
+
+  it('every onboarding action calls requireUser( for server-side identity verification (AD1)', () => {
+    const ONBOARDING_DIR = join(ACTIONS_DIR, 'onboarding');
+    const files = tsFiles(ONBOARDING_DIR);
+    // Sanity: the onboarding action surface exists and was actually scanned.
+    expect(files.length).toBeGreaterThan(0);
+
+    const offenders = files.filter((f) => !readFileSync(f, 'utf8').includes('requireUser('));
+
+    expect(
+      offenders.map(rel),
+      `Onboarding action(s) missing requireUser( — server-side identity verification is required even for pre-org bootstrap (AD1):\n${offenders
         .map(rel)
         .join('\n')}`,
     ).toEqual([]);

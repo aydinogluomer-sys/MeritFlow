@@ -11,6 +11,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!user) redirect('/login');
 
   const org = await getActiveOrg();
+  // A user with no organization membership yet must complete onboarding first.
+  if (!org) redirect('/onboarding');
   const permissions = await getPermissions();
 
   return (
