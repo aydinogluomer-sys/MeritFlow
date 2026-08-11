@@ -366,7 +366,7 @@ Planlama dokümanlarını, kodlama başladığında izlenecek fazlı bir yol har
   `recalculate_bonus_after_dispute()` CREATE OR REPLACE: 7-C mechanical adımları + yeni
   `run_bonus_calculation()` (pool DB'den; idempotency key 'disp-recalc-snap-'+reversed_snap; ADR-006 period
   'calculated' kalır); 0020 test-only fix (3 satır); Files=23/Tests=814/PASS).
-  **Tüm 7-A + 7-B + 7-C + 7-D + 7-E DB dilimleri tamamlandı.** Tüm fazlar tamamlandı (Phase 8 UI DONE — `7f51cfd`; Phase 9 test suite DONE — `cae487a`; Phase 10 production readiness DONE — `0403811`).
+  **Tüm 7-A + 7-B + 7-C + 7-D + 7-E DB dilimleri tamamlandı.** Tüm fazlar tamamlandı (Phase 8 UI DONE — `7f51cfd`; Phase 9 test suite DONE — `cae487a`; Phase 10 production readiness DONE — `0403811`). Sonrasında **Onboarding A/B/C** eklendi ve DONE (`52d670e` / `29c47e7` / `60358f2`, 2026-08-12; org-creation bootstrap + invitations + self-service profile).
 
 **Phase 5-b DONE** (`b719053`, 2026-08-10): `apply_manual_point_adjustment()` — two-person manual point override.
 Migration `0030` (function only, no schema change); test suite `0024` (17 assertions). Caller + `p_actor` +
@@ -406,6 +406,12 @@ change; 54 files. Known limit: leaderboard employee view own-standing only (RLS)
 **Post-10-B — AD3 comp access audit log DONE** (`1475798`, 2026-08-11): `log_comp_access(org, actor, reason)` SECURITY DEFINER (migration `0031`) — appends one `audit_logs` row (action=comp.raw_access, is_sensitive=true) when raw sensitive payload is actually exported; revoked from public/anon, granted to authenticated+service_role. `export-audit.ts` wired with fail-closed guard (`canSeeRaw && rows.some(is_sensitive)`). pgTAP suite `0025` (4 assertions: shape / anon-42501 / UPDATE-23001 / DELETE-23001). DB: Files=25 Tests=835 PASS. AD3 kanıtlı.
 
 **Post-10-C — Privacy-first leaderboard read-model DONE** (`9859d89`, 2026-08-11): `get_leaderboard(org, start?, end?)` SECURITY DEFINER (migration `0032`) — net points (task_approved+dispute_adjustment+manual_adjustment); cross-tenant blocked via `memberships` EXISTS guard; caller sees own display_name, others anonymized as 'Çalışan #N'; granted to authenticated only (enforces createClient/session path so auth.uid() resolves). `app/(app)/leaderboard/page.tsx` updated to use RPC. pgTAP suite `0026` (3 assertions: is_self display_name / anonymization / cross-tenant block). DB: Files=26 Tests=838 PASS. AD5/cross-tenant isolation kanıtlı.
+
+**Onboarding-A — Org-creation bootstrap DONE** (`52d670e`, 2026-08-12): `create_organization(name, slug, display_name)` SECURITY DEFINER (migration `0033_onboarding.sql`) — org + owner membership + profile + audit satırını atomik oluşturur ve RLS'i bypass eder (henüz üyelik yokken bootstrap). **Karar (a):** multi-org izinli, double-join guard yok (aynı kullanıcı ikinci org açabilir). pgTAP suite `0027_onboarding.test.sql` plan(4): happy / duplicate-slug 23505 / anon 42501 / multi-org (2. org başarılı). Ayrıca **security-boundary test split** eklendi: onboarding action'ları `requireUser`, diğerleri `requirePermission` kullanır. DB: Files=27 Tests=842 PASS.
+
+**Onboarding-B — Invitations DONE** (`29c47e7`, 2026-08-12): migration `0034_invitations.sql` — `invitations` tablosu (RLS: select = current_org() + user.invite; `role <> 'owner'` CHECK; 7-günlük token) + `create_invitation` + `accept_invitation` (ikisi de SECURITY DEFINER; accept membership + profile'ı atomik oluşturur, audit'li). pgTAP suite `0028_invitations.test.sql` plan(4): create / accept / expired-23514 / owner-invite-23514. App: `admin/members` sayfası + invite-member action (`requirePermission('user.invite')`), kök `app/join` sayfası + accept-invitation action (`requireUser`), nav "Üyeler" item. DB: Files=28 Tests=846 PASS.
+
+**Onboarding-C — Self-service profile DONE** (`60358f2`, 2026-08-12): **migration yok** (profiles UPDATE policy `id=auth.uid()` zaten mevcut). `settings/profile` sayfası + `update-profile` action RLS `createClient` üzerinden (`requireUser` — self-service, permission gate yok); security-boundary test `settings/` `requireUser` allowlist ile genişletildi (**option ii**); nav "Ayarlar" item. Vitest 99 → 100.
 
 ## Edge cases
 
