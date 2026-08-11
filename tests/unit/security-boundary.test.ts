@@ -40,8 +40,14 @@ describe('security / boundary invariants (Phase 8 Decision-Lock)', () => {
   // requireUser() — see the AUTHZ comment in each onboarding action (AD1).
   it('every non-onboarding server action calls requirePermission( for server-side authz (AD1)', () => {
     const ONBOARDING_DIR = join(ACTIONS_DIR, 'onboarding');
+    // settings/ actions use requireUser() (self-service identity, no role-gate needed — AD1).
+    const SETTINGS_DIR = join(ACTIONS_DIR, 'settings');
     const files = tsFiles(ACTIONS_DIR).filter(
-      (f) => !f.startsWith(ONBOARDING_DIR + '\\') && !f.startsWith(ONBOARDING_DIR + '/'),
+      (f) =>
+        !f.startsWith(ONBOARDING_DIR + '\\') &&
+        !f.startsWith(ONBOARDING_DIR + '/') &&
+        !f.startsWith(SETTINGS_DIR + '\\') &&
+        !f.startsWith(SETTINGS_DIR + '/'),
     );
     // Sanity: the non-onboarding action surface exists and was actually scanned.
     expect(files.length).toBeGreaterThan(0);
@@ -138,6 +144,26 @@ describe('security / boundary invariants (Phase 8 Decision-Lock)', () => {
     expect(
       readerOffenders.map(rel),
       `File reads a Finance view but does not use createClient — RLS-scoped session is required:\n${readerOffenders
+        .map(rel)
+        .join('\n')}`,
+    ).toEqual([]);
+  });
+
+  // ── Invariant 3b: settings actions use requireUser( for server-side identity (AD1) ──
+  //
+  // settings/ actions operate on the caller's own data with no role-gate;
+  // requirePermission() would wrongly deny them. requireUser() verifies identity (AD1).
+  it('self-service settings actions use requireUser( for server-side identity (AD1)', () => {
+    const SETTINGS_DIR = join(ACTIONS_DIR, 'settings');
+    const files = tsFiles(SETTINGS_DIR);
+    // Sanity: the settings action surface exists and was actually scanned.
+    expect(files.length).toBeGreaterThan(0);
+
+    const offenders = files.filter((f) => !readFileSync(f, 'utf8').includes('requireUser('));
+
+    expect(
+      offenders.map(rel),
+      `Settings action(s) missing requireUser( — server-side identity verification is required for self-service actions (AD1):\n${offenders
         .map(rel)
         .join('\n')}`,
     ).toEqual([]);

@@ -27,6 +27,8 @@ const SECTIONS: NavItem[] = [
   { label: 'Denetim Kaydı', href: '/audit', permission: 'audit.read' },
   { label: 'Üyeler', href: '/admin/members', permission: 'user.invite' },
   { label: 'Destek Erişimi', href: '/admin/support-access', permission: 'support.grant' },
+  // Always visible — self-service identity; no permission gate needed (any member)
+  { label: 'Profil', href: '/settings/profile' },
 ];
 
 export function AppNav({
