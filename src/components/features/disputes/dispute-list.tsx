@@ -1,6 +1,16 @@
 import Link from 'next/link';
-import { Badge, type BadgeProps } from '@/components/ui/badge';
+import { Badge } from '@/components/ui/badge';
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { EmptyState } from '@/components/features/shared/empty-state';
+import { statusBadgeClass } from '@/components/features/shared/status-badge';
 
 /** Subset of `disputes` columns used by the list view (RLS-scoped select). */
 export type DisputeListRow = {
@@ -37,14 +47,6 @@ const STATUS_LABELS: Record<string, string> = {
   closed: 'Kapandı',
 };
 
-const STATUS_VARIANTS: Record<string, BadgeProps['variant']> = {
-  open: 'outline',
-  under_review: 'secondary',
-  needs_info: 'outline',
-  resolved: 'default',
-  closed: 'outline',
-};
-
 const RESOLUTION_LABELS: Record<string, string> = {
   accepted: 'Kabul edildi',
   rejected: 'Reddedildi',
@@ -70,52 +72,44 @@ export function DisputeList({ disputes, emptyMessage = 'Henüz itiraz yok' }: Di
 
   return (
     <div className="overflow-x-auto rounded-xl border">
-      <table className="w-full border-collapse text-sm">
-        <caption className="sr-only">İtiraz listesi</caption>
-        <thead>
-          <tr className="border-b bg-muted/50 text-left text-xs text-muted-foreground">
-            <th scope="col" className="px-4 py-3 font-medium">
-              Tür
-            </th>
-            <th scope="col" className="px-4 py-3 font-medium">
-              Durum
-            </th>
-            <th scope="col" className="px-4 py-3 font-medium">
-              Sonuç
-            </th>
-            <th scope="col" className="px-4 py-3 font-medium">
-              Açılış
-            </th>
-          </tr>
-        </thead>
-        <tbody>
+      <Table>
+        <TableCaption className="sr-only">İtiraz listesi</TableCaption>
+        <TableHeader>
+          <TableRow className="bg-muted/50 text-xs text-muted-foreground">
+            <TableHead>Tür</TableHead>
+            <TableHead>Durum</TableHead>
+            <TableHead>Sonuç</TableHead>
+            <TableHead>Açılış</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {disputes.map((dispute) => (
-            <tr key={dispute.id} className="border-b last:border-0 hover:bg-muted/30">
-              <td className="px-4 py-3">
+            <TableRow key={dispute.id}>
+              <TableCell>
                 <Link
                   href={`/disputes/${dispute.id}`}
                   className="font-medium text-primary underline-offset-4 hover:underline"
                 >
                   {typeLabel(dispute.dispute_type)}
                 </Link>
-              </td>
-              <td className="px-4 py-3">
-                <Badge variant={STATUS_VARIANTS[dispute.status] ?? 'outline'}>
+              </TableCell>
+              <TableCell>
+                <Badge variant="outline" className={statusBadgeClass(dispute.status)}>
                   {STATUS_LABELS[dispute.status] ?? dispute.status}
                 </Badge>
-              </td>
-              <td className="px-4 py-3 text-muted-foreground">
+              </TableCell>
+              <TableCell className="text-muted-foreground">
                 {dispute.resolution
                   ? (RESOLUTION_LABELS[dispute.resolution] ?? dispute.resolution)
                   : '—'}
-              </td>
-              <td className="px-4 py-3 text-muted-foreground">
+              </TableCell>
+              <TableCell className="text-muted-foreground">
                 {dateFormatter.format(new Date(dispute.opened_at))}
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }

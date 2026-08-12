@@ -1,6 +1,16 @@
 import Link from 'next/link';
-import { Badge, type BadgeProps } from '@/components/ui/badge';
+import { Badge } from '@/components/ui/badge';
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { EmptyState } from '@/components/features/shared/empty-state';
+import { statusBadgeClass } from '@/components/features/shared/status-badge';
 
 /** Subset of `tasks` columns used by the list view (RLS-scoped select). */
 export type TaskListRow = {
@@ -32,18 +42,6 @@ const STATUS_LABELS: Record<string, string> = {
   archived: 'Arşivlendi',
 };
 
-const STATUS_VARIANTS: Record<string, BadgeProps['variant']> = {
-  approved: 'default',
-  submitted: 'secondary',
-  in_progress: 'secondary',
-  needs_revision: 'outline',
-  rejected: 'destructive',
-  cancelled: 'outline',
-  draft: 'outline',
-  assigned: 'outline',
-  archived: 'outline',
-};
-
 function statusLabel(status: string): string {
   return STATUS_LABELS[status] ?? status;
 }
@@ -64,60 +62,48 @@ export function TaskList({ tasks, emptyMessage = 'Henüz görev yok' }: TaskList
 
   return (
     <div className="overflow-x-auto rounded-xl border">
-      <table className="w-full border-collapse text-sm">
-        <caption className="sr-only">Görev listesi</caption>
-        <thead>
-          <tr className="border-b bg-muted/50 text-left text-xs text-muted-foreground">
-            <th scope="col" className="px-4 py-3 font-medium">
-              Başlık
-            </th>
-            <th scope="col" className="px-4 py-3 font-medium">
-              Durum
-            </th>
-            <th scope="col" className="px-4 py-3 font-medium">
-              Karmaşıklık
-            </th>
-            <th scope="col" className="px-4 py-3 font-medium">
-              Etki
-            </th>
-            <th scope="col" className="px-4 py-3 text-right font-medium">
-              Puan
-            </th>
-            <th scope="col" className="px-4 py-3 font-medium">
-              Oluşturulma
-            </th>
-          </tr>
-        </thead>
-        <tbody>
+      <Table>
+        <TableCaption className="sr-only">Görev listesi</TableCaption>
+        <TableHeader>
+          <TableRow className="bg-muted/50 text-xs text-muted-foreground">
+            <TableHead>Başlık</TableHead>
+            <TableHead>Durum</TableHead>
+            <TableHead>Karmaşıklık</TableHead>
+            <TableHead>Etki</TableHead>
+            <TableHead className="text-right">Puan</TableHead>
+            <TableHead>Oluşturulma</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {tasks.map((task) => (
-            <tr key={task.id} className="border-b last:border-0 hover:bg-muted/30">
-              <td className="px-4 py-3">
+            <TableRow key={task.id}>
+              <TableCell>
                 <Link
                   href={`/tasks/${task.id}`}
                   className="font-medium text-primary underline-offset-4 hover:underline"
                 >
                   {task.title}
                 </Link>
-              </td>
-              <td className="px-4 py-3">
-                <Badge variant={STATUS_VARIANTS[task.status] ?? 'outline'}>
+              </TableCell>
+              <TableCell>
+                <Badge variant="outline" className={statusBadgeClass(task.status)}>
                   {statusLabel(task.status)}
                 </Badge>
-              </td>
-              <td className="px-4 py-3 capitalize">{task.complexity}</td>
-              <td className="px-4 py-3 capitalize">{task.impact}</td>
-              <td className="px-4 py-3 text-right tabular-nums">
+              </TableCell>
+              <TableCell className="capitalize">{task.complexity}</TableCell>
+              <TableCell className="capitalize">{task.impact}</TableCell>
+              <TableCell className="text-right tabular-nums">
                 {task.final_points != null
                   ? numberFormatter.format(task.final_points)
                   : `~${numberFormatter.format(task.base_points)}`}
-              </td>
-              <td className="px-4 py-3 text-muted-foreground">
+              </TableCell>
+              <TableCell className="text-muted-foreground">
                 {dateFormatter.format(new Date(task.created_at))}
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }

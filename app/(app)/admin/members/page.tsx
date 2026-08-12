@@ -9,6 +9,15 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { EmptyState } from '@/components/features/shared/empty-state';
 import { ErrorState } from '@/components/features/shared/error-state';
 import { InviteForm } from './invite-form';
@@ -84,40 +93,34 @@ export default async function MembersPage() {
             <EmptyState message="Aktif üye yok" />
           ) : (
             <div className="overflow-x-auto rounded-xl border">
-              <table className="w-full border-collapse text-sm">
-                <caption className="sr-only">Aktif üyeler listesi</caption>
-                <thead>
-                  <tr className="border-b bg-muted/50 text-left text-xs text-muted-foreground">
-                    <th scope="col" className="px-4 py-3 font-medium">
-                      Ad
-                    </th>
-                    <th scope="col" className="px-4 py-3 font-medium">
-                      Rol
-                    </th>
-                    <th scope="col" className="px-4 py-3 font-medium">
-                      Durum
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
+              <Table>
+                <TableCaption className="sr-only">Aktif üyeler listesi</TableCaption>
+                <TableHeader>
+                  <TableRow className="bg-muted/50 text-xs text-muted-foreground">
+                    <TableHead>Ad</TableHead>
+                    <TableHead>Rol</TableHead>
+                    <TableHead>Durum</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {rows.map((row) => {
                     const name = displayNameOf(row);
                     return (
-                      <tr key={row.profile_id} className="border-b last:border-0 hover:bg-muted/30">
-                        <td className="px-4 py-3">
+                      <TableRow key={row.profile_id}>
+                        <TableCell>
                           {name ?? (
                             <span className="font-mono text-xs">{row.profile_id.slice(0, 8)}</span>
                           )}
-                        </td>
-                        <td className="px-4 py-3">
+                        </TableCell>
+                        <TableCell>
                           {ROLE_LABEL[row.primary_role] ?? row.primary_role}
-                        </td>
-                        <td className="px-4 py-3">{STATUS_LABEL[row.status] ?? row.status}</td>
-                      </tr>
+                        </TableCell>
+                        <TableCell>{STATUS_LABEL[row.status] ?? row.status}</TableCell>
+                      </TableRow>
                     );
                   })}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           )}
         </CardContent>

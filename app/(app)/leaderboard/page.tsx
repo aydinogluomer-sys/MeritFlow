@@ -8,6 +8,15 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { EmptyState } from '@/components/features/shared/empty-state';
 
 const pointFormatter = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 0 });
@@ -59,45 +68,37 @@ export default async function LeaderboardPage() {
             <EmptyState message="Sıralama için henüz puan yok" />
           ) : (
             <div className="overflow-x-auto rounded-xl border">
-              <table className="w-full border-collapse text-sm">
-                <caption className="sr-only">Puan sıralaması</caption>
-                <thead>
-                  <tr className="border-b bg-muted/50 text-left text-xs text-muted-foreground">
-                    <th scope="col" className="px-4 py-3 font-medium">
-                      Sıra
-                    </th>
-                    <th scope="col" className="px-4 py-3 font-medium">
-                      Çalışan
-                    </th>
-                    <th scope="col" className="px-4 py-3 text-right font-medium">
-                      Puan
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
+              <Table>
+                <TableCaption className="sr-only">Puan sıralaması</TableCaption>
+                <TableHeader>
+                  <TableRow className="bg-muted/50 text-xs text-muted-foreground">
+                    <TableHead>Sıra</TableHead>
+                    <TableHead>Çalışan</TableHead>
+                    <TableHead className="text-right">Puan</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {rows.map((row) => (
-                    <tr
+                    <TableRow
                       key={`${row.rank}-${row.display_name}`}
-                      className={`border-b last:border-0 ${
-                        row.is_self ? 'bg-primary/5 font-medium' : 'hover:bg-muted/30'
-                      }`}
+                      className={row.is_self ? 'bg-primary/5 font-medium hover:bg-primary/5' : ''}
                     >
-                      <td className="px-4 py-3 tabular-nums">{row.rank}</td>
-                      <td className="px-4 py-3">
+                      <TableCell className="tabular-nums">{row.rank}</TableCell>
+                      <TableCell>
                         {row.display_name}
                         {row.is_self ? (
                           <Badge variant="secondary" className="ml-2 text-xs">
                             Sen
                           </Badge>
                         ) : null}
-                      </td>
-                      <td className="px-4 py-3 text-right tabular-nums">
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
                         {pointFormatter.format(row.total_points)}
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           )}
         </CardContent>

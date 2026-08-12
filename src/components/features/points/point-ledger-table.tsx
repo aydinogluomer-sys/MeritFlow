@@ -2,6 +2,15 @@
 
 import * as React from 'react';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { EmptyState } from '@/components/features/shared/empty-state';
 import { PointBreakdown, type ScoringMetadata } from './point-breakdown';
 
@@ -51,52 +60,42 @@ export function PointLedgerTable({ rows }: PointLedgerTableProps) {
 
   return (
     <div className="overflow-x-auto rounded-xl border">
-      <table className="w-full border-collapse text-sm">
-        <caption className="sr-only">Puan defteri</caption>
-        <thead>
-          <tr className="border-b bg-muted/50 text-left text-xs text-muted-foreground">
-            <th scope="col" className="px-4 py-3 font-medium">
-              Tarih
-            </th>
-            <th scope="col" className="px-4 py-3 font-medium">
-              Olay
-            </th>
-            <th scope="col" className="px-4 py-3 font-medium">
-              Gerekçe
-            </th>
-            <th scope="col" className="px-4 py-3 text-right font-medium">
-              Puan
-            </th>
-            <th scope="col" className="px-4 py-3 text-right font-medium">
-              Kırılım
-            </th>
-          </tr>
-        </thead>
-        <tbody>
+      <Table>
+        <TableCaption className="sr-only">Puan defteri</TableCaption>
+        <TableHeader>
+          <TableRow className="bg-muted/50 text-xs text-muted-foreground">
+            <TableHead>Tarih</TableHead>
+            <TableHead>Olay</TableHead>
+            <TableHead>Gerekçe</TableHead>
+            <TableHead className="text-right">Puan</TableHead>
+            <TableHead className="text-right">Kırılım</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {rows.map((row) => {
             const isTaskApproved = row.event_type === 'task_approved';
             const isExpanded = expandedId === row.id;
             return (
               <React.Fragment key={row.id}>
-                <tr className="border-b last:border-0 hover:bg-muted/30">
-                  <td className="px-4 py-3 whitespace-nowrap">
+                <TableRow>
+                  <TableCell className="whitespace-nowrap">
                     {dateFormatter.format(new Date(row.created_at))}
-                  </td>
-                  <td className="px-4 py-3">
+                  </TableCell>
+                  <TableCell>
                     <Badge variant={EVENT_VARIANTS[row.event_type] ?? 'outline'}>
                       {EVENT_LABELS[row.event_type] ?? row.event_type}
                     </Badge>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">{row.reason}</td>
-                  <td
-                    className={`px-4 py-3 text-right tabular-nums ${
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{row.reason}</TableCell>
+                  <TableCell
+                    className={`text-right tabular-nums ${
                       row.points_delta < 0 ? 'text-destructive' : ''
                     }`}
                   >
                     {row.points_delta > 0 ? '+' : ''}
                     {pointFormatter.format(row.points_delta)}
-                  </td>
-                  <td className="px-4 py-3 text-right">
+                  </TableCell>
+                  <TableCell className="text-right">
                     {isTaskApproved ? (
                       <button
                         type="button"
@@ -109,20 +108,20 @@ export function PointLedgerTable({ rows }: PointLedgerTableProps) {
                     ) : (
                       <span className="text-xs text-muted-foreground">—</span>
                     )}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
                 {isTaskApproved && isExpanded ? (
-                  <tr className="border-b last:border-0 bg-muted/20">
-                    <td colSpan={5} className="px-4 py-4">
+                  <TableRow className="bg-muted/20">
+                    <TableCell colSpan={5} className="py-4">
                       <PointBreakdown metadata={row.metadata} />
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ) : null}
               </React.Fragment>
             );
           })}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }

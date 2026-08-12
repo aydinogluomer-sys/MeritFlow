@@ -3,10 +3,20 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Badge, type BadgeProps } from '@/components/ui/badge';
+import { Badge } from '@/components/ui/badge';
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { EmptyState } from '@/components/features/shared/empty-state';
 import { ErrorState } from '@/components/features/shared/error-state';
 import { ConfirmDialog } from '@/components/features/shared/confirm-dialog';
+import { statusBadgeClass } from '@/components/features/shared/status-badge';
 import { runCalculation } from '@/app/actions/bonus/run-calculation';
 
 /** Subset of `bonus_periods` (+ active pool) columns used by the list view (RLS-scoped). */
@@ -29,15 +39,6 @@ const STATUS_LABELS: Record<string, string> = {
   approved: 'Onaylandı',
   exported: 'Dışa aktarıldı',
   closed: 'Kapandı',
-};
-
-const STATUS_VARIANTS: Record<string, BadgeProps['variant']> = {
-  open: 'outline',
-  locked: 'secondary',
-  calculated: 'secondary',
-  approved: 'default',
-  exported: 'default',
-  closed: 'outline',
 };
 
 function statusLabel(status: string): string {
@@ -86,45 +87,37 @@ export function PeriodList({ periods }: PeriodListProps) {
       {error ? <ErrorState message={error} /> : null}
 
       <div className="overflow-x-auto rounded-xl border">
-        <table className="w-full border-collapse text-sm">
-          <caption className="sr-only">Prim dönemleri listesi</caption>
-          <thead>
-            <tr className="border-b bg-muted/50 text-left text-xs text-muted-foreground">
-              <th scope="col" className="px-4 py-3 font-medium">
-                Dönem
-              </th>
-              <th scope="col" className="px-4 py-3 font-medium">
-                Tür
-              </th>
-              <th scope="col" className="px-4 py-3 font-medium">
-                Durum
-              </th>
-              <th scope="col" className="px-4 py-3 text-right font-medium">
-                İşlem
-              </th>
-            </tr>
-          </thead>
-          <tbody>
+        <Table>
+          <TableCaption className="sr-only">Prim dönemleri listesi</TableCaption>
+          <TableHeader>
+            <TableRow className="bg-muted/50 text-xs text-muted-foreground">
+              <TableHead>Dönem</TableHead>
+              <TableHead>Tür</TableHead>
+              <TableHead>Durum</TableHead>
+              <TableHead className="text-right">İşlem</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {periods.map((period) => {
               // "Hesapla" is available only for a locked period that has an active pool.
               const canCalculate = period.status === 'locked' && period.poolId != null;
               return (
-                <tr key={period.id} className="border-b last:border-0 hover:bg-muted/30">
-                  <td className="px-4 py-3">
+                <TableRow key={period.id}>
+                  <TableCell>
                     <Link
                       href={`/bonus/periods/${period.id}`}
                       className="font-medium text-primary underline-offset-4 hover:underline"
                     >
                       {periodRange(period)}
                     </Link>
-                  </td>
-                  <td className="px-4 py-3 capitalize">{period.period_type}</td>
-                  <td className="px-4 py-3">
-                    <Badge variant={STATUS_VARIANTS[period.status] ?? 'outline'}>
+                  </TableCell>
+                  <TableCell className="capitalize">{period.period_type}</TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className={statusBadgeClass(period.status)}>
                       {statusLabel(period.status)}
                     </Badge>
-                  </td>
-                  <td className="px-4 py-3 text-right">
+                  </TableCell>
+                  <TableCell className="text-right">
                     {canCalculate ? (
                       <ConfirmDialog
                         triggerLabel="Hesapla"
@@ -137,12 +130,12 @@ export function PeriodList({ periods }: PeriodListProps) {
                     ) : (
                       <span className="text-xs text-muted-foreground">—</span>
                     )}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               );
             })}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
     </div>
   );
