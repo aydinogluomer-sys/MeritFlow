@@ -1,18 +1,49 @@
 name: CI
 
+# ENGINEERING-01a — full blocking CI pipeline.
+#   lint ∥ typecheck ∥ unit  →  db (pgTAP)  ∥  build  →  e2e (Playwright)
+# Job ids are the status-check names. Branch protection / required-checks are configured
+# in the GitHub UI (ops step); this workflow only DEFINES the jobs. The real "green" proof
+# is the first push actually running these — GitHub Actions cannot be run locally.
+
 on:
   push:
     branches: [main]
   pull_request:
 
-# Decision E: CI runs typecheck + lint + unit tests only.
-# E2E (Playwright) and pgTAP (supabase test db) CI wiring is deferred to Phase 9.
+# One in-flight run per ref; new pushes cancel the previous run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  app:
-    name: typecheck / lint / unit
+  # ── Fast static gates — independent, run in parallel ────────────────────────
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+
+  unit:
     runs-on: ubuntu-latest
     env:
-      # Dummy public env so any import that reads it at load succeeds; no secrets here.
+      # Dummy public env so modules that read env at import (src/lib/env.ts) load; no secrets.
       NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-anon-key
       SUPABASE_SERVICE_ROLE_KEY: ci-service-role-key
@@ -23,6 +54,95 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
-      - run: npm run typecheck
-      - run: npm run lint
       - run: npm run test
+
+  # ── Database: apply every migration from scratch + run pgTAP (Supabase via Docker) ──
+  db:
+    needs: [lint, typecheck, unit]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Start Supabase (Docker)
+        run: npx --no-install supabase start
+      - name: Reset DB — apply all migrations + seed
+        run: npx --no-install supabase db reset
+      - name: Run pgTAP suite
+        run: npx --no-install supabase test db
+      - name: Stop Supabase
+        if: always()
+        run: npx --no-install supabase stop
+
+  # ── Production build — dummy public env; no live Supabase needed at build time ──
+  build:
+    needs: [lint, typecheck, unit]
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-anon-key
+      SUPABASE_SERVICE_ROLE_KEY: ci-service-role-key
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+  # ── End-to-end (Playwright). The playwright.config webServer auto-starts `npm run dev`,
+  #    so this job only needs a booted, seeded Supabase + the local keys in the app env.
+  #    NOT yet confirmed green — do NOT mark this a required check until a first CI run is
+  #    green (or defer Playwright-blocking to ENGINEERING-11). See the e2e note in the PR.
+  e2e:
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+      - name: Install Playwright browser (chromium)
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Start Supabase (Docker)
+        run: npx --no-install supabase start
+      - name: Reset DB — apply all migrations + seed
+        run: npx --no-install supabase db reset
+      - name: Export local Supabase keys into the app env
+        run: |
+          npx --no-install supabase status -o env > "$RUNNER_TEMP/supabase.env"
+          set -a
+          # shellcheck disable=SC1090
+          source "$RUNNER_TEMP/supabase.env"
+          set +a
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+          } >> "$GITHUB_ENV"
+      - name: Run Playwright (webServer starts `npm run dev`)
+        run: npm run test:e2e
+      - name: Upload Playwright traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Stop Supabase
+        if: always()
+        run: npx --no-install supabase stop
