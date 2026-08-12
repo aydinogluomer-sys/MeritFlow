@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/features/shared/error-state';
 import { assignReviewer } from '@/app/actions/disputes/assign-reviewer';
@@ -71,8 +72,10 @@ export function DisputeFlowForm({
         const result = await assignReviewer({ disputeId, reviewerId });
         if (!result.ok) {
           setError(`İnceleyen atanamadı (${result.error}).`);
+          toast.error(`İnceleyen atanamadı (${result.error}).`);
           return;
         }
+        toast.success('İnceleyen atandı.');
         router.refresh();
       });
     };
@@ -143,8 +146,12 @@ export function DisputeFlowForm({
         });
         if (!result.ok) {
           setError(`İtiraz sonuçlandırılamadı (${result.error}).`);
+          toast.error(`İtiraz sonuçlandırılamadı (${result.error}).`);
           return;
         }
+        toast.success(
+          resolution === 'accepted' ? 'İtiraz kabul edildi.' : 'İtiraz reddedildi.',
+        );
         router.refresh();
       });
     };

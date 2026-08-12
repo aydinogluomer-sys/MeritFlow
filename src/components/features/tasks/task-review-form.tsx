@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/features/shared/error-state';
 import { reviewTask } from '@/app/actions/tasks/review-task';
@@ -39,6 +40,12 @@ function friendlyError(code: string): string {
   return ERROR_MESSAGES[code] ?? `İnceleme kaydedilemedi (${code}).`;
 }
 
+const DECISION_SUCCESS: Record<Decision, string> = {
+  approve: 'Görev onaylandı.',
+  reject: 'Görev reddedildi.',
+  needs_revision: 'Revizyon istendi.',
+};
+
 export interface TaskReviewFormProps {
   taskId: string;
   /** Where to go after a successful review (defaults to the task detail page). */
@@ -72,8 +79,10 @@ export function TaskReviewForm({ taskId, redirectTo }: TaskReviewFormProps) {
       });
       if (!result.ok) {
         setError(result.error);
+        toast.error(friendlyError(result.error));
         return;
       }
+      toast.success(DECISION_SUCCESS[decision]);
       router.push(redirectTo ?? `/tasks/${taskId}`);
       router.refresh();
     });

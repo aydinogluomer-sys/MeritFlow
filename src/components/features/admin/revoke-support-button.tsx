@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { ErrorState } from '@/components/features/shared/error-state';
 import { ConfirmDialog } from '@/components/features/shared/confirm-dialog';
 import { revokeSupportAccess } from '@/app/actions/admin/revoke-support-access';
@@ -26,8 +27,10 @@ export function RevokeSupportButton({ grantId }: RevokeSupportButtonProps) {
       const result = await revokeSupportAccess({ grantId });
       if (!result.ok) {
         setError(`Erişim iptal edilemedi (${result.error}).`);
+        toast.error(`Erişim iptal edilemedi (${result.error}).`);
         return;
       }
+      toast.success('Erişim iptal edildi.');
       router.refresh();
     });
   };

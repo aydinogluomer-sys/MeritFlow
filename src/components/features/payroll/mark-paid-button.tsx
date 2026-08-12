@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { ErrorState } from '@/components/features/shared/error-state';
 import { ConfirmDialog } from '@/components/features/shared/confirm-dialog';
 import { markPaid } from '@/app/actions/payroll/mark-paid';
@@ -29,8 +30,10 @@ export function MarkPaidButton({ periodId, exportId, disabled = false }: MarkPai
       const result = await markPaid({ periodId, exportId });
       if (!result.ok) {
         setError(`Ödeme işaretlenemedi (${result.error}).`);
+        toast.error(`Ödeme işaretlenemedi (${result.error}).`);
         return;
       }
+      toast.success('Ödeme işaretlendi.');
       router.refresh();
     });
   };

@@ -17,10 +17,9 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { ErrorState } from '@/components/features/shared/error-state';
-
-const inputClass =
-  'h-9 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50';
 
 export function JoinForm({ token }: { token: string }) {
   const router = useRouter();
@@ -58,10 +57,8 @@ export function JoinForm({ token }: { token: string }) {
       <CardContent>
         <form onSubmit={onSubmit} className="flex flex-col gap-4" aria-busy={isPending}>
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="join-display-name" className="text-sm font-medium">
-              Adın
-            </label>
-            <input
+            <Label htmlFor="join-display-name">Adın</Label>
+            <Input
               id="join-display-name"
               type="text"
               required
@@ -71,7 +68,6 @@ export function JoinForm({ token }: { token: string }) {
               onChange={(e) => setDisplayName(e.target.value)}
               disabled={isPending}
               placeholder="Ad Soyad"
-              className={inputClass}
             />
           </div>
 

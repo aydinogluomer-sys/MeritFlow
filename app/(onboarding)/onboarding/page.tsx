@@ -11,10 +11,9 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { ErrorState } from '@/components/features/shared/error-state';
-
-const inputClass =
-  'h-9 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring';
 
 /** Derive a slug from the org name: lowercase, spaces→hyphen, strip invalid chars,
  *  collapse repeats, clamp to 3–50 chars (matches the DB slug regex boundaries). */
@@ -76,10 +75,8 @@ export default function OnboardingPage() {
       <CardContent>
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="name" className="text-sm font-medium">
-              Şirket adı
-            </label>
-            <input
+            <Label htmlFor="name">Şirket adı</Label>
+            <Input
               id="name"
               required
               minLength={2}
@@ -87,15 +84,12 @@ export default function OnboardingPage() {
               value={name}
               onChange={(event) => onNameChange(event.target.value)}
               placeholder="Örnek Teknoloji A.Ş."
-              className={inputClass}
             />
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="slug" className="text-sm font-medium">
-              Alan adı (slug)
-            </label>
-            <input
+            <Label htmlFor="slug">Alan adı (slug)</Label>
+            <Input
               id="slug"
               required
               value={slug}
@@ -104,7 +98,6 @@ export default function OnboardingPage() {
                 setSlug(slugify(event.target.value));
               }}
               placeholder="ornek-teknoloji"
-              className={inputClass}
               aria-describedby="slug-hint"
             />
             <p id="slug-hint" className="text-xs text-muted-foreground">
@@ -113,10 +106,8 @@ export default function OnboardingPage() {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="displayName" className="text-sm font-medium">
-              Adın
-            </label>
-            <input
+            <Label htmlFor="displayName">Adın</Label>
+            <Input
               id="displayName"
               required
               minLength={1}
@@ -124,7 +115,6 @@ export default function OnboardingPage() {
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
               placeholder="Ad Soyad"
-              className={inputClass}
             />
           </div>
 

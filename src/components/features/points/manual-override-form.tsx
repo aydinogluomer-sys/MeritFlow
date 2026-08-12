@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'motion/react';
 import { CheckCircle2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/features/shared/error-state';
 import { ConfirmDialog } from '@/components/features/shared/confirm-dialog';
@@ -81,9 +82,11 @@ export function ManualOverrideForm({ memberOptions, taskOptions }: ManualOverrid
       });
       if (!result.ok) {
         setError(`Düzeltme uygulanamadı (${result.error}).`);
+        toast.error(`Düzeltme uygulanamadı (${result.error}).`);
         return;
       }
       setDone(true);
+      toast.success('Puan override uygulandı.');
       setEmployeeId('');
       setTaskId('');
       setPointsDelta('');

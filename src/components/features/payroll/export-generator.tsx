@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { ErrorState } from '@/components/features/shared/error-state';
 import { ConfirmDialog } from '@/components/features/shared/confirm-dialog';
 import { exportPayout } from '@/app/actions/payroll/export-payout';
@@ -60,8 +61,10 @@ export function ExportGenerator({ periodOptions, snapshotOptions }: ExportGenera
       const result = await exportPayout({ periodId, snapshotId, format });
       if (!result.ok) {
         setError(`Dışa aktarım üretilemedi (${result.error}).`);
+        toast.error(`Dışa aktarım üretilemedi (${result.error}).`);
         return;
       }
+      toast.success('Export oluşturuldu.');
       router.refresh();
     });
   };

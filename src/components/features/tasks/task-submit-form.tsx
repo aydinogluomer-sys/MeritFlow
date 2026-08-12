@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'motion/react';
 import { CheckCircle2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/features/shared/error-state';
 import { submitTask } from '@/app/actions/tasks/submit-task';
@@ -28,9 +29,11 @@ export function TaskSubmitForm({ taskId }: TaskSubmitFormProps) {
       const result = await submitTask({ taskId });
       if (!result.ok) {
         setError(result.error);
+        toast.error(`Görev gönderilemedi (${result.error}).`);
         return;
       }
       setDone(true);
+      toast.success('Görev gönderildi.');
       router.refresh();
     });
   };

@@ -9,9 +9,19 @@
 import * as React from 'react';
 import { motion } from 'motion/react';
 import { CheckCircle2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { inviteMember } from '@/app/actions/admin/invite-member';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { ErrorState } from '@/components/features/shared/error-state';
 
 const inputClass =
@@ -46,10 +56,12 @@ export function InviteForm() {
         } else {
           setInviteError('Davet oluşturulamadı. Lütfen tekrar deneyin.');
         }
+        toast.error('Davet oluşturulamadı.');
         return;
       }
       setJoinLink(`${APP_URL}/join?token=${result.data.token}`);
       setEmail('');
+      toast.success('Davet oluşturuldu.');
     });
   }
 
@@ -64,10 +76,8 @@ export function InviteForm() {
       <CardContent>
         <form onSubmit={handleInvite} className="flex flex-col gap-4" aria-busy={isPending}>
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="invite-email" className="text-sm font-medium">
-              E-posta
-            </label>
-            <input
+            <Label htmlFor="invite-email">E-posta</Label>
+            <Input
               id="invite-email"
               type="email"
               required
@@ -75,27 +85,23 @@ export function InviteForm() {
               onChange={(e) => setEmail(e.target.value)}
               disabled={isPending}
               placeholder="ornek@sirket.com"
-              className={inputClass}
             />
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="invite-role" className="text-sm font-medium">
-              Rol
-            </label>
-            <select
-              id="invite-role"
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              disabled={isPending}
-              className={inputClass}
-            >
-              {ROLE_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+            <Label htmlFor="invite-role">Rol</Label>
+            <Select value={role} onValueChange={setRole} disabled={isPending}>
+              <SelectTrigger id="invite-role">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ROLE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {inviteError ? <ErrorState message={inviteError} /> : null}

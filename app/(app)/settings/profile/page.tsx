@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
 import { updateProfile } from '@/app/actions/settings/update-profile';
 import {
@@ -10,6 +11,8 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 export default function ProfileSettingsPage() {
   const [displayName, setDisplayName] = useState('');
@@ -46,8 +49,10 @@ export default function ProfileSettingsPage() {
 
     if (result.ok) {
       setMessage({ type: 'success', text: 'Profil güncellendi.' });
+      toast.success('Profil güncellendi.');
     } else {
       setMessage({ type: 'error', text: result.error ?? 'Bir hata oluştu.' });
+      toast.error(result.error ?? 'Profil güncellenemedi.');
     }
     setSaving(false);
   }
@@ -73,20 +78,14 @@ export default function ProfileSettingsPage() {
               className="flex flex-col gap-4"
             >
               <div className="flex flex-col gap-1">
-                <label
-                  htmlFor="displayName"
-                  className="text-sm font-medium"
-                >
-                  Görünen Ad
-                </label>
-                <input
+                <Label htmlFor="displayName">Görünen Ad</Label>
+                <Input
                   id="displayName"
                   type="text"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
                   required
                   maxLength={100}
-                  className="rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
 

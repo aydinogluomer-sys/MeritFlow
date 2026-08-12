@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/features/shared/error-state';
 import { grantSupportAccess } from '@/app/actions/admin/grant-support-access';
@@ -52,9 +53,11 @@ export function GrantSupportForm() {
       });
       if (!result.ok) {
         setError(`Erişim verilemedi (${result.error}).`);
+        toast.error(`Erişim verilemedi (${result.error}).`);
         return;
       }
       setDone(true);
+      toast.success('Destek erişimi verildi.');
       setGranteeId('');
       setScope('');
       setReason('');
