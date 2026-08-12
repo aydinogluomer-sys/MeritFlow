@@ -1,12 +1,14 @@
 'use client';
 
-import * as React from 'react';
+import type * as React from 'react';
+import type { LucideIcon } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { cn } from '@/lib/utils';
 
 export interface EmptyStateProps {
   message: string;
-  icon?: React.ReactNode;
+  /** Optional contextual glyph, rendered large above the message. */
+  icon?: LucideIcon;
   className?: string;
   children?: React.ReactNode;
 }
@@ -15,8 +17,9 @@ export interface EmptyStateProps {
  * Presentational empty state (mandated empty states). Renders a calm, centered
  * message for empty result sets, e.g. `<EmptyState message="Henüz görev yok" />`.
  * A soft fade-in is applied via {@link AnimatePresence} (respects reduced motion).
+ * When an `icon` is provided it renders large and muted above the message.
  */
-export function EmptyState({ message, icon, className, children }: EmptyStateProps) {
+export function EmptyState({ message, icon: Icon, className, children }: EmptyStateProps) {
   return (
     <AnimatePresence>
       <motion.div
@@ -28,7 +31,7 @@ export function EmptyState({ message, icon, className, children }: EmptyStatePro
           className,
         )}
       >
-        {icon ? <div className="text-muted-foreground">{icon}</div> : null}
+        {Icon ? <Icon className="h-10 w-10 text-muted-foreground" aria-hidden="true" /> : null}
         <p className="text-sm text-muted-foreground">{message}</p>
         {children}
       </motion.div>

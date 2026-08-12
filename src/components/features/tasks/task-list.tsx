@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { motion } from 'motion/react';
+import { ClipboardList } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import {
   Table,
@@ -65,7 +66,7 @@ export interface TaskListProps {
  */
 export function TaskList({ tasks, emptyMessage = 'Henüz görev yok' }: TaskListProps) {
   if (tasks.length === 0) {
-    return <EmptyState message={emptyMessage} />;
+    return <EmptyState message={emptyMessage} icon={ClipboardList} />;
   }
 
   return (

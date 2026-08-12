@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { Star } from 'lucide-react';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
 import {
   Table,
@@ -55,7 +56,7 @@ export function PointLedgerTable({ rows }: PointLedgerTableProps) {
   const [expandedId, setExpandedId] = React.useState<string | null>(null);
 
   if (rows.length === 0) {
-    return <EmptyState message="Henüz puan kaydın yok" />;
+    return <EmptyState message="Henüz puan kaydın yok" icon={Star} />;
   }
 
   return (

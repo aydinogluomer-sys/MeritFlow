@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { Users } from 'lucide-react';
 import { hasPermission } from '@/lib/auth/rbac';
 import { getActiveOrg } from '@/lib/auth/org';
 import { createClient } from '@/lib/supabase/server';
@@ -90,7 +91,7 @@ export default async function MembersPage() {
           {error ? (
             <ErrorState message="Üyeler yüklenemedi." />
           ) : rows.length === 0 ? (
-            <EmptyState message="Aktif üye yok" />
+            <EmptyState message="Aktif üye yok" icon={Users} />
           ) : (
             <div className="overflow-x-auto rounded-xl border">
               <Table>

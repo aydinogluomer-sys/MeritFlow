@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { motion } from 'motion/react';
+import { MessageSquareOff } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import {
   Table,
@@ -75,7 +76,7 @@ export interface DisputeListProps {
  */
 export function DisputeList({ disputes, emptyMessage = 'Henüz itiraz yok' }: DisputeListProps) {
   if (disputes.length === 0) {
-    return <EmptyState message={emptyMessage} />;
+    return <EmptyState message={emptyMessage} icon={MessageSquareOff} />;
   }
 
   return (
