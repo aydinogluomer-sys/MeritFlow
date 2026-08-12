@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { CheckCircle2, Sparkles } from 'lucide-react';
+import { motion } from 'motion/react';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import {
@@ -50,10 +51,13 @@ export default function LoginPage() {
           {sent ? (
             <>
               <CardHeader className="items-center text-center">
-                <CheckCircle2
-                  className="h-10 w-10 text-muted-foreground"
-                  aria-hidden="true"
-                />
+                <motion.div
+                  initial={{ scale: 0.6, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                >
+                  <CheckCircle2 className="h-10 w-10 text-muted-foreground" aria-hidden="true" />
+                </motion.div>
                 <CardTitle>E-postanızı kontrol edin</CardTitle>
                 <CardDescription>
                   {email} adresine bir giriş bağlantısı gönderdik. Bağlantıya tıklayarak
