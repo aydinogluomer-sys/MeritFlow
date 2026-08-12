@@ -2,6 +2,8 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
+import { motion } from 'motion/react';
+import { CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/features/shared/error-state';
 import { ConfirmDialog } from '@/components/features/shared/confirm-dialog';
@@ -198,14 +200,21 @@ export function ManualOverrideForm({ memberOptions, taskOptions }: ManualOverrid
           ))}
         </select>
         <p className="text-xs text-muted-foreground">
-          İki kişilik kontrol: ikinci onaylayan senden farklı olmalı ve point.override
-          yetkisine sahip olmalıdır (veritabanı doğrular).
+          İki kişilik kontrol: ikinci onaylayan senden farklı olmalı ve point.override yetkisine
+          sahip olmalıdır (veritabanı doğrular).
         </p>
       </div>
 
       {error ? <ErrorState message={error} /> : null}
       {done && !error ? (
-        <p className="text-sm font-medium text-primary">Puan düzeltmesi uygulandı.</p>
+        <motion.div
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="flex items-center gap-2 text-sm font-medium text-primary"
+        >
+          <CheckCircle2 className="h-4 w-4" aria-hidden />
+          Puan düzeltmesi uygulandı.
+        </motion.div>
       ) : null}
 
       <div>

@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
+import { motion } from 'motion/react';
 import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -44,6 +45,11 @@ const STATUS_LABELS: Record<string, string> = {
 function statusLabel(status: string): string {
   return STATUS_LABELS[status] ?? status;
 }
+
+/** TableRow's own class string, replicated so `motion.tr` matches the styled rows. */
+const ROW_CLASS = 'border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted';
+/** Only the first rows animate; later rows render as plain TableRow (perf guard). */
+const ANIMATED_ROW_LIMIT = 10;
 
 function periodRange(row: PeriodListRow): string {
   return `${dateFormatter.format(new Date(row.starts_on))} – ${dateFormatter.format(
@@ -98,11 +104,11 @@ export function PeriodList({ periods }: PeriodListProps) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {periods.map((period) => {
+            {periods.map((period, index) => {
               // "Hesapla" is available only for a locked period that has an active pool.
               const canCalculate = period.status === 'locked' && period.poolId != null;
-              return (
-                <TableRow key={period.id}>
+              const cells = (
+                <>
                   <TableCell>
                     <Link
                       href={`/bonus/periods/${period.id}`}
@@ -131,7 +137,24 @@ export function PeriodList({ periods }: PeriodListProps) {
                       <span className="text-xs text-muted-foreground">—</span>
                     )}
                   </TableCell>
-                </TableRow>
+                </>
+              );
+
+              // Perf guard: animate only the first ~10 rows; the rest render plainly.
+              if (index >= ANIMATED_ROW_LIMIT) {
+                return <TableRow key={period.id}>{cells}</TableRow>;
+              }
+
+              return (
+                <motion.tr
+                  key={period.id}
+                  className={ROW_CLASS}
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.04, duration: 0.2 }}
+                >
+                  {cells}
+                </motion.tr>
               );
             })}
           </TableBody>

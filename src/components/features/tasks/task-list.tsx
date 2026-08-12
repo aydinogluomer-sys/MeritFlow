@@ -1,4 +1,7 @@
+'use client';
+
 import Link from 'next/link';
+import { motion } from 'motion/react';
 import { Badge } from '@/components/ui/badge';
 import {
   Table,
@@ -11,6 +14,11 @@ import {
 } from '@/components/ui/table';
 import { EmptyState } from '@/components/features/shared/empty-state';
 import { statusBadgeClass } from '@/components/features/shared/status-badge';
+
+/** TableRow's own class string, replicated so `motion.tr` matches the styled rows. */
+const ROW_CLASS = 'border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted';
+/** Only the first rows animate; later rows render as plain TableRow (perf guard). */
+const ANIMATED_ROW_LIMIT = 10;
 
 /** Subset of `tasks` columns used by the list view (RLS-scoped select). */
 export type TaskListRow = {
@@ -75,33 +83,52 @@ export function TaskList({ tasks, emptyMessage = 'Henüz görev yok' }: TaskList
           </TableRow>
         </TableHeader>
         <TableBody>
-          {tasks.map((task) => (
-            <TableRow key={task.id}>
-              <TableCell>
-                <Link
-                  href={`/tasks/${task.id}`}
-                  className="font-medium text-primary underline-offset-4 hover:underline"
-                >
-                  {task.title}
-                </Link>
-              </TableCell>
-              <TableCell>
-                <Badge variant="outline" className={statusBadgeClass(task.status)}>
-                  {statusLabel(task.status)}
-                </Badge>
-              </TableCell>
-              <TableCell className="capitalize">{task.complexity}</TableCell>
-              <TableCell className="capitalize">{task.impact}</TableCell>
-              <TableCell className="text-right tabular-nums">
-                {task.final_points != null
-                  ? numberFormatter.format(task.final_points)
-                  : `~${numberFormatter.format(task.base_points)}`}
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {dateFormatter.format(new Date(task.created_at))}
-              </TableCell>
-            </TableRow>
-          ))}
+          {tasks.map((task, index) => {
+            const cells = (
+              <>
+                <TableCell>
+                  <Link
+                    href={`/tasks/${task.id}`}
+                    className="font-medium text-primary underline-offset-4 hover:underline"
+                  >
+                    {task.title}
+                  </Link>
+                </TableCell>
+                <TableCell>
+                  <Badge variant="outline" className={statusBadgeClass(task.status)}>
+                    {statusLabel(task.status)}
+                  </Badge>
+                </TableCell>
+                <TableCell className="capitalize">{task.complexity}</TableCell>
+                <TableCell className="capitalize">{task.impact}</TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {task.final_points != null
+                    ? numberFormatter.format(task.final_points)
+                    : `~${numberFormatter.format(task.base_points)}`}
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {dateFormatter.format(new Date(task.created_at))}
+                </TableCell>
+              </>
+            );
+
+            // Perf guard: animate only the first ~10 rows; the rest render plainly.
+            if (index >= ANIMATED_ROW_LIMIT) {
+              return <TableRow key={task.id}>{cells}</TableRow>;
+            }
+
+            return (
+              <motion.tr
+                key={task.id}
+                className={ROW_CLASS}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.04, duration: 0.2 }}
+              >
+                {cells}
+              </motion.tr>
+            );
+          })}
         </TableBody>
       </Table>
     </div>

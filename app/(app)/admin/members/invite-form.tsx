@@ -7,15 +7,11 @@
 // the create_invitation RPC re-checks it in the DB — this form is UX only. tr-TR.
 
 import * as React from 'react';
+import { motion } from 'motion/react';
+import { CheckCircle2 } from 'lucide-react';
 import { inviteMember } from '@/app/actions/admin/invite-member';
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ErrorState } from '@/components/features/shared/error-state';
 
 const inputClass =
@@ -61,7 +57,9 @@ export function InviteForm() {
     <Card>
       <CardHeader>
         <CardTitle>Yeni üye davet et</CardTitle>
-        <CardDescription>E-posta ve rol seçin. Sahip (owner) rolü ile davet edilemez.</CardDescription>
+        <CardDescription>
+          E-posta ve rol seçin. Sahip (owner) rolü ile davet edilemez.
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleInvite} className="flex flex-col gap-4" aria-busy={isPending}>
@@ -111,6 +109,14 @@ export function InviteForm() {
 
         {joinLink ? (
           <div className="mt-5 flex flex-col gap-2 rounded-md border border-primary/40 bg-primary/5 p-4">
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="flex items-center gap-2 text-sm font-medium text-primary"
+            >
+              <CheckCircle2 className="h-4 w-4" aria-hidden />
+              Davet oluşturuldu.
+            </motion.div>
             <label htmlFor="join-link" className="text-sm font-medium">
               Davet bağlantısı
             </label>
