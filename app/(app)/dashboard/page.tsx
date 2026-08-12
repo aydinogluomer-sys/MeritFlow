@@ -10,6 +10,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { EmptyState } from '@/components/features/shared/empty-state';
+import { CheckCircle2, AlertTriangle } from 'lucide-react';
 
 const numberFmt = new Intl.NumberFormat('tr-TR');
 const currencyFmt = new Intl.NumberFormat('tr-TR', {
@@ -35,9 +36,8 @@ export default async function DashboardPage() {
 
   const orgId = org?.organization_id ?? null;
 
-  // Role/permission gates. RBAC is DB-derived (AD1); primary_role (org.primary_role,
-  // shown in the Bağlam card) is only used for labelling. RLS is the ultimate
-  // enforcement — these gates are UX only.
+  // Role/permission gates. RBAC is DB-derived (AD1); primary_role is only used
+  // for labelling. RLS is the ultimate enforcement — these gates are UX only.
   const isManager = permissions.includes('task.review');
   const isHrAdmin =
     permissions.includes('period.manage') || permissions.includes('dispute.resolve');
@@ -83,17 +83,20 @@ export default async function DashboardPage() {
 
   // --- Manager card: pending reviews (task.review; RLS scopes to their team) ---
   let pendingReviewCount: string | null = null;
+  let pendingReviewNum = 0;
   if (isManager && orgId) {
     const { count, error } = await supabase
       .from('tasks')
       .select('id', { count: 'exact', head: true })
       .eq('organization_id', orgId)
       .eq('status', 'submitted');
-    pendingReviewCount = error ? '—' : numberFmt.format(count ?? 0);
+    pendingReviewNum = error ? 0 : count ?? 0;
+    pendingReviewCount = error ? '—' : numberFmt.format(pendingReviewNum);
   }
 
   // --- HR/Admin card: open disputes + latest bonus period status ---
   let openDisputeCount: string | null = null;
+  let openDisputeNum = 0;
   let latestPeriod:
     | { status: string; starts_on: string; ends_on: string }
     | null
@@ -104,7 +107,8 @@ export default async function DashboardPage() {
       .select('id', { count: 'exact', head: true })
       .eq('organization_id', orgId)
       .in('status', ['open', 'under_review']);
-    openDisputeCount = disputeError ? '—' : numberFmt.format(count ?? 0);
+    openDisputeNum = disputeError ? 0 : count ?? 0;
+    openDisputeCount = disputeError ? '—' : numberFmt.format(openDisputeNum);
 
     const { data: periodRow, error: periodError } = await supabase
       .from('bonus_periods')
@@ -153,6 +157,22 @@ export default async function DashboardPage() {
       : ((data ?? []) as { action: string; created_at: string }[]);
   }
 
+  // --- Status banner (hero): derived from data already fetched. Amber when
+  // anything needs attention (pending reviews or open disputes visible to this
+  // user); otherwise green. The active period label comes from latestPeriod. ---
+  const needsAttention = pendingReviewNum > 0 || openDisputeNum > 0;
+  const activePeriodLabel =
+    latestPeriod && latestPeriod !== 'error'
+      ? `${formatDate(latestPeriod.starts_on)} – ${formatDate(latestPeriod.ends_on)}`
+      : null;
+  const attentionParts: string[] = [];
+  if (pendingReviewNum > 0) {
+    attentionParts.push(`Bekleyen onay: ${numberFmt.format(pendingReviewNum)} görev`);
+  }
+  if (openDisputeNum > 0) {
+    attentionParts.push(`Aktif itiraz: ${numberFmt.format(openDisputeNum)}`);
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -162,167 +182,194 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Bağlam</CardTitle>
-          <CardDescription>
-            Aktif organizasyon ve yetkilerin — DB kaynaklı, JWT claim değil (AD1).
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2 text-sm">
-          <div>
-            Organizasyon: <span className="font-mono">{org?.organization_id ?? '—'}</span>
-          </div>
-          <div>
-            Rol: <span className="font-medium">{org?.primary_role ?? '—'}</span>
-          </div>
-          <div>Yetki sayısı: {permissions.length}</div>
-        </CardContent>
-      </Card>
+      {/* Status banner (hero) — 3B */}
+      <div
+        className={`animate-slide-up flex items-start gap-3 rounded-lg border p-4 ${
+          needsAttention
+            ? 'border-amber-200 bg-amber-50 text-amber-900'
+            : 'border-emerald-200 bg-emerald-50 text-emerald-900'
+        }`}
+        role="status"
+      >
+        {needsAttention ? (
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" aria-hidden />
+        ) : (
+          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" aria-hidden />
+        )}
+        <div className="flex flex-col gap-0.5">
+          <p className="text-sm font-medium">
+            {needsAttention
+              ? `Dikkat gerekiyor • ${attentionParts.join(' • ')}`
+              : 'Tüm sistemler normal'}
+          </p>
+          <p className="text-xs opacity-80">
+            {activePeriodLabel
+              ? `Aktif dönem: ${activePeriodLabel}`
+              : 'Aktif bonus dönemi bilgisi yok.'}
+          </p>
+        </div>
+      </div>
 
-      {/* Employee card — always shown for the signed-in user */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Puanlarım ve Prim</CardTitle>
-          <CardDescription>
-            Onaylanmış görevlerden kazanılan toplam puan (puan defteri) ve tahmini prim.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3 text-sm">
-          {employeeErrored && totalPoints === null ? (
-            <p className="text-muted-foreground">Şu an gösterilemiyor.</p>
-          ) : (
-            <>
+      {/* KPI grid — 3D: role-gated cards flow into a 2-column grid on desktop */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {/* Employee card — always shown for the signed-in user */}
+        <Card className="animate-slide-up" style={{ animationDelay: '0.05s' }}>
+          <CardHeader>
+            <CardTitle>Puanlarım ve Prim</CardTitle>
+            <CardDescription>
+              Onaylanmış görevlerden kazanılan toplam puan (puan defteri) ve tahmini prim.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            {employeeErrored && totalPoints === null ? (
+              <p className="text-sm text-muted-foreground">Şu an gösterilemiyor.</p>
+            ) : (
+              <>
+                <div>
+                  <p className="text-3xl font-bold tracking-tight">{totalPoints ?? '—'}</p>
+                  <p className="text-sm text-muted-foreground">
+                    Onaylanmış görevlerden toplam puan
+                  </p>
+                </div>
+                <div>
+                  {estimatedBonus !== null ? (
+                    <>
+                      <p className="text-3xl font-bold tracking-tight">
+                        {estimatedBonus}{' '}
+                        <span className="text-base font-normal text-muted-foreground">
+                          (tahmini)
+                        </span>
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Tahmini prim — kesinleşmiş değildir.
+                      </p>
+                    </>
+                  ) : (
+                    <EmptyState message="Henüz tahmini prim yok." className="p-6" />
+                  )}
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Manager card — task.review */}
+        {isManager && (
+          <Card className="animate-slide-up" style={{ animationDelay: '0.1s' }}>
+            <CardHeader>
+              <CardTitle>İnceleme Bekleyen Görevler</CardTitle>
+              <CardDescription>
+                Ekibinizde onay bekleyen, gönderilmiş görevler (RLS ekibinize göre kısıtlar).
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-3xl font-bold tracking-tight">
+                {pendingReviewCount ?? '—'}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {pendingReviewNum > 0
+                  ? 'Görev incelemenizi bekliyor.'
+                  : 'İnceleme bekleyen görev yok.'}
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* HR/Admin card — period.manage or dispute.resolve */}
+        {isHrAdmin && (
+          <Card className="animate-slide-up" style={{ animationDelay: '0.15s' }}>
+            <CardHeader>
+              <CardTitle>İtirazlar ve Bonus Dönemi</CardTitle>
+              <CardDescription>
+                Açık itiraz sayısı ve en güncel bonus döneminin durumu.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
               <div>
-                <div className="text-muted-foreground">Onaylanmış puan</div>
-                <p className="text-2xl font-semibold">{totalPoints ?? '—'}</p>
+                <p className="text-3xl font-bold tracking-tight">
+                  {openDisputeCount ?? '—'}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Açık itirazlar (açık + incelemede)
+                </p>
               </div>
               <div>
-                <div className="text-muted-foreground">Prim (tahmini)</div>
-                {estimatedBonus !== null ? (
-                  <p className="text-2xl font-semibold">
-                    {estimatedBonus}{' '}
-                    <span className="text-sm font-normal text-muted-foreground">
-                      (tahmini)
-                    </span>
+                <p className="text-sm text-muted-foreground">Son bonus dönemi</p>
+                {latestPeriod === 'error' ? (
+                  <p className="text-sm text-muted-foreground">Şu an gösterilemiyor.</p>
+                ) : latestPeriod ? (
+                  <p className="text-sm">
+                    <span className="font-medium">{latestPeriod.status}</span>
+                    {' — '}
+                    {formatDate(latestPeriod.starts_on)} – {formatDate(latestPeriod.ends_on)}
                   </p>
                 ) : (
-                  <EmptyState message="Henüz tahmini prim yok." className="p-6" />
+                  <EmptyState message="Henüz bonus dönemi yok." className="p-6" />
                 )}
               </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        )}
 
-      {/* Manager card — task.review */}
-      {isManager && (
-        <Card>
-          <CardHeader>
-            <CardTitle>İnceleme Bekleyen Görevler</CardTitle>
-            <CardDescription>
-              Ekibinizde onay bekleyen, gönderilmiş görevler (RLS ekibinize göre kısıtlar).
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="text-sm">
-            <p className="text-2xl font-semibold">
-              İnceleme bekleyen görev: {pendingReviewCount ?? '—'}
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* HR/Admin card — period.manage or dispute.resolve */}
-      {isHrAdmin && (
-        <Card>
-          <CardHeader>
-            <CardTitle>İtirazlar ve Bonus Dönemi</CardTitle>
-            <CardDescription>
-              Açık itiraz sayısı ve en güncel bonus döneminin durumu.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3 text-sm">
-            <div>
-              <div className="text-muted-foreground">
-                Açık itirazlar (açık + incelemede)
-              </div>
-              <p className="text-2xl font-semibold">{openDisputeCount ?? '—'}</p>
-            </div>
-            <div>
-              <div className="text-muted-foreground">Son bonus dönemi</div>
-              {latestPeriod === 'error' ? (
-                <p className="text-muted-foreground">Şu an gösterilemiyor.</p>
-              ) : latestPeriod ? (
-                <p className="text-sm">
-                  <span className="font-medium">{latestPeriod.status}</span>
-                  {' — '}
-                  {formatDate(latestPeriod.starts_on)} – {formatDate(latestPeriod.ends_on)}
-                </p>
+        {/* Finance card — payout.export */}
+        {isFinance && (
+          <Card className="animate-slide-up" style={{ animationDelay: '0.2s' }}>
+            <CardHeader>
+              <CardTitle>Son Ödeme Export&apos;u</CardTitle>
+              <CardDescription>
+                En güncel ödeme export&apos;unun durumu ve tarihi.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {latestExport === 'error' ? (
+                <p className="text-sm text-muted-foreground">Şu an gösterilemiyor.</p>
+              ) : latestExport ? (
+                <>
+                  <p className="text-3xl font-bold tracking-tight">{latestExport.status}</p>
+                  <p className="text-sm text-muted-foreground">
+                    Son export: {formatDate(latestExport.created_at)}
+                  </p>
+                </>
               ) : (
-                <EmptyState message="Henüz bonus dönemi yok." className="p-6" />
+                <EmptyState message="Henüz export yok." className="p-6" />
               )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            </CardContent>
+          </Card>
+        )}
 
-      {/* Finance card — payout.export */}
-      {isFinance && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Son Ödeme Export'u</CardTitle>
-            <CardDescription>
-              En güncel ödeme export'unun durumu ve tarihi.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="text-sm">
-            {latestExport === 'error' ? (
-              <p className="text-muted-foreground">Şu an gösterilemiyor.</p>
-            ) : latestExport ? (
-              <p className="text-sm">
-                <span className="font-medium">{latestExport.status}</span>
-                {' — '}
-                {formatDate(latestExport.created_at)}
-              </p>
-            ) : (
-              <EmptyState message="Henüz export yok." className="p-6" />
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Auditor card — audit.read (read-only) */}
-      {isAuditor && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Son Denetim Kayıtları</CardTitle>
-            <CardDescription>
-              Salt okunur özet — en yeni denetim kayıtları (yeniden eskiye).
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="text-sm">
-            {auditRows === 'error' ? (
-              <p className="text-muted-foreground">Şu an gösterilemiyor.</p>
-            ) : auditRows && auditRows.length > 0 ? (
-              <ul className="flex flex-col gap-2">
-                {auditRows.map((row, i) => (
-                  <li
-                    key={`${row.created_at}:${i}`}
-                    className="flex items-center justify-between gap-4"
-                  >
-                    <span className="font-mono">{row.action}</span>
-                    <span className="text-muted-foreground">
-                      {formatDate(row.created_at)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <EmptyState message="Henüz denetim kaydı yok." className="p-6" />
-            )}
-          </CardContent>
-        </Card>
-      )}
+        {/* Auditor card — audit.read (read-only) */}
+        {isAuditor && (
+          <Card className="animate-slide-up" style={{ animationDelay: '0.25s' }}>
+            <CardHeader>
+              <CardTitle>Son Denetim Kayıtları</CardTitle>
+              <CardDescription>
+                Salt okunur özet — en yeni denetim kayıtları (yeniden eskiye).
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {auditRows === 'error' ? (
+                <p className="text-sm text-muted-foreground">Şu an gösterilemiyor.</p>
+              ) : auditRows && auditRows.length > 0 ? (
+                <ul className="flex flex-col gap-2 text-sm">
+                  {auditRows.map((row, i) => (
+                    <li
+                      key={`${row.created_at}:${i}`}
+                      className="flex items-center justify-between gap-4"
+                    >
+                      <span className="font-mono">{row.action}</span>
+                      <span className="text-muted-foreground">
+                        {formatDate(row.created_at)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <EmptyState message="Henüz denetim kaydı yok." className="p-6" />
+              )}
+            </CardContent>
+          </Card>
+        )}
+      </div>
     </div>
   );
 }
