@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import { Toaster } from 'sonner';
+import { NuqsAdapter } from 'nuqs/adapters/next/app';
 import './globals.css';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
@@ -20,7 +21,7 @@ export default function RootLayout({
       <body
         className={`${inter.variable} min-h-screen bg-background text-foreground antialiased`}
       >
-        {children}
+        <NuqsAdapter>{children}</NuqsAdapter>
         <Toaster richColors position="top-right" />
       </body>
     </html>
