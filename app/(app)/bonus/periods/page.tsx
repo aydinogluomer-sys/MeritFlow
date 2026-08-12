@@ -10,6 +10,11 @@ import {
 } from '@/components/ui/card';
 import { ErrorState } from '@/components/features/shared/error-state';
 import { PeriodList, type PeriodListRow } from '@/components/features/bonus/period-list';
+import { PeriodCreateForm } from '@/components/features/bonus/period-create-form';
+import {
+  PoolCreateForm,
+  type PeriodOption,
+} from '@/components/features/bonus/pool-create-form';
 
 type PeriodRow = {
   id: string;
@@ -26,7 +31,9 @@ type PoolRow = {
 };
 
 export default async function BonusPeriodsPage() {
-  if (!(await hasPermission('period.manage'))) redirect('/unauthorized');
+  const canManagePeriods = await hasPermission('period.manage');
+  const canCreatePool = await hasPermission('pool.create');
+  if (!canManagePeriods && !canCreatePool) redirect('/unauthorized');
 
   const supabase = await createClient();
 
@@ -53,6 +60,30 @@ export default async function BonusPeriodsPage() {
         </p>
       </div>
 
+      {canManagePeriods ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Yeni dönem</CardTitle>
+            <CardDescription>Aylık bir prim dönemi oluştur.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <PeriodCreateForm />
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {canCreatePool ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Yeni havuz</CardTitle>
+            <CardDescription>Bir dönem için prim havuzu oluştur.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <PoolCreateForm periodOptions={periodOptions(periodsRes.data ?? [])} />
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card>
         <CardHeader>
           <CardTitle>Dönemler</CardTitle>
@@ -68,6 +99,13 @@ export default async function BonusPeriodsPage() {
       </Card>
     </div>
   );
+}
+
+function periodOptions(periods: PeriodRow[]): PeriodOption[] {
+  return periods.map((p) => ({
+    id: p.id,
+    label: `${p.starts_on} → ${p.ends_on} (${p.status})`,
+  }));
 }
 
 function toRows(periods: PeriodRow[], pools: PoolRow[]): PeriodListRow[] {

@@ -9,7 +9,13 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { getActiveOrg } from '@/lib/auth/org';
 import { TaskList, type TaskListRow } from '@/components/features/tasks/task-list';
+import {
+  TaskCreateForm,
+  type TeamOption,
+  type AssigneeOption,
+} from '@/components/features/tasks/task-create-form';
 import { ErrorState } from '@/components/features/shared/error-state';
 import {
   StatusFilter,
@@ -43,7 +49,9 @@ export default async function TasksPage({
 }) {
   const canSubmit = await hasPermission('task.submit');
   const canReview = await hasPermission('task.review');
-  if (!canSubmit && !canReview) redirect('/unauthorized');
+  const canCreate = await hasPermission('task.create');
+  const canAssign = await hasPermission('task.assign');
+  if (!canSubmit && !canReview && !canCreate) redirect('/unauthorized');
 
   // Next 16: searchParams is a Promise. The filter narrows the server-side query for
   // "Görevlerim"; the page stays a server component (gate + fetch preserved).
@@ -73,6 +81,41 @@ export default async function TasksPage({
         .order('created_at', { ascending: false })
     : null;
 
+  // Create-task form inputs (only for task.create holders): org teams + members (RLS-scoped).
+  let teamOptions: TeamOption[] = [];
+  let assigneeOptions: AssigneeOption[] = [];
+  if (canCreate) {
+    const org = await getActiveOrg();
+    const [teamsRes, membersRes] = await Promise.all([
+      supabase
+        .from('teams')
+        .select('id, name')
+        .eq('organization_id', org!.organization_id)
+        .eq('status', 'active')
+        .order('name', { ascending: true }),
+      supabase
+        .from('memberships')
+        .select('profile_id, profiles(id, display_name)')
+        .eq('organization_id', org!.organization_id)
+        .eq('status', 'active'),
+    ]);
+    teamOptions = ((teamsRes.data ?? []) as Array<{ id: string; name: string }>).map((t) => ({
+      id: t.id,
+      label: t.name,
+    }));
+    type MemberRow = {
+      profile_id: string;
+      profiles:
+        | Array<{ id: string; display_name: string }>
+        | { display_name: string }
+        | null;
+    };
+    assigneeOptions = ((membersRes.data ?? []) as unknown as MemberRow[]).map((m) => {
+      const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+      return { id: m.profile_id, label: profile?.display_name ?? m.profile_id };
+    });
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -81,6 +124,24 @@ export default async function TasksPage({
           Sana atanan görevler ve incelemeni bekleyen gönderiler.
         </p>
       </div>
+
+      {canCreate ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Yeni görev</CardTitle>
+            <CardDescription>
+              Bir takıma görev oluştur ve (opsiyonel) bir çalışana ata.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <TaskCreateForm
+              teamOptions={teamOptions}
+              assigneeOptions={assigneeOptions}
+              canAssign={canAssign}
+            />
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>
