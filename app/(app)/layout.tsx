@@ -4,6 +4,7 @@ import { getActiveOrg } from '@/lib/auth/org';
 import { getPermissions } from '@/lib/auth/rbac';
 import { createClient } from '@/lib/supabase/server';
 import { AppNav } from '@/components/app-nav';
+import { CommandPalette } from '@/components/command-palette';
 
 // Authenticated shell. Identity is validated server-side; unauthenticated users are
 // redirected to /login (middleware also guards, this is defense-in-depth).
@@ -41,6 +42,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         email={user.email ?? ''}
         orgSlug={orgRow?.slug ?? null}
       />
+      {/* Global Cmd/Ctrl+K palette. `permissions` is the DB-derived set (AD1); the palette
+          only navigates to routes the user is already entitled to (Phase-UI-6, 6A). */}
+      <CommandPalette permissions={permissions} />
       <main className="flex-1 p-6">{children}</main>
     </div>
   );

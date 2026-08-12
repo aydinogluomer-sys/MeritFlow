@@ -23,6 +23,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { SignOutButton } from '@/components/sign-out-button';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { cn } from '@/lib/utils';
 
 type SectionKey = 'main' | 'employee' | 'management' | 'admin' | 'account';
@@ -136,11 +137,10 @@ export function AppNav({
           <div className="font-bold tracking-tight">MeritFlow</div>
           <div className="truncate text-xs text-muted-foreground">{subtitle}</div>
         </div>
-        {roleLabel ? (
-          <Badge variant="secondary" className="shrink-0">
-            {roleLabel}
-          </Badge>
-        ) : null}
+        <div className="flex shrink-0 items-center gap-1">
+          {roleLabel ? <Badge variant="secondary">{roleLabel}</Badge> : null}
+          <ThemeToggle />
+        </div>
       </div>
 
       <Separator />
