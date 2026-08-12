@@ -10,6 +10,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { EmptyState } from '@/components/features/shared/empty-state';
+import { MotionCard } from '@/components/features/shared/motion-card';
 import { CheckCircle2, AlertTriangle } from 'lucide-react';
 
 const numberFmt = new Intl.NumberFormat('tr-TR');
@@ -213,7 +214,8 @@ export default async function DashboardPage() {
       {/* KPI grid — 3D: role-gated cards flow into a 2-column grid on desktop */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {/* Employee card — always shown for the signed-in user */}
-        <Card className="animate-slide-up" style={{ animationDelay: '0.05s' }}>
+        <MotionCard>
+        <Card className="animate-slide-up h-full" style={{ animationDelay: '0.05s' }}>
           <CardHeader>
             <CardTitle>Puanlarım ve Prim</CardTitle>
             <CardDescription>
@@ -252,10 +254,12 @@ export default async function DashboardPage() {
             )}
           </CardContent>
         </Card>
+        </MotionCard>
 
         {/* Manager card — task.review */}
         {isManager && (
-          <Card className="animate-slide-up" style={{ animationDelay: '0.1s' }}>
+          <MotionCard>
+          <Card className="animate-slide-up h-full" style={{ animationDelay: '0.1s' }}>
             <CardHeader>
               <CardTitle>İnceleme Bekleyen Görevler</CardTitle>
               <CardDescription>
@@ -273,11 +277,13 @@ export default async function DashboardPage() {
               </p>
             </CardContent>
           </Card>
+          </MotionCard>
         )}
 
         {/* HR/Admin card — period.manage or dispute.resolve */}
         {isHrAdmin && (
-          <Card className="animate-slide-up" style={{ animationDelay: '0.15s' }}>
+          <MotionCard>
+          <Card className="animate-slide-up h-full" style={{ animationDelay: '0.15s' }}>
             <CardHeader>
               <CardTitle>İtirazlar ve Bonus Dönemi</CardTitle>
               <CardDescription>
@@ -309,11 +315,13 @@ export default async function DashboardPage() {
               </div>
             </CardContent>
           </Card>
+          </MotionCard>
         )}
 
         {/* Finance card — payout.export */}
         {isFinance && (
-          <Card className="animate-slide-up" style={{ animationDelay: '0.2s' }}>
+          <MotionCard>
+          <Card className="animate-slide-up h-full" style={{ animationDelay: '0.2s' }}>
             <CardHeader>
               <CardTitle>Son Ödeme Export&apos;u</CardTitle>
               <CardDescription>
@@ -335,11 +343,13 @@ export default async function DashboardPage() {
               )}
             </CardContent>
           </Card>
+          </MotionCard>
         )}
 
         {/* Auditor card — audit.read (read-only) */}
         {isAuditor && (
-          <Card className="animate-slide-up" style={{ animationDelay: '0.25s' }}>
+          <MotionCard>
+          <Card className="animate-slide-up h-full" style={{ animationDelay: '0.25s' }}>
             <CardHeader>
               <CardTitle>Son Denetim Kayıtları</CardTitle>
               <CardDescription>
@@ -368,6 +378,7 @@ export default async function DashboardPage() {
               )}
             </CardContent>
           </Card>
+          </MotionCard>
         )}
       </div>
     </div>
