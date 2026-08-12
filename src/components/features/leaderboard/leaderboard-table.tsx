@@ -26,11 +26,13 @@ export function LeaderboardTable({ rows }: LeaderboardTableProps) {
     return <EmptyState message="Sıralama için henüz puan yok" />;
   }
 
-  const ranked = [...rows].sort((a, b) => b.totalPoints - a.totalPoints);
-
-  // Dense ranking: equal totals share a rank.
-  let lastPoints: number | null = null;
-  let lastRank = 0;
+  // Sort by total points (desc); assign competition ranks (ties share the first matching
+  // position's rank) immutably — no render-time variable reassignment (react-hooks/immutability).
+  const sorted = [...rows].sort((a, b) => b.totalPoints - a.totalPoints);
+  const ranked = sorted.map((row) => ({
+    ...row,
+    rank: sorted.findIndex((r) => r.totalPoints === row.totalPoints) + 1,
+  }));
 
   return (
     <div className="overflow-x-auto rounded-xl border">
@@ -50,18 +52,14 @@ export function LeaderboardTable({ rows }: LeaderboardTableProps) {
           </tr>
         </thead>
         <tbody>
-          {ranked.map((row, index) => {
-            const rank = row.totalPoints === lastPoints ? lastRank : index + 1;
-            lastPoints = row.totalPoints;
-            lastRank = rank;
-            return (
+          {ranked.map((row) => (
               <tr
                 key={row.employeeId}
                 className={`border-b last:border-0 ${
                   row.isSelf ? 'bg-primary/5 font-medium' : 'hover:bg-muted/30'
                 }`}
               >
-                <td className="px-4 py-3 tabular-nums">{rank}</td>
+                <td className="px-4 py-3 tabular-nums">{row.rank}</td>
                 <td className="px-4 py-3">
                   {row.name}
                   {row.isSelf ? (
@@ -72,8 +70,7 @@ export function LeaderboardTable({ rows }: LeaderboardTableProps) {
                   {pointFormatter.format(row.totalPoints)}
                 </td>
               </tr>
-            );
-          })}
+          ))}
         </tbody>
       </table>
     </div>

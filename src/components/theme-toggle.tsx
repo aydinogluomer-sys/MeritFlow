@@ -19,6 +19,10 @@ export function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme();
 
   React.useEffect(() => {
+    // next-themes hydration guard: flip to the real client theme once mounted. This one-shot
+    // mount flag is the documented pattern; the setState-in-effect rule can't be satisfied
+    // without it here (there is no theme to read during SSR).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 

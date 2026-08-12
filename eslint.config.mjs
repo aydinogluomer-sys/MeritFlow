@@ -33,6 +33,17 @@ const eslintConfig = [
       ],
     },
   },
+  {
+    // Server actions import the admin (service_role) client for RPC; unit tests mock/import
+    // it. Both are server-only contexts, NOT client components — so the reminder-rule above is
+    // a false positive here. The real guard (no 'use client' file may import admin) is enforced
+    // by tests/unit/security-boundary.test.ts invariant #4. Turn the reminder off in these
+    // server dirs so `eslint --max-warnings=0` passes on legitimate server usage.
+    files: ['src/app/actions/**', 'tests/**'],
+    rules: {
+      'no-restricted-imports': 'off',
+    },
+  },
 ];
 
 export default eslintConfig;
