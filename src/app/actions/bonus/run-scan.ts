@@ -6,22 +6,21 @@ import { RunScanSchema } from '@/lib/validation/schemas/bonus';
 import { requirePermission } from '@/lib/auth/rbac';
 import { getActiveOrg } from '@/lib/auth/org';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { runScan as runScanModule, AntiGamingRepository } from '@/modules/anti-gaming';
 
 /**
- * Run the deterministic anti-gaming scan. SECURITY DEFINER RPC → admin client.
- * This RPC takes NO actor/triggered_by argument; it returns the flag count.
+ * Thin server-action wrapper (ENGINEERING-02E). Enforces period.manage, then delegates to the
+ * anti-gaming module. The admin client (for the SECURITY DEFINER RPC) is created HERE and injected
+ * into the repository. Behavior (RPC params — no p_triggered_by — and flagCount) unchanged.
  */
 export const runScan = validatedAction(RunScanSchema, async (input) => {
   await requirePermission('period.manage');
   const org = await getActiveOrg();
 
-  const admin = createAdminClient();
-  const { data, error } = await admin.rpc('run_anti_gaming_scan', {
-    p_organization_id: org!.organization_id,
-    p_bonus_period_id: input.periodId ?? null,
-  });
-
-  if (error) throw new Error(error.message);
-
-  return { flagCount: data };
+  const repo = new AntiGamingRepository(createAdminClient());
+  return runScanModule(
+    { periodId: input.periodId ?? undefined },
+    { organizationId: org!.organization_id },
+    repo,
+  );
 });
