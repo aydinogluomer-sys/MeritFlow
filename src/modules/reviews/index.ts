@@ -1,4 +1,11 @@
-// Public API for the `reviews` domain module (ENGINEERING-02A boundary).
+// Public API for the `reviews` domain module (ENGINEERING-02A boundary / 02B fill).
 // Consumers import only from `@/modules/reviews` — never deep internal paths.
-// Populated during the ENGINEERING-02B domain refactor.
-export {};
+export { reviewTask } from './application/review-task';
+export { ReviewRepository } from './repository/review-repository';
+export type {
+  ReviewDecision,
+  ReviewQuality,
+  ReviewTimeliness,
+  ReviewTaskInput,
+  ReviewContext,
+} from './domain/types';
