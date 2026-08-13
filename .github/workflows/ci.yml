@@ -39,6 +39,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      - name: Circular dependency check (madge — ENGINEERING-02A boundary)
+        run: npx --no-install madge --circular --ts-config tsconfig.json --extensions ts,tsx src/
 
   unit:
     runs-on: ubuntu-latest

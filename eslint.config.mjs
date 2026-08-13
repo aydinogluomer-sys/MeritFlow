@@ -16,17 +16,28 @@ const eslintConfig = [
   ...next,
   {
     rules: {
-      // Guardrail (AD1 / SI-11): the service-role admin client is server-only.
-      // The hard guard is `import 'server-only'` in src/lib/supabase/admin.ts;
-      // this flags accidental imports of it from elsewhere as a reminder.
+      // Two import boundaries, both ERRORS:
+      //  (1) AD1 / SI-11 — the service-role admin client is server-only. Hard guards are
+      //      `import 'server-only'` in src/lib/supabase/admin.ts + security-boundary test #4.
+      //      This flags any OTHER import of it; the only legitimate importers (server actions,
+      //      unit tests) are exempted in the override below.
+      //  (2) ENGINEERING-02A module boundary — a domain module is consumed only through its
+      //      public `@/modules/<domain>` index, never a deep internal path. Dependency
+      //      direction (guide for 02B+): app → modules/<domain> (index) → lib; modules must
+      //      not import app/*, and must not deep-import a sibling domain's internals.
       'no-restricted-imports': [
-        'warn',
+        'error',
         {
           patterns: [
             {
               group: ['@/lib/supabase/admin', '**/supabase/admin'],
               message:
-                'admin (service_role) client is server-only. Import it only inside trusted server modules; never from client components.',
+                'admin (service_role) client is server-only. Import it only inside trusted server modules (server actions); never from client components.',
+            },
+            {
+              group: ['@/modules/*/*', '@/modules/*/**'],
+              message:
+                'Import a domain module only via its public index (@/modules/<domain>), never a deep internal path (ENGINEERING-02A boundary).',
             },
           ],
         },
@@ -34,14 +45,23 @@ const eslintConfig = [
     },
   },
   {
-    // Server actions import the admin (service_role) client for RPC; unit tests mock/import
-    // it. Both are server-only contexts, NOT client components — so the reminder-rule above is
-    // a false positive here. The real guard (no 'use client' file may import admin) is enforced
-    // by tests/unit/security-boundary.test.ts invariant #4. Turn the reminder off in these
-    // server dirs so `eslint --max-warnings=0` passes on legitimate server usage.
+    // Server actions legitimately import the admin client for RPC; unit tests mock/import it.
+    // Both are server-only contexts (not client components) — drop the admin restriction here.
+    // The module-boundary restriction (2) still applies.
     files: ['src/app/actions/**', 'tests/**'],
     rules: {
-      'no-restricted-imports': 'off',
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@/modules/*/*', '@/modules/*/**'],
+              message:
+                'Import a domain module only via its public index (@/modules/<domain>), never a deep internal path (ENGINEERING-02A boundary).',
+            },
+          ],
+        },
+      ],
     },
   },
 ];
