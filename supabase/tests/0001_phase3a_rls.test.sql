@@ -6,6 +6,9 @@
 -- Impersonation: set role authenticated + request.jwt.claims.sub (auth.uid()).
 -- Whole file runs in a transaction and is rolled back; seed data is assumed
 -- present (supabase db reset applies migrations + seed).
+--
+-- ENGINEERING-01b gate: this pgTAP suite (0001..0029) is the characterization baseline for
+-- ENGINEERING-02x. Any refactor that breaks these tests must be STOPPED and investigated.
 -- =============================================================================
 begin;
 select no_plan();
