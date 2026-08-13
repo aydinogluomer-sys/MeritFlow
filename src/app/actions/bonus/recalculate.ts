@@ -7,23 +7,22 @@ import { requirePermission } from '@/lib/auth/rbac';
 import { getActiveOrg } from '@/lib/auth/org';
 import { getUser } from '@/lib/auth/session';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { recalculate as recalculateModule, BonusCalculationRepository } from '@/modules/bonus-calculation';
 
 /**
- * Recalculate a bonus period after a dispute adjustment. SECURITY DEFINER RPC → admin client.
+ * Thin server-action wrapper (ENGINEERING-02D). Enforces period.manage, then delegates to the
+ * bonus-calculation module. The admin client (for the SECURITY DEFINER RPC) is created HERE and
+ * injected into the repository. Behavior (RPC params, raw return) unchanged.
  */
 export const recalculate = validatedAction(RecalculateSchema, async (input) => {
   await requirePermission('period.manage');
   const org = await getActiveOrg();
   const user = await getUser();
 
-  const admin = createAdminClient();
-  const { data, error } = await admin.rpc('recalculate_bonus_after_dispute', {
-    p_organization_id: org!.organization_id,
-    p_bonus_period_id: input.periodId,
-    p_triggered_by: user!.id,
-  });
-
-  if (error) throw new Error(error.message);
-
-  return data;
+  const repo = new BonusCalculationRepository(createAdminClient());
+  return recalculateModule(
+    { periodId: input.periodId },
+    { organizationId: org!.organization_id, userId: user!.id },
+    repo,
+  );
 });

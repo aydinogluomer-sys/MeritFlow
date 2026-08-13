@@ -7,24 +7,22 @@ import { requirePermission } from '@/lib/auth/rbac';
 import { getActiveOrg } from '@/lib/auth/org';
 import { getUser } from '@/lib/auth/session';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { postAccrual as postAccrualModule, BonusLedgerRepository } from '@/modules/bonus-ledger';
 
 /**
- * Post the bonus accrual (double-entry ledger) from an approved snapshot.
- * SECURITY DEFINER RPC → admin client.
+ * Thin server-action wrapper (ENGINEERING-02D). Enforces calculation.approve, then delegates to
+ * the bonus-ledger module. The admin client (for the SECURITY DEFINER RPC) is created HERE and
+ * injected into the repository. Behavior (RPC params, raw return) unchanged.
  */
 export const postAccrual = validatedAction(PostAccrualSchema, async (input) => {
   await requirePermission('calculation.approve');
   const org = await getActiveOrg();
   const user = await getUser();
 
-  const admin = createAdminClient();
-  const { data, error } = await admin.rpc('post_bonus_accrual', {
-    p_organization_id: org!.organization_id,
-    p_bonus_period_id: input.periodId,
-    p_triggered_by: user!.id,
-  });
-
-  if (error) throw new Error(error.message);
-
-  return data;
+  const repo = new BonusLedgerRepository(createAdminClient());
+  return postAccrualModule(
+    { periodId: input.periodId },
+    { organizationId: org!.organization_id, userId: user!.id },
+    repo,
+  );
 });

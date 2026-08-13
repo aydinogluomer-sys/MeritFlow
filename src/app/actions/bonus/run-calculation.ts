@@ -7,26 +7,22 @@ import { requirePermission } from '@/lib/auth/rbac';
 import { getActiveOrg } from '@/lib/auth/org';
 import { getUser } from '@/lib/auth/session';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { runCalculation as runCalculationModule, BonusCalculationRepository } from '@/modules/bonus-calculation';
 
 /**
- * Run a bonus calculation for a period/pool. SECURITY DEFINER RPC → admin client.
- * Returns the newly produced snapshot id.
+ * Thin server-action wrapper (ENGINEERING-02D). Enforces period.manage, mints the UI-layer
+ * idempotency key, then delegates to the bonus-calculation module. The admin client (for the
+ * SECURITY DEFINER RPC) is created HERE and injected into the repository. Behavior unchanged.
  */
 export const runCalculation = validatedAction(RunCalculationSchema, async (input) => {
   await requirePermission('period.manage');
   const org = await getActiveOrg();
   const user = await getUser();
 
-  const admin = createAdminClient();
-  const { data, error } = await admin.rpc('run_bonus_calculation', {
-    p_organization_id: org!.organization_id,
-    p_bonus_period_id: input.periodId,
-    p_bonus_pool_id: input.poolId,
-    p_idempotency_key: `ui-calc-${input.periodId}-${Date.now()}`,
-    p_triggered_by: user!.id,
-  });
-
-  if (error) throw new Error(error.message);
-
-  return { snapshotId: data };
+  const repo = new BonusCalculationRepository(createAdminClient());
+  return runCalculationModule(
+    { ...input, idempotencyKey: `ui-calc-${input.periodId}-${Date.now()}` },
+    { organizationId: org!.organization_id, userId: user!.id },
+    repo,
+  );
 });
