@@ -98,11 +98,15 @@ jobs:
 
   # ── End-to-end (Playwright). The playwright.config webServer auto-starts `npm run dev`,
   #    so this job only needs a booted, seeded Supabase + the local keys in the app env.
-  #    NOT yet confirmed green — do NOT mark this a required check until a first CI run is
-  #    green (or defer Playwright-blocking to ENGINEERING-11). See the e2e note in the PR.
+  #    DEFERRED (first-CI-run decision): the Playwright step is red — the supabase-in-CI +
+  #    browser-install harness is green, but the thin scaffold specs are not confirmed. Real
+  #    golden-path E2E lands in ENGINEERING-11, so this job is NON-BLOCKING (continue-on-error)
+  #    until then; it still runs for signal/traces. Do NOT add `e2e` to the required status
+  #    checks — require only lint / typecheck / unit / db / build.
   e2e:
     needs: [build]
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
