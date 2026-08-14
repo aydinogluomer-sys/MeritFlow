@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DomainError } from '@/lib/errors';
 
 /**
  * Result of a validated Server Action. Never throws to the client; validation and
@@ -31,6 +32,15 @@ export function validatedAction<Schema extends z.ZodTypeAny, Result>(
       const data = await handler(parsed.data as z.infer<Schema>);
       return { ok: true, data };
     } catch (err) {
+      // Typed domain errors cross the boundary as a stable code only — never a raw message.
+      // (ENGINEERING-03a foundation; repositories start throwing DomainError in 03b.)
+      if (err instanceof DomainError) {
+        return err.fieldErrors
+          ? { ok: false, error: err.code, fieldErrors: err.fieldErrors }
+          : { ok: false, error: err.code };
+      }
+      // Backward-compatible fallback: until 03b migrates repositories, plain Errors still
+      // surface their message (preserves existing behavior/tests).
       const message = err instanceof Error ? err.message : 'UNKNOWN_ERROR';
       return { ok: false, error: message };
     }
