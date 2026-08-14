@@ -1,0 +1,24 @@
+# ENGINEERING-08 — automated dependency + action version/security update PRs.
+# Security updates are opened immediately by GitHub's Dependabot security alerts; these
+# schedules cover routine version bumps (grouped to keep PR noise low).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # One grouped PR for routine minor/patch bumps; majors stay individual (review-worthy).
+      npm-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3

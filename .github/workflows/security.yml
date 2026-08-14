@@ -1,0 +1,46 @@
+# ENGINEERING-08 — AppSec scanning (separate from ci.yml to keep concerns clean).
+#   secret-scan       gitleaks over the working tree — BLOCKING (no secret may be committed).
+#   dependency-audit  npm audit (high+) — NON-BLOCKING today (pre-existing debt; see
+#                     docs/runbooks/appsec.md "Dependency audit rollout" — flips to blocking
+#                     once the backlog is cleared). Do NOT add it to required checks yet.
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install gitleaks
+        run: |
+          GL_VERSION=8.18.4
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GL_VERSION}/gitleaks_${GL_VERSION}_linux_x64.tar.gz" -o /tmp/gitleaks.tgz
+          tar -xzf /tmp/gitleaks.tgz -C /tmp gitleaks
+          sudo mv /tmp/gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+      - name: Secret scan (working tree; blocking)
+        run: gitleaks detect --source . --config .gitleaks.toml --no-git --redact --verbose
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    # NON-BLOCKING: the repo has pre-existing high/critical advisories (mostly dev/transitive).
+    # This job SURFACES them without blocking the pipeline; it is flipped to blocking once the
+    # backlog in docs/runbooks/appsec.md is cleared.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: npm audit (high and above — report; non-blocking for now)
+        run: npm audit --audit-level=high
