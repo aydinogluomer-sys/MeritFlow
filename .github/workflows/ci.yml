@@ -71,8 +71,20 @@ jobs:
       - run: npm ci
       - name: Start Supabase (Docker)
         run: npx --no-install supabase start
-      - name: Reset DB — apply all migrations + seed
-        run: npx --no-install supabase db reset
+      - name: Reset DB — apply all migrations + seed (retry transient infra failures)
+        run: |
+          for attempt in 1 2 3; do
+            echo "::group::db reset attempt $attempt"
+            if npx --no-install supabase db reset; then
+              echo "::endgroup::"; echo "db reset OK on attempt $attempt"; exit 0
+            fi
+            echo "::endgroup::"
+            echo "db reset failed on attempt $attempt — recycling Supabase before retry"
+            npx --no-install supabase stop || true
+            npx --no-install supabase start
+            sleep 5
+          done
+          echo "db reset failed after 3 attempts"; exit 1
       - name: Run pgTAP suite
         run: npx --no-install supabase test db
       - name: Stop Supabase
