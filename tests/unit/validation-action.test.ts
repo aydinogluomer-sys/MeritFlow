@@ -1,10 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
+
+vi.mock('@/lib/logger', () => ({ captureServerError: vi.fn().mockResolvedValue(undefined) }));
+
 import { validatedAction } from '@/lib/validation/action';
 import { DomainError } from '@/lib/errors';
+import { captureServerError } from '@/lib/logger';
+
+const captureServerErrorMock = vi.mocked(captureServerError);
 
 describe('validatedAction', () => {
   const schema = z.object({ name: z.string().min(1) });
+
+  beforeEach(() => captureServerErrorMock.mockClear());
 
   it('runs the handler on valid input', async () => {
     const action = validatedAction(schema, async (input) => `hi ${input.name}`);
@@ -48,5 +56,21 @@ describe('validatedAction', () => {
       expect(res.error).toBe('VALIDATION_ERROR');
       expect(res.fieldErrors?.name).toEqual(['bad']);
     }
+  });
+
+  it('captures an INTERNAL DomainError (unexpected infra failure)', async () => {
+    const action = validatedAction(schema, async () => {
+      throw new DomainError('INTERNAL', { originalError: { code: 'ZZZ' } });
+    });
+    await action({ name: 'x' });
+    expect(captureServerErrorMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT capture an expected DomainError (FORBIDDEN)', async () => {
+    const action = validatedAction(schema, async () => {
+      throw new DomainError('FORBIDDEN');
+    });
+    await action({ name: 'x' });
+    expect(captureServerErrorMock).not.toHaveBeenCalled();
   });
 });

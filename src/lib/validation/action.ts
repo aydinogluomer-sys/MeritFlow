@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { DomainError } from '@/lib/errors';
+import { captureServerError } from '@/lib/logger';
 
 /**
  * Result of a validated Server Action. Never throws to the client; validation and
@@ -33,14 +34,19 @@ export function validatedAction<Schema extends z.ZodTypeAny, Result>(
       return { ok: true, data };
     } catch (err) {
       // Typed domain errors cross the boundary as a stable code only — never a raw message.
-      // (ENGINEERING-03a foundation; repositories start throwing DomainError in 03b.)
+      // (ENGINEERING-03a foundation; repositories throw DomainError since 03b.)
       if (err instanceof DomainError) {
+        // Only unexpected infra failures warrant capture; FORBIDDEN/RLS_DENIED/CONFLICT/
+        // NOT_FOUND are expected outcomes. Fire-and-forget so logging never delays the result.
+        if (err.code === 'INTERNAL') {
+          void captureServerError(err.originalError ?? err, { code: err.code });
+        }
         return err.fieldErrors
           ? { ok: false, error: err.code, fieldErrors: err.fieldErrors }
           : { ok: false, error: err.code };
       }
-      // Backward-compatible fallback: until 03b migrates repositories, plain Errors still
-      // surface their message (preserves existing behavior/tests).
+      // Non-DomainError: always unexpected — capture, then surface the message (backward-compat).
+      void captureServerError(err);
       const message = err instanceof Error ? err.message : 'UNKNOWN_ERROR';
       return { ok: false, error: message };
     }
