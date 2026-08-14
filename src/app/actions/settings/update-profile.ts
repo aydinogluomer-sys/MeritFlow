@@ -1,4 +1,5 @@
 'use server';
+import { toDomainError } from '@/lib/errors';
 import 'server-only';
 
 import { z } from 'zod';
@@ -33,7 +34,7 @@ export const updateProfile = validatedAction(
       .update({ display_name: input.displayName })
       .eq('id', user.id);
 
-    if (error) throw new Error(error.message);
+    if (error) throw toDomainError(error);
 
     return { ok: true };
   },

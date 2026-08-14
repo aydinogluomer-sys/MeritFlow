@@ -1,4 +1,5 @@
 'use server';
+import { toDomainError } from '@/lib/errors';
 import 'server-only';
 
 import { z } from 'zod';
@@ -43,7 +44,7 @@ export const acceptInvitation = validatedAction(
       if (error.code === '23514') throw new Error('invitation_invalid');
       // 23505: memberships_org_profile_uq -> already a member of this org.
       if (error.code === '23505') throw new Error('already_member');
-      throw new Error(error.message);
+      throw toDomainError(error);
     }
 
     return { organizationId: data as string };

@@ -1,3 +1,4 @@
+import { toDomainError } from '@/lib/errors';
 import type {
   AssignReviewerInput,
   DisputeContext,
@@ -28,7 +29,7 @@ export class DisputeRepository {
       })
       .select('id')
       .single();
-    if (error) throw new Error(error.message);
+    if (error) throw toDomainError(error);
     return (data as { id: string }).id;
   }
 
@@ -38,7 +39,7 @@ export class DisputeRepository {
       .update({ status: 'under_review', assigned_reviewer_id: input.reviewerId })
       .eq('id', input.disputeId)
       .eq('organization_id', ctx.organizationId);
-    if (error) throw new Error(error.message);
+    if (error) throw toDomainError(error);
   }
 
   async markResolved(input: ResolveDisputeInput, ctx: DisputeContext): Promise<void> {
@@ -53,6 +54,6 @@ export class DisputeRepository {
       .eq('id', input.disputeId)
       .eq('organization_id', ctx.organizationId)
       .eq('status', 'under_review');
-    if (error) throw new Error(error.message);
+    if (error) throw toDomainError(error);
   }
 }

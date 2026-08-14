@@ -1,3 +1,4 @@
+import { toDomainError } from '@/lib/errors';
 import type { ScoringBreakdown } from '../domain/types';
 
 // RLS user client only (never admin) — reads are tenant-scoped by RLS. Client type is taken
@@ -31,7 +32,7 @@ export class ScoringRepository {
       .eq('organization_id', organizationId)
       .maybeSingle();
 
-    if (error) throw new Error(error.message);
+    if (error) throw toDomainError(error);
     if (!data) return null;
 
     const row = data as {

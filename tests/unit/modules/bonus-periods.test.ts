@@ -43,7 +43,7 @@ describe('bonus-periods module — createPeriod', () => {
 
   it('DB error propagates', async () => {
     mockInsert(null, { message: 'X' });
-    await expect(createPeriod(input, ctx)).rejects.toThrow('X');
+    await expect(createPeriod(input, ctx)).rejects.toMatchObject({ code: 'INTERNAL' });
   });
 });
 
@@ -69,6 +69,6 @@ describe('bonus-periods module — createPool', () => {
 
   it('DB error propagates', async () => {
     mockInsert(null, { message: 'Y' });
-    await expect(createPool(input, ctx)).rejects.toThrow('Y');
+    await expect(createPool(input, ctx)).rejects.toMatchObject({ code: 'INTERNAL' });
   });
 });

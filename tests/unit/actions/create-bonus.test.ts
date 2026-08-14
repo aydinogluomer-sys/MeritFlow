@@ -89,7 +89,7 @@ describe('createPeriod', () => {
   it('DB error: ok:false with the DB message', async () => {
     mockInsertChain(null, { error: { message: 'X' } });
     const res = await createPeriod(base);
-    expect(res).toEqual({ ok: false, error: 'X' });
+    expect(res).toEqual({ ok: false, error: 'INTERNAL' });
   });
 });
 
@@ -146,6 +146,6 @@ describe('createPool', () => {
   it('DB error: ok:false with the DB message', async () => {
     mockInsertChain(null, { error: { message: 'X' } });
     const res = await createPool(base);
-    expect(res).toEqual({ ok: false, error: 'X' });
+    expect(res).toEqual({ ok: false, error: 'INTERNAL' });
   });
 });

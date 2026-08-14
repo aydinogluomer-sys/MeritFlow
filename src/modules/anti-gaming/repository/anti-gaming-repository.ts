@@ -1,3 +1,4 @@
+import { toDomainError } from '@/lib/errors';
 import { RUN_ANTI_GAMING_SCAN_RPC, type AntiGamingContext, type RunScanInput } from '../domain/types';
 
 type AdminClient = Awaited<ReturnType<typeof import('@/lib/supabase/admin').createAdminClient>>;
@@ -15,7 +16,7 @@ export class AntiGamingRepository {
       p_organization_id: ctx.organizationId,
       p_bonus_period_id: input.periodId ?? null,
     });
-    if (error) throw new Error(error.message);
+    if (error) throw toDomainError(error);
     return data as number;
   }
 }

@@ -1,6 +1,8 @@
 // Tasks data-access. Wraps the RLS-enforced user client (never the service-role admin
 // client — AD1 / boundary test). The exact client type is taken from createClient via a
 // type-only import so it always matches `await createClient()`.
+import { toDomainError } from '@/lib/errors';
+
 type ServerClient = Awaited<ReturnType<typeof import('@/lib/supabase/server').createClient>>;
 
 export class TaskRepository {
@@ -16,7 +18,7 @@ export class TaskRepository {
       .order('version_no', { ascending: false })
       .limit(1)
       .maybeSingle();
-    if (error) throw new Error(error.message);
+    if (error) throw toDomainError(error);
     return data ? (data as { id: string }).id : null;
   }
 
@@ -27,7 +29,7 @@ export class TaskRepository {
       .insert(row)
       .select('id')
       .single();
-    if (error) throw new Error(error.message);
+    if (error) throw toDomainError(error);
     return (data as { id: string }).id;
   }
 
@@ -39,6 +41,6 @@ export class TaskRepository {
       .eq('id', taskId)
       .eq('status', 'in_progress')
       .eq('organization_id', organizationId);
-    if (error) throw new Error(error.message);
+    if (error) throw toDomainError(error);
   }
 }

@@ -1,4 +1,5 @@
 'use server';
+import { toDomainError } from '@/lib/errors';
 import 'server-only';
 
 import { z } from 'zod';
@@ -43,7 +44,7 @@ export const createOrganization = validatedAction(
     if (error) {
       // Postgres unique_violation on organizations_slug_key -> friendly domain error.
       if (error.code === '23505') throw new Error('slug_taken');
-      throw new Error(error.message);
+      throw toDomainError(error);
     }
 
     return { organizationId: data as string };

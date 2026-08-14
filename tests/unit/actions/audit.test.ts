@@ -155,7 +155,7 @@ describe('exportAudit — AD3 masking', () => {
     mockAdminRpc({ message: 'AUDIT_FAIL' });
 
     const res = await exportAudit({});
-    expect(res).toEqual({ ok: false, error: 'AUDIT_FAIL' });
+    expect(res).toEqual({ ok: false, error: 'INTERNAL' });
   });
 });
 
@@ -194,6 +194,6 @@ describe('exportAudit — query shape + CSV escaping', () => {
     mockAdminRpc();
 
     const res = await exportAudit({});
-    expect(res).toEqual({ ok: false, error: 'QUERY_FAIL' });
+    expect(res).toEqual({ ok: false, error: 'INTERNAL' });
   });
 });

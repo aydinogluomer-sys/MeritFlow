@@ -2,6 +2,7 @@ import 'server-only';
 
 import type { User } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
+import { DomainError } from '@/lib/errors';
 
 /**
  * Current authenticated user, validated server-side via `auth.getUser()`
@@ -16,6 +17,6 @@ export async function getUser(): Promise<User | null> {
 
 export async function requireUser(): Promise<User> {
   const user = await getUser();
-  if (!user) throw new Error('UNAUTHENTICATED');
+  if (!user) throw new DomainError('NOT_AUTHENTICATED');
   return user;
 }

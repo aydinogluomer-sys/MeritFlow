@@ -45,8 +45,8 @@ describe('reviews module — reviewTask', () => {
     expect(payload).not.toHaveProperty('notes');
   });
 
-  it('surfaces the DB error message', async () => {
+  it('maps a DB error to a typed DomainError code (no raw message leak)', async () => {
     mockInsert({ error: { message: 'X' } });
-    await expect(reviewTask(input, ctx)).rejects.toThrow('X');
+    await expect(reviewTask(input, ctx)).rejects.toMatchObject({ code: 'INTERNAL' });
   });
 });

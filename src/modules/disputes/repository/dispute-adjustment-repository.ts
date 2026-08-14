@@ -1,3 +1,4 @@
+import { toDomainError } from '@/lib/errors';
 import type { DisputeContext, ResolveDisputeInput } from '../domain/types';
 
 type AdminClient = Awaited<ReturnType<typeof import('@/lib/supabase/admin').createAdminClient>>;
@@ -19,7 +20,7 @@ export class DisputeAdjustmentRepository {
       p_actor: ctx.userId,
       p_bonus_period_id: input.bonusPeriodId ?? null,
     });
-    if (error) throw new Error(error.message);
+    if (error) throw toDomainError(error);
   }
 
   async recalculateAfterDispute(input: ResolveDisputeInput, ctx: DisputeContext): Promise<void> {
@@ -28,6 +29,6 @@ export class DisputeAdjustmentRepository {
       p_bonus_period_id: input.bonusPeriodId,
       p_triggered_by: ctx.userId,
     });
-    if (error) throw new Error(error.message);
+    if (error) throw toDomainError(error);
   }
 }

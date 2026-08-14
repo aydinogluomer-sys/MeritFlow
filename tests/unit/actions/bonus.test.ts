@@ -74,7 +74,7 @@ describe('runCalculation', () => {
   it('rpc error: ok:false with the message', async () => {
     mockRpc({ error: { message: 'X' } });
     const res = await runCalculation(input);
-    expect(res).toEqual({ ok: false, error: 'X' });
+    expect(res).toEqual({ ok: false, error: 'INTERNAL' });
   });
 });
 
@@ -105,7 +105,7 @@ describe('postAccrual', () => {
   it('rpc error: ok:false with the message', async () => {
     mockRpc({ error: { message: 'X' } });
     const res = await postAccrual(input);
-    expect(res).toEqual({ ok: false, error: 'X' });
+    expect(res).toEqual({ ok: false, error: 'INTERNAL' });
   });
 });
 
@@ -136,7 +136,7 @@ describe('recalculate', () => {
   it('rpc error: ok:false with the message', async () => {
     mockRpc({ error: { message: 'X' } });
     const res = await recalculate(input);
-    expect(res).toEqual({ ok: false, error: 'X' });
+    expect(res).toEqual({ ok: false, error: 'INTERNAL' });
   });
 });
 
@@ -176,6 +176,6 @@ describe('runScan', () => {
   it('rpc error: ok:false with the message', async () => {
     mockRpc({ error: { message: 'X' } });
     const res = await runScan(input);
-    expect(res).toEqual({ ok: false, error: 'X' });
+    expect(res).toEqual({ ok: false, error: 'INTERNAL' });
   });
 });

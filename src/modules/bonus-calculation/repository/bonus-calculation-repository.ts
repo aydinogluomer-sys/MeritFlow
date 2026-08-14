@@ -1,3 +1,4 @@
+import { toDomainError } from '@/lib/errors';
 import type { BonusCalculationContext, RecalculateInput, RunCalculationInput } from '../domain/types';
 
 // Admin (service_role) client INJECTED via the constructor — the module never value-imports
@@ -19,7 +20,7 @@ export class BonusCalculationRepository {
       p_idempotency_key: input.idempotencyKey,
       p_triggered_by: ctx.userId,
     });
-    if (error) throw new Error(error.message);
+    if (error) throw toDomainError(error);
     return data as string;
   }
 
@@ -32,7 +33,7 @@ export class BonusCalculationRepository {
       p_bonus_period_id: input.periodId,
       p_triggered_by: ctx.userId,
     });
-    if (error) throw new Error(error.message);
+    if (error) throw toDomainError(error);
     return data;
   }
 }

@@ -144,6 +144,6 @@ describe('createTask', () => {
   it('DB error on insert: ok:false with the DB message', async () => {
     mockClient({ taskError: { message: 'X' } });
     const res = await createTask(base);
-    expect(res).toEqual({ ok: false, error: 'X' });
+    expect(res).toEqual({ ok: false, error: 'INTERNAL' });
   });
 });

@@ -108,7 +108,7 @@ describe('openDispute', () => {
   it('DB error: ok:false with the message', async () => {
     mockInsertSelectSingle({ data: null, error: { message: 'X' } });
     const res = await openDispute(input);
-    expect(res).toEqual({ ok: false, error: 'X' });
+    expect(res).toEqual({ ok: false, error: 'INTERNAL' });
   });
 });
 
@@ -141,7 +141,7 @@ describe('assignReviewer', () => {
   it('DB error: ok:false with the message', async () => {
     mockUpdateChain({ error: { message: 'X' } }, 2);
     const res = await assignReviewer(input);
-    expect(res).toEqual({ ok: false, error: 'X' });
+    expect(res).toEqual({ ok: false, error: 'INTERNAL' });
   });
 });
 
@@ -225,7 +225,7 @@ describe('resolveDispute', () => {
     const { rpc } = mockRpc({ error: null });
     const res = await resolveDispute(acceptInput);
 
-    expect(res).toEqual({ ok: false, error: 'X' });
+    expect(res).toEqual({ ok: false, error: 'INTERNAL' });
     expect(rpc).not.toHaveBeenCalled();
   });
 
@@ -233,6 +233,17 @@ describe('resolveDispute', () => {
     mockUpdateChain({ error: null }, 3);
     mockRpc({ error: { message: 'ADJ_FAIL' } });
     const res = await resolveDispute(acceptInput);
-    expect(res).toEqual({ ok: false, error: 'ADJ_FAIL' });
+    expect(res).toEqual({ ok: false, error: 'INTERNAL' });
+  });
+
+  it('maps an RLS violation end-to-end: row-level security -> RLS_DENIED', async () => {
+    mockUpdateChain(
+      { error: { message: 'new row violates row-level security policy for table "disputes"' } },
+      3,
+    );
+    const { rpc } = mockRpc({ error: null });
+    const res = await resolveDispute(acceptInput);
+    expect(res).toEqual({ ok: false, error: 'RLS_DENIED' });
+    expect(rpc).not.toHaveBeenCalled();
   });
 });

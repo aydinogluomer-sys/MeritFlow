@@ -1,3 +1,4 @@
+import { toDomainError } from '@/lib/errors';
 import type { BonusLedgerContext, PostAccrualInput } from '../domain/types';
 
 // Admin (service_role) client INJECTED via the constructor — the module never value-imports
@@ -14,7 +15,7 @@ export class BonusLedgerRepository {
       p_bonus_period_id: input.periodId,
       p_triggered_by: ctx.userId,
     });
-    if (error) throw new Error(error.message);
+    if (error) throw toDomainError(error);
     return data;
   }
 }

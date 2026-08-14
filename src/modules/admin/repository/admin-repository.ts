@@ -1,3 +1,4 @@
+import { toDomainError } from '@/lib/errors';
 import type {
   GrantContext,
   GrantSupportAccessInput,
@@ -32,7 +33,7 @@ export class AdminRepository {
       })
       .select('id')
       .single();
-    if (error) throw new Error(error.message);
+    if (error) throw toDomainError(error);
     return (data as { id: string }).id;
   }
 
@@ -44,7 +45,7 @@ export class AdminRepository {
       .eq('id', input.grantId)
       .eq('organization_id', ctx.organizationId)
       .eq('status', 'active');
-    if (error) throw new Error(error.message);
+    if (error) throw toDomainError(error);
   }
 
   /** Mint a pending invitation via the SECURITY DEFINER RPC; returns the join token. */
@@ -53,7 +54,7 @@ export class AdminRepository {
       p_email: input.email,
       p_role: input.role,
     });
-    if (error) throw new Error(error.message);
+    if (error) throw toDomainError(error);
     return data as string;
   }
 }

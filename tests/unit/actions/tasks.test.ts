@@ -78,7 +78,7 @@ describe('submitTask', () => {
   it('DB error: ok:false with the DB message', async () => {
     mockUpdateChain({ error: { message: 'X' } });
     const res = await submitTask({ taskId: TASK_ID });
-    expect(res).toEqual({ ok: false, error: 'X' });
+    expect(res).toEqual({ ok: false, error: 'INTERNAL' });
   });
 });
 
@@ -131,6 +131,6 @@ describe('reviewTask', () => {
   it('DB error: ok:false with the DB message', async () => {
     mockInsertChain({ error: { message: 'X' } });
     const res = await reviewTask(base);
-    expect(res).toEqual({ ok: false, error: 'X' });
+    expect(res).toEqual({ ok: false, error: 'INTERNAL' });
   });
 });

@@ -1,3 +1,5 @@
+import { toDomainError } from '@/lib/errors';
+
 type AdminClient = Awaited<ReturnType<typeof import('@/lib/supabase/admin').createAdminClient>>;
 
 const RAW_ACCESS_REASON = 'audit CSV export — raw sensitive payload included';
@@ -15,6 +17,6 @@ export class CompAccessRepository {
       p_actor_id: actorProfileId,
       p_reason: RAW_ACCESS_REASON,
     });
-    if (error) throw new Error(error.message);
+    if (error) throw toDomainError(error);
   }
 }

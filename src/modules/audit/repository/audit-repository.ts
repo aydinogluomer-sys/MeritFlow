@@ -1,3 +1,4 @@
+import { toDomainError } from '@/lib/errors';
 import type { AuditExportRow, ExportAuditInput } from '../domain/types';
 
 type ServerClient = Awaited<ReturnType<typeof import('@/lib/supabase/server').createClient>>;
@@ -22,7 +23,7 @@ export class AuditRepository {
     if (input.toDate) query = query.lte('created_at', input.toDate);
 
     const { data, error } = await query;
-    if (error) throw new Error(error.message);
+    if (error) throw toDomainError(error);
 
     return (data ?? []) as AuditExportRow[];
   }

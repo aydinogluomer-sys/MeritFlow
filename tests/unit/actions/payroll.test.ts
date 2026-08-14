@@ -72,7 +72,13 @@ describe('exportPayout', () => {
   it('rpc error: ok:false with the message', async () => {
     mockRpc({ error: { message: 'X' } });
     const res = await exportPayout(input);
-    expect(res).toEqual({ ok: false, error: 'X' });
+    expect(res).toEqual({ ok: false, error: 'INTERNAL' });
+  });
+
+  it('maps a Postgres SQLSTATE end-to-end: 23505 -> CONFLICT', async () => {
+    mockRpc({ error: { code: '23505', message: 'duplicate key value violates unique constraint' } });
+    const res = await exportPayout(input);
+    expect(res).toEqual({ ok: false, error: 'CONFLICT' });
   });
 });
 
@@ -107,6 +113,6 @@ describe('markPaid', () => {
   it('rpc error: ok:false with the message', async () => {
     mockRpc({ error: { message: 'X' } });
     const res = await markPaid(input);
-    expect(res).toEqual({ ok: false, error: 'X' });
+    expect(res).toEqual({ ok: false, error: 'INTERNAL' });
   });
 });

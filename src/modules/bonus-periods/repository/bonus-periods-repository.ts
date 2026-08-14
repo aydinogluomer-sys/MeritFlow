@@ -1,3 +1,4 @@
+import { toDomainError } from '@/lib/errors';
 import type { BonusPeriodContext, CreatePeriodInput, CreatePoolInput } from '../domain/types';
 
 // RLS user client (never admin) — bonus_periods_insert/bonus_pools_insert enforce org +
@@ -20,7 +21,7 @@ export class BonusPeriodsRepository {
       })
       .select('id')
       .single();
-    if (error) throw new Error(error.message);
+    if (error) throw toDomainError(error);
     return (data as { id: string }).id;
   }
 
@@ -36,7 +37,7 @@ export class BonusPeriodsRepository {
       })
       .select('id')
       .single();
-    if (error) throw new Error(error.message);
+    if (error) throw toDomainError(error);
     return (data as { id: string }).id;
   }
 }

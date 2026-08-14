@@ -109,7 +109,7 @@ describe('grantSupportAccess', () => {
   it('DB error: ok:false with the message', async () => {
     mockInsertSelectSingle({ data: null, error: { message: 'X' } });
     const res = await grantSupportAccess(input);
-    expect(res).toEqual({ ok: false, error: 'X' });
+    expect(res).toEqual({ ok: false, error: 'INTERNAL' });
   });
 });
 
@@ -139,7 +139,7 @@ describe('revokeSupportAccess', () => {
   it('DB error: ok:false with the message', async () => {
     mockUpdateChain({ error: { message: 'Y' } }, 3);
     const res = await revokeSupportAccess(input);
-    expect(res).toEqual({ ok: false, error: 'Y' });
+    expect(res).toEqual({ ok: false, error: 'INTERNAL' });
   });
 });
 
@@ -168,6 +168,6 @@ describe('inviteMember', () => {
   it('DB error: ok:false with the message', async () => {
     mockRpc({ data: null, error: { message: 'Z' } });
     const res = await inviteMember(input);
-    expect(res).toEqual({ ok: false, error: 'Z' });
+    expect(res).toEqual({ ok: false, error: 'INTERNAL' });
   });
 });

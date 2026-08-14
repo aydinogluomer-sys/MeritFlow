@@ -1,3 +1,4 @@
+import { toDomainError } from '@/lib/errors';
 import { MANUAL_OVERRIDE_RPC, type ManualOverrideInput, type PointLedgerContext } from '../domain/types';
 
 // The admin (service_role) client is INJECTED via the constructor — this module never
@@ -23,7 +24,7 @@ export class PointLedgerRepository {
       p_second_approver: input.secondApproverId,
       p_task_id: input.taskId ?? null,
     });
-    if (error) throw new Error(error.message);
+    if (error) throw toDomainError(error);
     return data as string;
   }
 }

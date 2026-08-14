@@ -89,6 +89,6 @@ describe('manualOverride', () => {
   it('rpc error: ok:false with the message', async () => {
     mockRpc({ error: { message: 'X' } });
     const res = await manualOverride(base);
-    expect(res).toEqual({ ok: false, error: 'X' });
+    expect(res).toEqual({ ok: false, error: 'INTERNAL' });
   });
 });

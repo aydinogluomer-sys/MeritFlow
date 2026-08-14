@@ -1,3 +1,4 @@
+import { toDomainError } from '@/lib/errors';
 import type { ExportPayoutInput, ExportsContext, MarkPaidInput } from '../domain/types';
 
 type AdminClient = Awaited<ReturnType<typeof import('@/lib/supabase/admin').createAdminClient>>;
@@ -19,7 +20,7 @@ export class ExportsRepository {
       p_format: input.format,
       p_actor: ctx.userId,
     });
-    if (error) throw new Error(error.message);
+    if (error) throw toDomainError(error);
     return data as string;
   }
 
@@ -31,7 +32,7 @@ export class ExportsRepository {
       p_export_id: input.exportId,
       p_actor: ctx.userId,
     });
-    if (error) throw new Error(error.message);
+    if (error) throw toDomainError(error);
     return data;
   }
 }
