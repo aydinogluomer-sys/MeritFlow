@@ -58,9 +58,17 @@ jobs:
       - run: npm ci
       - run: npm run test
 
+  # ── Migration safety lint — static (naming/ordering/destructive/index); no Docker ──
+  migration-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Migration naming, ordering, destructive-op and index-safety check
+        run: bash scripts/check-migrations.sh supabase/migrations
+
   # ── Database: apply every migration from scratch + run pgTAP (Supabase via Docker) ──
   db:
-    needs: [lint, typecheck, unit]
+    needs: [migration-lint, lint, typecheck, unit]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -85,6 +93,16 @@ jobs:
             sleep 5
           done
           echo "db reset failed after 3 attempts"; exit 1
+      - name: Schema drift check (supabase db diff — uncommitted schema changes fail)
+        run: |
+          DRIFT=$(npx --no-install supabase db diff 2>/dev/null || true)
+          CLEAN=$(echo "$DRIFT" | tr -d '[:space:]')
+          if [ -n "$CLEAN" ]; then
+            echo "::error::Schema drift detected — schema changes exist that are not captured in a migration file:"
+            echo "$DRIFT"
+            exit 1
+          fi
+          echo "Schema drift check: OK (no uncommitted changes)"
       - name: Run pgTAP suite
         run: npx --no-install supabase test db
       - name: Stop Supabase
