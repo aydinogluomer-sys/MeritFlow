@@ -1,58 +1,41 @@
 import { test, expect } from '@playwright/test';
 
-// ENGINEERING-11 — authenticated read-path smoke for the HR fixture (hr-a@acme.test).
-// Seeded HR permissions: period.manage, calculation.approve, dispute.resolve, audit.read,
-// comp.read (NOT payout.export, NOT user.invite). storageState is applied by the
-// `authenticated-hr` project (playwright.config).
-//
-// Positive routes assert the page rendered (not bounced to /login or /unauthorized) with its
-// h1. Negative routes assert the SERVER-SIDE authz redirect to /unauthorized — proving the
-// gate is server-side + RLS, never client-trusted (CLAUDE.md / AD1).
+// ENGINEERING-11 — TEMPORARY DIAGNOSTIC (will be replaced by the real HR read-path suite).
+// Runtime showed the HR session resolving to a permission set that contradicts the seed
+// (reaches /admin/members, denied /disputes). Job logs need repo-admin auth, so this dumps
+// the session identity + per-route outcome into the failing-test message, which the `github`
+// reporter surfaces as a Checks-API annotation (readable without logs).
 
-test.describe('authenticated HR', () => {
-  test('reaches the dashboard (session is live)', async ({ page }) => {
-    await page.goto('/dashboard');
-    await expect(page).not.toHaveURL(/\/login/);
-    await expect(page.getByRole('heading', { level: 1, name: 'Pano' })).toBeVisible();
-  });
-
-  test('can open bonus periods (period.manage)', async ({ page }) => {
-    await page.goto('/bonus/periods');
-    await expect(page).not.toHaveURL(/\/(login|unauthorized)/);
-    await expect(
-      page.getByRole('heading', { level: 1, name: 'Prim dönemleri' }),
-    ).toBeVisible();
-  });
-
-  test('can open the audit log (audit.read)', async ({ page }) => {
-    await page.goto('/audit');
-    await expect(page).not.toHaveURL(/\/(login|unauthorized)/);
-    await expect(
-      page.getByRole('heading', { level: 1, name: 'Denetim kayıtları' }),
-    ).toBeVisible();
-  });
-
-  test('can open disputes (dispute.resolve)', async ({ page }) => {
-    await page.goto('/disputes');
-    await expect(page).not.toHaveURL(/\/(login|unauthorized)/);
-    await expect(page.getByRole('heading', { level: 1, name: 'İtirazlar' })).toBeVisible();
-  });
-
-  test('can open the leaderboard', async ({ page }) => {
-    await page.goto('/leaderboard');
-    await expect(page).not.toHaveURL(/\/(login|unauthorized)/);
-    await expect(page.getByRole('heading', { level: 1, name: 'Sıralama' })).toBeVisible();
-  });
-
-  test('is denied payroll exports (no payout.export) → /unauthorized', async ({ page }) => {
-    await page.goto('/payroll/exports');
-    await expect(page).toHaveURL(/\/unauthorized/);
-    await expect(page.getByRole('heading', { name: 'Erişim yok' })).toBeVisible();
-  });
-
-  test('is denied member admin (no user.invite) → /unauthorized', async ({ page }) => {
-    await page.goto('/admin/members');
-    await expect(page).toHaveURL(/\/unauthorized/);
-    await expect(page.getByRole('heading', { name: 'Erişim yok' })).toBeVisible();
-  });
+test('DIAGNOSTIC — hr session identity + per-route outcomes', async ({ page }) => {
+  const routes = [
+    '/dashboard',
+    '/tasks',
+    '/bonus/periods',
+    '/audit',
+    '/disputes',
+    '/leaderboard',
+    '/points',
+    '/payroll/exports',
+    '/admin/members',
+  ];
+  const lines: string[] = [];
+  await page.goto('/dashboard');
+  const welcome = await page
+    .getByText('Hoş geldin', { exact: false })
+    .first()
+    .innerText()
+    .catch(() => '(no welcome text)');
+  lines.push(`WELCOME=${welcome.replace(/\s+/g, ' ').trim()}`);
+  for (const route of routes) {
+    await page.goto(route);
+    const pathname = new URL(page.url()).pathname;
+    const h1 = await page
+      .locator('h1')
+      .first()
+      .innerText()
+      .catch(() => '(no h1)');
+    lines.push(`${route} -> ${pathname} | h1="${h1.replace(/\s+/g, ' ').trim()}"`);
+  }
+  const dump = '\n' + lines.join('\n');
+  expect(dump, dump).toBe('__SHOW_DIAGNOSTIC__');
 });
