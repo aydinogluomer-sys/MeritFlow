@@ -1,0 +1,64 @@
+name: Deploy — production migrations
+
+# Manual, environment-gated production database migration release (ENGINEERING-12).
+# This workflow NEVER runs automatically. It always PREVIEWS the DDL (`supabase db push
+# --dry-run`); the real `supabase db push` runs only when dispatched with apply=true AND
+# confirm=DEPLOY, AND after the GitHub `production` environment's required reviewers approve.
+#
+# ONE-TIME OPERATOR SETUP (required — this is a template until configured):
+#   1. Repo Settings → Environments → create `production` with required reviewers.
+#   2. Add these secrets, scoped to the `production` environment:
+#        SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_REF, SUPABASE_DB_PASSWORD
+#   3. Follow docs/runbooks/migration-safety.md §5 (heavy-DDL timeouts, CONCURRENTLY,
+#      backup verified, expand–contract, rollback plan) before every real apply.
+#
+# Never touch the production database by hand (CLAUDE.md / ADR-014). App (Vercel) deploys are
+# separate — see docs/runbooks/environments-and-deploy.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Apply migrations to production (unchecked = dry-run preview only)'
+        type: boolean
+        default: false
+      confirm:
+        description: 'Type DEPLOY to confirm a real apply (ignored for a dry-run)'
+        type: string
+        default: ''
+
+# One production migration at a time; never cancel an in-flight apply.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    # Required-reviewer gate — configure protection rules on this environment in repo settings.
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Migration safety lint (naming / ordering / destructive)
+        run: bash scripts/check-migrations.sh supabase/migrations
+      - name: Link Supabase project
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: npx --no-install supabase link --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+      - name: Preview migrations (dry-run — ALWAYS runs)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: npx --no-install supabase db push --dry-run
+      - name: Apply migrations (guarded — apply=true AND confirm=DEPLOY)
+        if: ${{ inputs.apply == true && inputs.confirm == 'DEPLOY' }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: npx --no-install supabase db push
