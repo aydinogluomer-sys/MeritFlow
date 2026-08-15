@@ -4,6 +4,8 @@ import { defineConfig, devices } from '@playwright/test';
 // The `setup` project signs in the seeded test users and writes storageState; the
 // authenticated-* projects consume it. Runs against `next dev` with a booted, seeded
 // Supabase stack + local keys in the env (CI: the e2e job exports them into GITHUB_ENV).
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:3000';
+
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: true,
@@ -11,7 +13,7 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: 'list',
   use: {
-    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:3000',
+    baseURL: BASE_URL,
     trace: 'on-first-retry',
     navigationTimeout: 45_000,
   },
@@ -46,7 +48,9 @@ export default defineConfig({
     command: process.env.CI
       ? 'npm run start -- --hostname 127.0.0.1 --port 3000'
       : 'npm run dev -- --hostname 127.0.0.1 --port 3000',
-    url: process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:3000',
+    // Probe the health route, not `/`: this app has no root page (`/` → 404), and Playwright
+    // only treats a server as ready on 2xx/3xx/40x — a 404 root would hang until timeout.
+    url: `${BASE_URL}/api/health`,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
     stdout: 'pipe',
