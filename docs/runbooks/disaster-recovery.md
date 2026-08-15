@@ -7,7 +7,6 @@ and is **never** a recovery concern — it is rebuilt from Postgres.
 > **Never touch the production database directly** (CLAUDE.md / ADR-014). Recovery is performed
 > against a **new/target** project or a Supabase restore, never by hand-editing prod. Supabase MCP
 > is staging/dev only.
-
 > **"Backup configured" is NOT done.** This runbook is only satisfied once a **real restore drill**
 > has been executed and its evidence recorded in §6. Configuration without a proven restore is not
 > disaster recovery.
