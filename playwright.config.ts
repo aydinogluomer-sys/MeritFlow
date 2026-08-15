@@ -11,7 +11,10 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  reporter: 'list',
+  // In CI also emit the `github` reporter: failed tests become ::error:: annotations that are
+  // readable via the public Checks API (job logs require repo-admin auth), so a failure's exact
+  // assertion message is diagnosable without log access.
+  reporter: process.env.CI ? [['github'], ['list']] : 'list',
   use: {
     baseURL: BASE_URL,
     trace: 'on-first-retry',
