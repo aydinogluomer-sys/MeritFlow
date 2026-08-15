@@ -109,6 +109,41 @@ jobs:
         if: always()
         run: npx --no-install supabase stop
 
+  # ── Perf smoke (ICP): seed the expected profile + EXPLAIN the hot queries; fail on a
+  #    selective-query seq-scan-on-large-table regression. 3x/10x run locally (docs/runbooks/
+  #    performance.md), not in CI. Not a required check until the budgets are tuned. ──
+  perf-smoke:
+    needs: [migration-lint, lint, typecheck, unit]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Start Supabase (Docker)
+        run: npx --no-install supabase start
+      - name: Reset DB — apply all migrations + seed (retry transient infra failures)
+        run: |
+          for attempt in 1 2 3; do
+            echo "::group::db reset attempt $attempt"
+            if npx --no-install supabase db reset; then
+              echo "::endgroup::"; echo "db reset OK on attempt $attempt"; exit 0
+            fi
+            echo "::endgroup::"
+            echo "db reset failed on attempt $attempt — recycling Supabase before retry"
+            npx --no-install supabase stop || true
+            npx --no-install supabase start
+            sleep 5
+          done
+          echo "db reset failed after 3 attempts"; exit 1
+      - name: Perf benchmark (expected ICP profile)
+        run: bash scripts/perf-benchmark.sh expected
+      - name: Stop Supabase
+        if: always()
+        run: npx --no-install supabase stop
+
   # ── Production build — dummy public env; no live Supabase needed at build time ──
   build:
     needs: [lint, typecheck, unit]
