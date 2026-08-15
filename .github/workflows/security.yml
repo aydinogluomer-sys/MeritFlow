@@ -18,7 +18,7 @@ jobs:
   secret-scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install gitleaks
         run: |
           GL_VERSION=8.18.4
@@ -36,8 +36,8 @@ jobs:
     # backlog in docs/runbooks/appsec.md is cleared.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
