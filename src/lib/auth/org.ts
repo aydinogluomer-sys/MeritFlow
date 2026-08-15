@@ -12,14 +12,20 @@ export type Membership = {
   primary_role: string;
 };
 
-/** The caller's memberships (RLS lets a user read their own membership rows). */
+/**
+ * The caller's OWN memberships. Filtered explicitly by `profile_id` — the memberships SELECT
+ * RLS also exposes the org roster to privileged readers (e.g. user.invite holders), so relying
+ * on RLS alone would let {@link getActiveOrg} pick another member's row (and thus another role's
+ * permissions). The self-filter keeps active-org/role resolution scoped to the caller.
+ */
 export async function getMemberships(): Promise<Membership[]> {
   const user = await getUser();
   if (!user) return [];
   const supabase = await createClient();
   const { data } = await supabase
     .from('memberships')
-    .select('organization_id, profile_id, primary_role');
+    .select('organization_id, profile_id, primary_role')
+    .eq('profile_id', user.id);
   return (data ?? []) as Membership[];
 }
 
