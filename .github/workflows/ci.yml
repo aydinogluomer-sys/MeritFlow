@@ -215,8 +215,20 @@ jobs:
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
             echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
           } >> "$GITHUB_ENV"
-      - name: Run Playwright (webServer starts `npm run dev`)
-        run: npm run test:e2e
+      - name: Build app (production — pre-compiled routes for stable E2E)
+        run: npm run build
+      # Split into per-project steps so a failure is pinpointed from the step conclusions
+      # alone (job logs need repo-admin auth). `if: always()` runs every step regardless of an
+      # earlier failure; the job still fails if any step fails. The production server is started
+      # by the playwright webServer (`next start`).
+      - name: E2E — unauthenticated guards (chromium)
+        run: npm run test:e2e -- --project=chromium
+      - name: E2E — auth setup (password sign-in → storageState)
+        if: always()
+        run: npm run test:e2e -- --project=setup
+      - name: E2E — authenticated read-path + negative-authz (hr, emp)
+        if: always()
+        run: npm run test:e2e -- --project=authenticated-hr --project=authenticated-emp --no-deps
       - name: Upload Playwright traces on failure
         if: failure()
         uses: actions/upload-artifact@v4

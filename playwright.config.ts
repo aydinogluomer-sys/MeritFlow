@@ -13,6 +13,7 @@ export default defineConfig({
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:3000',
     trace: 'on-first-retry',
+    navigationTimeout: 45_000,
   },
   projects: [
     // Signs in the seeded users and persists storageState (auth-token cookies).
@@ -37,8 +38,14 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], storageState: 'tests/e2e/.auth/emp-user.json' },
     },
   ],
+  // CI runs the PRODUCTION server (routes pre-compiled by an earlier `next build` step) so
+  // navigations are fast and deterministic — `next dev` cold-compiles each route on first hit,
+  // which blows past the navigation timeout under parallel CI load. Locally we keep `next dev`
+  // for convenience (reuseExistingServer picks up an already-running dev server).
   webServer: {
-    command: 'npm run dev -- --hostname 127.0.0.1 --port 3000',
+    command: process.env.CI
+      ? 'npm run start -- --hostname 127.0.0.1 --port 3000'
+      : 'npm run dev -- --hostname 127.0.0.1 --port 3000',
     url: process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
