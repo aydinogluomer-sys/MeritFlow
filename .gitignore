@@ -32,6 +32,8 @@ next-env.d.ts
 /playwright-report/
 /test-results/
 /.playwright/
+# Playwright auth fixtures — generated per-run by tests/e2e/auth.setup.ts (never committed)
+tests/e2e/.auth/*.json
 
 # --- Sentry ---
 .sentryclirc

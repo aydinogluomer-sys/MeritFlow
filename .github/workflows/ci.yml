@@ -163,15 +163,14 @@ jobs:
 
   # ── End-to-end (Playwright). The playwright.config webServer auto-starts `npm run dev`,
   #    so this job only needs a booted, seeded Supabase + the local keys in the app env.
-  #    DEFERRED (first-CI-run decision): the Playwright step is red — the supabase-in-CI +
-  #    browser-install harness is green, but the thin scaffold specs are not confirmed. Real
-  #    golden-path E2E lands in ENGINEERING-11, so this job is NON-BLOCKING (continue-on-error)
-  #    until then; it still runs for signal/traces. Do NOT add `e2e` to the required status
-  #    checks — require only lint / typecheck / unit / db / build.
+  #    ENGINEERING-11: BLOCKING. The `setup` project signs in the seeded users (password
+  #    grant → storageState); the authenticated-hr / authenticated-emp projects run the
+  #    read-path + negative-authz smoke, and `chromium` runs the unauthenticated guards.
+  #    `continue-on-error` is removed — the e2e job is now a real gate. Add `e2e` to the
+  #    required status checks (alongside lint / typecheck / unit / migration-lint / db / build).
   e2e:
     needs: [build]
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -190,8 +189,20 @@ jobs:
         run: npx --no-install playwright install --with-deps chromium
       - name: Start Supabase (Docker)
         run: npx --no-install supabase start
-      - name: Reset DB — apply all migrations + seed
-        run: npx --no-install supabase db reset
+      - name: Reset DB — apply all migrations + seed (retry transient infra failures)
+        run: |
+          for attempt in 1 2 3; do
+            echo "::group::db reset attempt $attempt"
+            if npx --no-install supabase db reset; then
+              echo "::endgroup::"; echo "db reset OK on attempt $attempt"; exit 0
+            fi
+            echo "::endgroup::"
+            echo "db reset failed on attempt $attempt — recycling Supabase before retry"
+            npx --no-install supabase stop || true
+            npx --no-install supabase start
+            sleep 5
+          done
+          echo "db reset failed after 3 attempts"; exit 1
       - name: Export local Supabase keys into the app env
         run: |
           npx --no-install supabase status -o env > "$RUNNER_TEMP/supabase.env"
