@@ -25,6 +25,7 @@ senaryolarını planlar.
 ## Detailed specification
 
 ### 1. Business logic tests
+
 - task submitted → final puan vermez.
 - task approved → tam bir point ledger entry.
 - task rejected → puan yok.
@@ -45,6 +46,7 @@ senaryolarını planlar.
 - bonus calculation idempotency (çift run → tek snapshot).
 
 ### 2. Permission / RLS tests
+
 - employee ≠ başka employee bonus/point satırı.
 - employee ≠ kendi görevini approve.
 - manager ≠ HR-approved bonus pool düzenleme.
@@ -59,6 +61,7 @@ senaryolarını planlar.
 - **AD3:** employee comp audit payload göremez; raw comp payload yalnız yetki+gerekçe ile; erişim audit üretir.
 
 ### 3. Anti-gaming tests (5 kural)
+
 - self-approval blocked (hard).
 - duplicate task flag (pozitif/negatif).
 - tiny-task splitting flag.
@@ -67,6 +70,7 @@ senaryolarını planlar.
 - confirmed flag otomatik ceza üretmez.
 
 ### 4. Bonus calculation tests
+
 - worked example (`09`) birebir.
 - Σfinal + undistributed_remainder = pool.
 - cap'li / cap'siz / T_org'lu / tek-eligible / herkes-cap senaryoları.
@@ -78,16 +82,19 @@ senaryolarını planlar.
 - **AD10:** pool locked before calculation; lock sonrası değişiklik new version + recalculation gerektirir.
 
 ### 5. Scoring timeliness/collaboration tests
+
 - **AD4:** geç manager onayı timeliness'i düşürmez (submitted_at baz); needs_revision sonrası son submission baz alınır.
 - **AD5:** farklı collaboration_score aynı final_points üretir.
 
 ### 6. Dispute flow tests
+
 - open → assign(HR) → resolve.
 - manager kendi kararına final veremez (D9).
 - accepted-puan → ledger adjustment; accepted-prim → yeni snapshot.
 - SLA due_at + aşım eskalasyonu (5 iş günü — D9).
 
 ### 7. E2E tests
+
 - employee submits → manager approves → points appear.
 - monthly period closes → bonus calculation generated.
 - employee views bonus breakdown.
@@ -96,6 +103,7 @@ senaryolarını planlar.
 - auditor reviews audit trail.
 
 ### 8. Security tests
+
 - RLS negatif suite (yukarıdaki #2).
 - authz server-side enforcement (client/JWT bypass denemesi reddedilir — AD1).
 - audit coverage: her zorunlu aksiyon audit üretir (comp maskeli — AD3).
