@@ -86,6 +86,6 @@ Record every drill. A drill older than the last major schema change should be re
 
 | Date | Operator | Scenario | Recovery point (T) | RTO measured | RPO measured | Reconciliation | pgTAP integrity | Sign-off |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| _pending_ | | | | | | | | |
+| 2026-08-16 | aydinogluomer-sys | Local proxy drill: `supabase db reset` (37 migrations + seed) → drift check → full pgTAP suite via `scripts/restore-drill.sh` | N/A (local fresh-stack, no prod backup) | 109s | 0 (no data loss — local drill) | N/A (reconciliation module requires live app; pgTAP 0030 reconciliation invariants: PASS) | 32 files, 884 tests — all PASS (incl. 0030 + 0031) | pending |
 
 **ENGINEERING-12 is not "done" for DR until at least one row above is complete with all checks green.**

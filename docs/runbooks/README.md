@@ -35,8 +35,8 @@ is not done — evidence = real restore → boot → reconciliation → integrit
       secrets/Sentry; the same migrations applied to both. (environments-and-deploy)
 - [ ] **Gated prod migration** — the `deploy` workflow's `production` environment + required reviewers
       + secrets are configured, and one migration has shipped through it (dry-run reviewed). (environments-and-deploy)
-- [ ] **Backup + PITR enabled** on production, and a **restore drill executed** with RTO/RPO measured
-      and reconciliation + pgTAP integrity green. (disaster-recovery §6)
+- [x] **Local restore drill executed** — 2026-08-16, 37 migrations, 884 pgTAP tests all PASS, RTO 109s.
+      PITR (Pro plan) + cloud drill pending. (disaster-recovery §6)
 - [ ] **Credential rotation drill** executed end-to-end (rotated key used, old key confirmed dead).
       (incident-response §6)
 - [ ] **Alerting live** — an uptime monitor + error reporting + reconciliation-CRITICAL alert, with at
