@@ -62,3 +62,43 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: npx --no-install supabase db push
+      - name: Evidence summary
+        # ENGINEERING-12 DoD: emit a copy-pasteable record of the run. Runs only when the prior
+        # steps succeeded (`if: success()` — a failed dry-run stops the job first). Inputs are
+        # passed via env (not interpolated into the shell) to avoid script injection through the
+        # free-text `confirm` input. Printed to the log AND the run's step-summary page, since job
+        # logs need repo-admin auth but the step summary is visible on the run page.
+        if: success()
+        env:
+          RUN_ID: ${{ github.run_id }}
+          ACTOR: ${{ github.actor }}
+          APPLY: ${{ github.event.inputs.apply }}
+          CONFIRM: ${{ github.event.inputs.confirm }}
+        run: |
+          TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          if [ "$APPLY" = "true" ] && [ "$CONFIRM" = "DEPLOY" ]; then
+            OUTCOME="REAL APPLY OK"
+          else
+            OUTCOME="DRY-RUN OK"
+          fi
+          echo "== ENGINEERING-12 deploy evidence (copy to deploy-evidence.md) =="
+          echo "run_id: $RUN_ID"
+          echo "triggered_by: $ACTOR"
+          echo "timestamp: $TS"
+          echo "apply: $APPLY"
+          echo "confirm: $CONFIRM"
+          echo "outcome: $OUTCOME"
+          {
+            echo "### ENGINEERING-12 deploy evidence"
+            echo ""
+            echo "- run_id: $RUN_ID"
+            echo "- triggered_by: $ACTOR"
+            echo "- timestamp: $TS"
+            echo "- apply: $APPLY"
+            echo "- confirm: $CONFIRM"
+            echo "- outcome: $OUTCOME"
+            echo ""
+            echo "Paste-ready row for docs/runbooks/deploy-evidence.md:"
+            echo ""
+            echo "| $TS | $RUN_ID | $ACTOR | $APPLY | $OUTCOME |  |  |"
+          } >> "$GITHUB_STEP_SUMMARY"

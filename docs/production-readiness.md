@@ -21,6 +21,11 @@ evidence bölümleridir.
 | Deletion dry-run + legal imza | ❌ Yapılmadı | Agent (script) + Sen |
 | SLO dashboard | ❌ Yapılmadı (alerting'e bağlı) | Sen |
 
+> **Gated prod migration — evidence:** her `deploy.yml` çalıştırması
+> [runbooks/deploy-evidence.md](runbooks/deploy-evidence.md)'ye kaydedilir. Workflow sonundaki
+> **"Evidence summary"** adımı (run_id · triggered_by · timestamp · apply · outcome) kopyalanabilir
+> bir satır basar (job log + run step-summary sayfası).
+
 ---
 
 ## 1. Restore Drill
