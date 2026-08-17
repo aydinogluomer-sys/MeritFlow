@@ -57,4 +57,14 @@ test.describe('authenticated HR', () => {
     await expect(page).toHaveURL(/\/unauthorized/);
     await expect(page.getByRole('heading', { name: 'Erişim yok' })).toBeVisible();
   });
+
+  // ENGINEERING-12 slice C — the SLO dashboard uses the same admin gate as /admin/members
+  // (user.invite). HR lacks it, so HR is redirected. This documents + guards the permission
+  // boundary (an owner/admin session would render the dashboard instead; no admin fixture exists
+  // in this suite, so the positive-200 path is covered by build + the server gate).
+  test('is denied the SLO dashboard (no user.invite) → /unauthorized', async ({ page }) => {
+    await page.goto('/admin/slo');
+    await expect(page).toHaveURL(/\/unauthorized/);
+    await expect(page.getByRole('heading', { name: 'Erişim yok' })).toBeVisible();
+  });
 });
