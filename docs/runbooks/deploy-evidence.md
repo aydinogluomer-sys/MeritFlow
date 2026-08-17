@@ -10,3 +10,5 @@ one real run must pass through the `production` GitHub Environment gate, with it
 After each dry-run, paste the **Evidence summary** printed by the workflow (in the job log and on
 the run's step-summary page) into a new row above. The workflow prints a paste-ready table row;
 fill in **Reviewer** (who approved the `production` environment gate) and any **Notes**.
+
+| 2026-08-17T13:37:31Z | 32035980103 | aydinogluomer-sys | false | DRY-RUN OK | | |
