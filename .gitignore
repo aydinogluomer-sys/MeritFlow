@@ -41,3 +41,6 @@ tests/e2e/.auth/*.json
 # --- OS cruft ---
 .DS_Store
 Thumbs.db
+
+# Sentry Config File
+.env.sentry-build-plugin

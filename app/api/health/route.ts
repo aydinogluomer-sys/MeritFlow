@@ -19,6 +19,6 @@ export async function GET() {
     status: 'ok',
     service: 'meritflow',
     db,
-    time: new Date().toISOString(),
+    ts: new Date().toISOString(),
   });
 }

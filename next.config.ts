@@ -1,6 +1,7 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
 import type { NextConfig } from 'next';
+import { withSentryConfig } from '@sentry/nextjs';
 
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 
@@ -30,7 +31,10 @@ export const SECURITY_HEADERS: { key: string; value: string }[] = [
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
   // No employee surveillance (CLAUDE.md): disable camera/microphone/geolocation + FLoC cohorts.
-  { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), interest-cohort=()' },
+  {
+    key: 'Permissions-Policy',
+    value: 'camera=(), microphone=(), geolocation=(), interest-cohort=()',
+  },
   { key: 'X-DNS-Prefetch-Control', value: 'off' },
   { key: 'Content-Security-Policy-Report-Only', value: CSP_REPORT_ONLY },
 ];
@@ -47,10 +51,45 @@ const nextConfig: NextConfig = {
   },
 };
 
-// Decision C: Sentry is scaffolded (env vars, gate, and the server instrumentation
-// hook in instrumentation.ts) but the build is NOT wrapped with withSentryConfig yet.
-// The @sentry/nextjs SDK does not currently support Next.js 16 (its peer range caps at
-// Next 15), so it is intentionally not installed. To enable later: install a
-// Next-16-compatible @sentry/nextjs, set SENTRY_DSN, and wrap this export with
-// withSentryConfig({ silent: true, telemetry: false }).
-export default nextConfig;
+// Sentry: @sentry/nextjs 10.x supports Next 16, so the build is wrapped (supersedes the earlier
+// Decision-C deferral). `silent: true` suppresses build-time SDK logs; no org/project/authToken is
+// set, so source maps are NOT uploaded (upload is opt-in). SENTRY_DSN is server-only (SI-11); the
+// init lives in instrumentation.ts. (`hideSourceMaps` was dropped — it is not a valid option key in
+// v10; Next does not emit browser source maps in production by default anyway.)
+export default withSentryConfig(nextConfig, {
+  // For all available options, see:
+  // https://www.npmjs.com/package/@sentry/webpack-plugin#options
+
+  org: 'omer-aydinoglu',
+
+  project: 'meritflow',
+
+  // Only print logs for uploading source maps in CI
+  silent: !process.env.CI,
+
+  // For all available options, see:
+  // https://docs.sentry.io/platforms/javascript/guides/nextjs/manual-setup/
+
+  // Upload a larger set of source maps for prettier stack traces (increases build time)
+  widenClientFileUpload: true,
+
+  // Route browser requests to Sentry through a Next.js rewrite to circumvent ad-blockers.
+  // This can increase your server load as well as your hosting bill.
+  // Note: Check that the configured route will not match with your Next.js middleware, otherwise reporting of client-
+  // side errors will fail.
+  tunnelRoute: '/monitoring',
+
+  webpack: {
+    // Enables automatic instrumentation of Vercel Cron Monitors. (Does not yet work with App Router route handlers.)
+    // See the following for more information:
+    // https://docs.sentry.io/product/crons/
+    // https://vercel.com/docs/cron-jobs
+    automaticVercelMonitors: true,
+
+    // Tree-shaking options for reducing bundle size
+    treeshake: {
+      // Automatically tree-shake Sentry logger statements to reduce bundle size
+      removeDebugLogging: true,
+    },
+  },
+});
