@@ -56,12 +56,21 @@ committed, never in the client bundle).
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase project API settings | Regenerate → update Vercel + GitHub Actions secrets → redeploy → verify admin paths → invalidate old. |
 | Database password | Supabase project DB settings | Reset → update `SUPABASE_DB_PASSWORD` (deploy workflow secret) + any pooled connection strings. |
 | Anon key / JWT secret | Supabase project API settings | Rotating the JWT secret invalidates live sessions — schedule a low-traffic window; update `NEXT_PUBLIC_SUPABASE_ANON_KEY`. |
-| `SUPABASE_ACCESS_TOKEN` (CLI/deploy) | Supabase account tokens | Revoke → mint new → update the `deploy` workflow secret. |
+| `SUPABASE_ACCESS_TOKEN` (CLI/deploy) | Supabase account tokens | Revoke → mint new → update the `deploy` workflow secret (`production` environment). |
+| `SENTRY_DSN` (server-only) | Sentry project → Client Keys (DSN) | Generate a new DSN → deactivate the old → update Vercel (Production, server-only) + `.env.local`. Never `NEXT_PUBLIC_`, never logged (SI-11). |
 | Vercel deploy / project tokens | Vercel account | Revoke → re-issue. |
+
+> `SUPABASE_SERVICE_ROLE_KEY` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are **Vercel runtime** secrets,
+> not CI secrets — `ci.yml` runs on a local Supabase with dummy `ci-*` keys, so a CI secret rotation
+> is not required. The GitHub `production`-environment secrets are `SUPABASE_DB_PASSWORD`,
+> `SUPABASE_ACCESS_TOKEN`, and `SUPABASE_PROJECT_REF` (the last is a project identifier, not a
+> rotatable secret).
 
 **Drill:** rotate one non-critical credential end-to-end in staging, confirm the app still works,
 and record it. Rotation is not proven until a rotated key has been used successfully and the old one
-confirmed dead.
+confirmed dead. Use `scripts/credential-rotation-drill.sh` (guarded by `STAGING_CONFIRMED=1`;
+dry-run by default, `--apply` to execute step-by-step — it never reads, logs, or echoes a secret).
+Record the outcome in [rotation-evidence.md](rotation-evidence.md) and the §6 table below.
 
 ## 5. Post-incident review template
 

@@ -102,6 +102,11 @@ penceresini not et. Ardından bir restore'u **gerçek bir timestamp'e** geri ala
 
 **Durum:** ❌ Yapılmadı
 
+**Evidence log:** [runbooks/rotation-evidence.md](runbooks/rotation-evidence.md) (özel).
+**Script:** `scripts/credential-rotation-drill.sh` — dry-run checklist (`STAGING_CONFIRMED=1 bash
+scripts/credential-rotation-drill.sh`) veya `--apply` ile adım-adım yönlendirme; hiçbir secret'ı
+okumaz/loglamaz (SI-11).
+
 **Adımlar:**
 
 1. Supabase dashboard → Settings → Database → **Reset database password** → yeni şifre al.
