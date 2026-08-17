@@ -34,7 +34,6 @@ jobs:
     # NON-BLOCKING: the repo has pre-existing high/critical advisories (mostly dev/transitive).
     # This job SURFACES them without blocking the pipeline; it is flipped to blocking once the
     # backlog in docs/runbooks/appsec.md is cleared.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
