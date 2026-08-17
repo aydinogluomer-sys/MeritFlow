@@ -7,8 +7,12 @@ import type { AuditExportContext, AuditExportRow, CompAccessRepository } from '@
 const { fetchMock } = vi.hoisted(() => ({ fetchMock: vi.fn() }));
 
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn().mockResolvedValue({}) }));
+// Regular `function`, not an arrow: vitest 4 constructs the mock impl with Reflect.construct and
+// arrow functions are not constructable ("is not a constructor").
 vi.mock('@/modules/audit/repository/audit-repository', () => ({
-  AuditRepository: vi.fn(() => ({ fetchAuditLogs: fetchMock })),
+  AuditRepository: vi.fn(function () {
+    return { fetchAuditLogs: fetchMock };
+  }),
 }));
 
 import { exportAudit } from '@/modules/audit';

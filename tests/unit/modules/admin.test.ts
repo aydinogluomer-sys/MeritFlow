@@ -9,12 +9,17 @@ const { grantMock, revokeMock, inviteMock } = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn().mockResolvedValue({}) }));
+// NOTE: the mock factory is a regular `function`, not an arrow — vitest 4's spy constructs the
+// implementation with Reflect.construct, and arrow functions are not constructable ("is not a
+// constructor"). A regular function returning the stub object works as a `new`-able mock.
 vi.mock('@/modules/admin/repository/admin-repository', () => ({
-  AdminRepository: vi.fn(() => ({
-    grantSupportAccess: grantMock,
-    revokeSupportAccess: revokeMock,
-    createInvitation: inviteMock,
-  })),
+  AdminRepository: vi.fn(function () {
+    return {
+      grantSupportAccess: grantMock,
+      revokeSupportAccess: revokeMock,
+      createInvitation: inviteMock,
+    };
+  }),
 }));
 
 import { grantSupportAccess, revokeSupportAccess, inviteMember } from '@/modules/admin';

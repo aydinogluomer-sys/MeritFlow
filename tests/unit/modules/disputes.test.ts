@@ -15,12 +15,16 @@ const { openMock, assignReviewerMock, markResolvedMock } = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn().mockResolvedValue({}) }));
+// Regular `function`, not an arrow: vitest 4 constructs the mock impl with Reflect.construct and
+// arrow functions are not constructable ("is not a constructor").
 vi.mock('@/modules/disputes/repository/dispute-repository', () => ({
-  DisputeRepository: vi.fn(() => ({
-    open: openMock,
-    assignReviewer: assignReviewerMock,
-    markResolved: markResolvedMock,
-  })),
+  DisputeRepository: vi.fn(function () {
+    return {
+      open: openMock,
+      assignReviewer: assignReviewerMock,
+      markResolved: markResolvedMock,
+    };
+  }),
 }));
 
 import { openDispute, assignReviewer, resolveDispute } from '@/modules/disputes';
