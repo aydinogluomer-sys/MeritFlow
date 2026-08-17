@@ -91,3 +91,37 @@ After a deletion/anonymization is executed, confirm:
 
 **ENGINEERING-12 is not "done" for data lifecycle until a deletion-verification dry-run has been
 executed on staging and recorded, and the retention periods have legal sign-off.**
+
+## 7. Deletion drill evidence
+
+Records each run of `scripts/deletion-dry-run.sh` (the staging-only retention/erasure drill). The
+script previews by default (no DB changes) and prints a paste-ready row; `--apply` runs the batch as
+a single transaction. It **never** deletes the append-only classes (point/bonus ledger, `audit_logs`,
+snapshots, `*_events`) — those are counted + retained, and the DB `prevent_mutation` triggers enforce
+it independently.
+
+```bash
+STAGING_CONFIRMED=1 TARGET_DB_URL=<staging url> bash scripts/deletion-dry-run.sh            # preview only
+STAGING_CONFIRMED=1 TARGET_DB_URL=<staging url> bash scripts/deletion-dry-run.sh --apply    # execute (txn)
+```
+
+> **Legal/HR/Finance sign-off is required before any `--apply` run against a non-dev DB. See the
+> sign-off checklist below (§8).**
+
+| Date | Operator | DB target | Mode | Steps run | Row counts | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| _pending_ | _pending_ | _pending_ | _pending_ | _pending_ | _pending_ | _pending_ |
+
+## 8. Legal/HR/Finance sign-off checklist
+
+Complete **before** any `--apply` deletion run against a non-dev database. **Consult legal counsel
+before running `--apply` on any non-dev database — this document does not constitute legal advice.**
+
+- [ ] Retention periods reviewed by legal counsel (KVKK compliance)
+- [ ] Point/bonus ledger hard-delete exception documented + approved by legal
+- [ ] Audit log minimum retention floor confirmed with HR/Finance
+- [ ] Employee PII deletion scope reviewed against Turkish employment law
+- [ ] Estimated/vested prim distinction confirmed in deletion scope
+      (CLAUDE.md: "Prim 'takdiri/koşullu' çerçevelenir")
+- [ ] Sign-off: Legal ____ | HR ____ | Finance ____
+- [ ] Date of sign-off: ____

@@ -126,6 +126,13 @@ okumaz/loglamaz (SI-11).
 
 **Durum:** ❌ Yapılmadı
 
+**Script:** `scripts/deletion-dry-run.sh` (staging/local only — `STAGING_CONFIRMED=1` +
+`TARGET_DB_URL` zorunlu; prod-benzeri URL `PRODUCTION_OVERRIDE=yes` ister). Ledger/audit/snapshot
+**asla silinmez** (yalnız sayılır + uyarılır).
+**Evidence konumu:** [data-lifecycle.md](runbooks/data-lifecycle.md) §7 (drill evidence) + §8
+(legal/HR/finance sign-off checklist); doğrulama §6. **`--apply` bir non-dev DB'de çalıştırılmadan
+önce §8 sign-off checklist'i tamamlanmış olmalıdır.**
+
 > **Kapsam notu:** Yıkıcı silme **kod olarak yok** (bilinçli — KVKK legal-review + append-only
 > ledger/audit; [data-lifecycle.md](runbooks/data-lifecycle.md)). Bu bir *prosedür* dry-run'ıdır.
 
