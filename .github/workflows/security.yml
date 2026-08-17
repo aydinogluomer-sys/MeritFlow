@@ -1,8 +1,8 @@
 # ENGINEERING-08 — AppSec scanning (separate from ci.yml to keep concerns clean).
 #   secret-scan       gitleaks over the working tree — BLOCKING (no secret may be committed).
-#   dependency-audit  npm audit (high+) — NON-BLOCKING today (pre-existing debt; see
-#                     docs/runbooks/appsec.md "Dependency audit rollout" — flips to blocking
-#                     once the backlog is cleared). Do NOT add it to required checks yet.
+#   dependency-audit  npm audit (high+) — BLOCKING. The pre-existing backlog was cleared
+#                     in commit 7e3841f, so a new high/critical advisory now fails the
+#                     pipeline (see docs/runbooks/appsec.md "Dependency audit rollout").
 name: Security
 
 on:
@@ -31,9 +31,9 @@ jobs:
 
   dependency-audit:
     runs-on: ubuntu-latest
-    # NON-BLOCKING: the repo has pre-existing high/critical advisories (mostly dev/transitive).
-    # This job SURFACES them without blocking the pipeline; it is flipped to blocking once the
-    # backlog in docs/runbooks/appsec.md is cleared.
+    # BLOCKING: the pre-existing high/critical backlog was cleared in commit 7e3841f, so this
+    # job now gates the pipeline — a new high+ advisory fails the Security workflow.
+    # See the "Dependency audit rollout" note in docs/runbooks/appsec.md.
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -41,5 +41,5 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
-      - name: npm audit (high and above — report; non-blocking for now)
+      - name: npm audit (high and above — blocking)
         run: npm audit --audit-level=high
