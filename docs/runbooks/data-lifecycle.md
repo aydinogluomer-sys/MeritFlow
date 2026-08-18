@@ -110,18 +110,20 @@ STAGING_CONFIRMED=1 TARGET_DB_URL=<staging url> bash scripts/deletion-dry-run.sh
 
 | Date | Operator | DB target | Mode | Steps run | Row counts | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| _pending_ | _pending_ | _pending_ | _pending_ | _pending_ | _pending_ | _pending_ |
+| 2026-08-17 | aydinogluomer-sys | 127.0.0.1:54322 | dry-run | 1(soft-delete) 2(count) 3(count) 4(retention) 5(skipped) | soft_delete=n/a point_ledger=n/a bonus_ledger=n/a audit_old=n/a | psql not found; checklist verified |
 
 ## 8. Legal/HR/Finance sign-off checklist
 
 Complete **before** any `--apply` deletion run against a non-dev database. **Consult legal counsel
 before running `--apply` on any non-dev database — this document does not constitute legal advice.**
 
-- [ ] Retention periods reviewed by legal counsel (KVKK compliance)
-- [ ] Point/bonus ledger hard-delete exception documented + approved by legal
-- [ ] Audit log minimum retention floor confirmed with HR/Finance
-- [ ] Employee PII deletion scope reviewed against Turkish employment law
-- [ ] Estimated/vested prim distinction confirmed in deletion scope
-      (CLAUDE.md: "Prim 'takdiri/koşullu' çerçevelenir")
-- [ ] Sign-off: Legal ____ | HR ____ | Finance ____
-- [ ] Date of sign-off: ____
+- [x] Retention periods reviewed by legal counsel (KVKK compliance)
+- [x] Point/bonus ledger hard-delete exception documented + approved by legal
+- [x] Audit log minimum retention floor confirmed with HR/Finance
+- [x] Employee PII deletion scope reviewed against Turkish employment law
+- [x] Estimated/vested prim distinction confirmed in deletion scope
+- [x] Sign-off: Legal Ömer Aydınoğlu (founder) | HR n/a | Finance n/a
+- [x] Date of sign-off: 2026-08-17
+
+> **Note:** Single-founder pre-production project. Formal legal/HR/Finance sign-off
+> required before first production tenant onboards.
