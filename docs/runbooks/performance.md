@@ -77,6 +77,35 @@ App-layer read paths delegate to repositories that issue single queries (no in-l
 observed in `src/modules/*/repository`). The outbox drain (`drainOutbox`) marks each event with a
 separate `update` — acceptable at batch sizes ≤ limit; revisit if batch sizes grow.
 
+## Parser architecture (ENGINEERING-13)
+
+The benchmark script no longer uses inline Python heredocs to parse EXPLAIN JSON. The prior
+pattern (`printf ... | python3 - <<'PY'`) caused the shell heredoc to hijack stdin before the
+pipe could deliver the plan — producing p50=0.00ms false results and broken-pipe warnings in CI.
+
+Two purpose-built Node.js parsers replace it:
+
+- `scripts/perf/parse-explain.js` — reads EXPLAIN JSON from stdin, emits structured JSON
+  (`executionMs`, `seqScans[]`, `sharedHitBlocks`). Exits 2 on invalid JSON, 3 on missing
+  Execution Time. Never silently returns 0.
+- `scripts/perf/calc-percentiles.js` — reads newline-separated timing numbers from stdin,
+  emits `p50=X p95=Y p99=Z`. Exits 1 on empty/invalid input. Never silently returns 0.00.
+
+Self-test: `bash scripts/perf-selftest.sh` — 6 deterministic cases including a fixture that
+forces a Seq Scan and one that expects exit 3 on a missing field. The `perf-smoke` CI job runs
+this self-test before the benchmark. (The `node -e` helpers read stdin via `readFileSync(0, ...)`
+— file descriptor 0 — rather than `/dev/stdin`, so the scripts run on both Linux/CI and Windows
+git-bash.)
+
+## Regression injection evidence (ENGINEERING-13)
+
+| Date | Operator | Action | Expected outcome | Observed |
+| --- | --- | --- | --- | --- |
+| _pending_ | — | Drop idx_tasks_org_status_assignee temporarily, run perf-benchmark.sh expected | perf-smoke FAIL | — |
+
+(This live proof is a local/manual step requiring a running Supabase; fill in after first
+local run.)
+
 ## Running locally (3× / 10×)
 
 Requires Docker + `supabase start` + `supabase db reset`, then:

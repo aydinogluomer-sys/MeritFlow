@@ -1,0 +1,1 @@
+[{"Plan":{"Node Type":"Index Scan","Relation Name":"tasks","Index Name":"idx_tasks_org_status_assignee","Actual Rows":5},"Execution Time":3.21}]
