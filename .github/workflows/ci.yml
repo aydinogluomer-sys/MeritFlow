@@ -138,6 +138,8 @@ jobs:
             sleep 5
           done
           echo "db reset failed after 3 attempts"; exit 1
+      - name: Perf parser self-test (ENGINEERING-13 false-green guard)
+        run: bash scripts/perf-selftest.sh
       - name: Perf benchmark (expected ICP profile)
         run: bash scripts/perf-benchmark.sh expected
       - name: Stop Supabase

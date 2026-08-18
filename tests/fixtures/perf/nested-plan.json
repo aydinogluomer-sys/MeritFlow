@@ -1,0 +1,1 @@
+[{"Plan":{"Node Type":"Hash Join","Actual Rows":200,"Shared Hit Blocks":64,"Plans":[{"Node Type":"Index Scan","Relation Name":"memberships","Index Name":"idx_memberships_org_profile","Actual Rows":50},{"Node Type":"Seq Scan","Relation Name":"point_ledger","Actual Rows":200}]},"Execution Time":12.0}]

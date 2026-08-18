@@ -5,7 +5,8 @@
 # (structural regression = a missing/unused index). Full-set aggregates (leaderboard, finance
 # views) legitimately scan their whole set — those are report-only. Timing is always report-only
 # (CI timing is noisy). Requires a running Supabase (local `supabase start` + `db reset`, or CI)
-# and psql + python3. Deliberately no `set -euo pipefail` (run every query, then decide).
+# and psql + Node.js (for the scripts/perf/ JSON parsers). Deliberately no `set -euo pipefail`
+# (run every query, then decide).
 
 PROFILE="${1:-expected}"
 case "$PROFILE" in
@@ -39,46 +40,37 @@ fail=0
 bench() {
   local name="$1" sql="$2" gate="$3"
   local times=() seq_table="" seq_rows=0 seq_hit=0
-  local r plan line et sh st sr
+  local r plan parsed tmpfile et sh st sr seq_count
   for r in $(seq 1 "$REPS"); do
     plan=$(psql "$DB_URL" -tAqc "explain (analyze, buffers, format json) ${sql}" 2>/dev/null)
     if [ -z "$plan" ]; then echo "  ${name}: EXPLAIN failed"; fail=1; return; fi
-    line=$(printf '%s' "$plan" | python3 - <<'PY'
-import sys, json
-try:
-    plan = json.load(sys.stdin)[0]
-except Exception:
-    print("0 0 - 0"); sys.exit()
-et = plan.get('Execution Time', 0.0)
-big = []
-def walk(n):
-    if n.get('Node Type') == 'Seq Scan':
-        big.append((n.get('Relation Name', '?'), int(n.get('Actual Rows', 0))))
-    for c in n.get('Plans', []):
-        walk(c)
-walk(plan['Plan'])
-big.sort(key=lambda x: -x[1])
-r = big[0] if big else ('-', 0)
-print(f"{et:.3f} {1 if big else 0} {r[0]} {r[1]}")
-PY
-)
-    read -r et sh st sr <<<"$line"
+    # Parse the EXPLAIN JSON via the dedicated Node parser (no inline heredoc + pipe, which
+    # would let the heredoc hijack stdin and always yield et=0). Write the plan to a temp file
+    # so the parser reads it as a clean stdin redirect.
+    tmpfile=$(mktemp)
+    printf '%s' "$plan" > "$tmpfile"
+    parsed=$(node scripts/perf/parse-explain.js < "$tmpfile" 2>/dev/null); rm -f "$tmpfile"
+    if [ -z "$parsed" ]; then echo "  ${name}: parse-explain failed"; fail=1; return; fi
+    et=$(echo "$parsed" | node -e "process.stdout.write(String(JSON.parse(require('fs').readFileSync(0,'utf8')).executionMs))")
+    seq_count=$(echo "$parsed" | node -e "process.stdout.write(String(JSON.parse(require('fs').readFileSync(0,'utf8')).seqScans.length))")
+    if [ "$seq_count" -gt 0 ]; then
+      st=$(echo "$parsed" | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8')); process.stdout.write(d.seqScans[0].relation)")
+      sr=$(echo "$parsed" | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8')); process.stdout.write(String(d.seqScans[0].actualRows))")
+      sh=1
+    else
+      sh=0; st="-"; sr=0
+    fi
     times+=("$et")
     if [ "$sh" = "1" ] && [ "${sr:-0}" -gt "$BIG_TABLE_ROWS" ]; then
       seq_hit=1; seq_table="$st"; seq_rows="$sr"
     fi
   done
   local pcts
-  pcts=$(printf '%s\n' "${times[@]}" | python3 - <<'PY'
-import sys, math
-xs = sorted(float(l) for l in sys.stdin if l.strip())
-def pc(p):
-    if not xs: return 0.0
-    return xs[min(len(xs)-1, max(0, math.ceil(p/100*len(xs))-1))]
-print(f"{pc(50):.2f} {pc(95):.2f} {pc(99):.2f}")
-PY
-)
-  read -r p50 p95 p99 <<<"$pcts"
+  pcts=$(printf '%s\n' "${times[@]}" | node scripts/perf/calc-percentiles.js 2>/dev/null)
+  if [ -z "$pcts" ]; then echo "  ${name}: percentile calculation failed"; fail=1; return; fi
+  p50=$(echo "$pcts" | sed 's/p50=\([^ ]*\).*/\1/')
+  p95=$(echo "$pcts" | sed 's/.*p95=\([^ ]*\).*/\1/')
+  p99=$(echo "$pcts" | sed 's/.*p99=\([^ ]*\)/\1/')
   local flag="ok"
   if [ "$seq_hit" = "1" ]; then
     if [ "$gate" = "1" ]; then flag="SEQ-SCAN on ${seq_table} (${seq_rows} rows) — REGRESSION"; fail=1;
