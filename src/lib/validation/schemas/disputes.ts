@@ -26,4 +26,5 @@ export const ResolveDisputeSchema = z.object({
   decisionNote: z.string().min(5).max(2000),
   pointsDelta: z.number().int().optional(),
   bonusPeriodId: z.string().uuid().optional(),
+  commandId: z.string().uuid().optional(), // ENGINEERING-15
 });

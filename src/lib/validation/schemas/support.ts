@@ -5,8 +5,10 @@ export const GrantSupportAccessSchema = z.object({
   scope: z.string().min(1).max(500),
   reason: z.string().min(5).max(1000),
   expiresAt: z.string().datetime(),
+  commandId: z.string().uuid().optional(), // ENGINEERING-15
 });
 
 export const RevokeSupportAccessSchema = z.object({
   grantId: z.string().uuid(),
+  commandId: z.string().uuid().optional(), // ENGINEERING-15
 });

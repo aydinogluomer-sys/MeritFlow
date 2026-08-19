@@ -33,3 +33,20 @@ export function logError(
     ...(scrubValue(extras) as Record<string, unknown>),
   } as LogEntry);
 }
+
+/**
+ * Structured info-level telemetry (ENGINEERING-15 command tracing). Same scrubbed, single-line
+ * JSON sink as {@link logError}; used to record a stable commandId/correlationId per critical
+ * mutation so a retry is traceable end-to-end (never carries a secret — extras are scrubbed).
+ */
+export function logInfo(
+  msg: string,
+  extras: Omit<LogEntry, 'level' | 'ts' | 'msg'> = {},
+): void {
+  emit({
+    level: 'info',
+    ts: new Date().toISOString(),
+    msg: scrubString(msg),
+    ...(scrubValue(extras) as Record<string, unknown>),
+  } as LogEntry);
+}

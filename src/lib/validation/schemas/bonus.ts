@@ -3,6 +3,8 @@ import { z } from 'zod';
 export const RunCalculationSchema = z.object({
   periodId: z.string().uuid(),
   poolId: z.string().uuid(),
+  // ENGINEERING-15: stable idempotency key minted once at the UI boundary; resent on retry.
+  commandId: z.string().uuid().optional(),
 });
 
 /**
@@ -29,10 +31,12 @@ export const CreatePoolSchema = z.object({
 
 export const PostAccrualSchema = z.object({
   periodId: z.string().uuid(),
+  commandId: z.string().uuid().optional(), // ENGINEERING-15
 });
 
 export const RecalculateSchema = z.object({
   periodId: z.string().uuid(),
+  commandId: z.string().uuid().optional(), // ENGINEERING-15
 });
 
 export const RunScanSchema = z.object({
