@@ -109,6 +109,42 @@ jobs:
         if: always()
         run: npx --no-install supabase stop
 
+  # ── Concurrency harness (ENGINEERING-16): real multi-session pg.Client races against a booted
+  #    Supabase, proving the DB-level uniqueness guards prevent double-effects under concurrency.
+  #    Runs AFTER db (migrations + pgTAP must pass first). Mirrors perf-smoke's boot/reset shape. ──
+  concurrency-db:
+    needs: [db]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Start Supabase (Docker)
+        run: npx --no-install supabase start
+      - name: Reset DB — apply all migrations + seed (retry transient infra failures)
+        run: |
+          for attempt in 1 2 3; do
+            echo "::group::db reset attempt $attempt"
+            if npx --no-install supabase db reset; then
+              echo "::endgroup::"; echo "db reset OK on attempt $attempt"; exit 0
+            fi
+            echo "::endgroup::"
+            npx --no-install supabase stop || true
+            npx --no-install supabase start
+            sleep 5
+          done
+          echo "db reset failed after 3 attempts"; exit 1
+      - name: Concurrency harness (ENGINEERING-16)
+        env:
+          TEST_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: npm run test:concurrency
+      - name: Stop Supabase
+        if: always()
+        run: npx --no-install supabase stop
+
   # ── Perf smoke (ICP): seed the expected profile + EXPLAIN the hot queries; fail on a
   #    selective-query seq-scan-on-large-table regression. 3x/10x run locally (docs/runbooks/
   #    performance.md), not in CI. Not a required check until the budgets are tuned. ──
