@@ -207,7 +207,7 @@ export async function createTestTask(opts: {
     let found = false;
     while (queue.length > 0) {
       const current = queue.shift()!;
-      const last = current[current.length - 1];
+      const last = current[current.length - 1] as string;
       if (last === targetStatus) {
         path.splice(0, path.length, ...current);
         found = true;
