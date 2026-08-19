@@ -46,3 +46,8 @@ export async function getActiveOrg(): Promise<Membership | null> {
 
   return match ?? memberships[0]!;
 }
+
+// ENGINEERING-14: typed org context abstraction. Import from here
+// so callers have a single entry point for org-related types.
+export type { ActiveOrgContext } from './active-org-context';
+export { getActiveOrgContext } from './active-org-context';
