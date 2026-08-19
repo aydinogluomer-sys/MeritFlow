@@ -175,8 +175,18 @@ export async function runReconciliation(
 
 // ── Test-only row factories (service role; bypass RLS) ──────────────────────────────────────────
 // NOTE: `tasks` requires complexity/impact/base_points/scoring_policy_version_id (NOT NULL) beyond
-// the spec's opts, so sensible defaults are filled here. `status` defaults to 'in_progress' so the
-// assignee's submit form renders (the detail page shows it only for in_progress + assignee).
+// the spec's opts, so sensible defaults are filled here. `status` defaults to 'in_progress'.
+// The DB trigger only allows INSERT with status='draft'|'assigned'; any other target status is
+// reached by walking the valid state-machine transitions after the initial INSERT.
+
+// Valid task status transitions (from doc-16 §1 state machine).
+const TASK_TRANSITIONS: Record<string, string[]> = {
+  draft: ['assigned'],
+  assigned: ['in_progress', 'cancelled'],
+  in_progress: ['submitted', 'cancelled'],
+  submitted: ['needs_revision', 'approved', 'rejected'],
+  needs_revision: ['in_progress'],
+};
 
 export async function createTestTask(opts: {
   organizationId: string;
@@ -186,13 +196,42 @@ export async function createTestTask(opts: {
   title: string;
   status?: string;
 }): Promise<string> {
+  const targetStatus = opts.status ?? 'in_progress';
+
+  // The DB trigger only allows INSERT with status 'draft' or 'assigned'.
+  // Walk the state machine from 'draft' to the target status via valid transitions.
+  const path: string[] = ['draft'];
+  if (targetStatus !== 'draft') {
+    const visited = new Set<string>();
+    const queue: string[][] = [['draft']];
+    let found = false;
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      const last = current[current.length - 1];
+      if (last === targetStatus) {
+        path.splice(0, path.length, ...current);
+        found = true;
+        break;
+      }
+      if (visited.has(last)) continue;
+      visited.add(last);
+      for (const next of TASK_TRANSITIONS[last] ?? []) {
+        queue.push([...current, next]);
+      }
+    }
+    if (!found) {
+      throw new Error(`createTestTask: no valid transition path from 'draft' to '${targetStatus}'`);
+    }
+  }
+
+  // INSERT with the first status in the path (must be 'draft' or 'assigned').
   const { data, error } = await adminClient()
     .from('tasks')
     .insert({
       organization_id: opts.organizationId,
       team_id: opts.teamId,
       title: opts.title,
-      status: opts.status ?? 'in_progress',
+      status: path[0],
       created_by: opts.createdBy,
       assigned_to: opts.assignedTo,
       complexity: 'medium',
@@ -203,7 +242,20 @@ export async function createTestTask(opts: {
     .select('id')
     .single();
   if (error) throw new Error(`createTestTask: ${error.message}`);
-  return (data as { id: string }).id;
+  const id = (data as { id: string }).id;
+
+  // Advance through intermediate states to reach the target.
+  for (let i = 1; i < path.length; i++) {
+    const { error: updateError } = await adminClient()
+      .from('tasks')
+      .update({ status: path[i] })
+      .eq('id', id);
+    if (updateError) {
+      throw new Error(`createTestTask: transition to '${path[i]}' failed — ${updateError.message}`);
+    }
+  }
+
+  return id;
 }
 
 export async function createTestPeriod(opts: {
