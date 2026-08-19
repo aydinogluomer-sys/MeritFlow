@@ -42,6 +42,27 @@ export default defineConfig({
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: 'tests/e2e/.auth/emp-user.json' },
     },
+    // ENGINEERING-17 — golden-path fixtures.
+    {
+      name: 'authenticated-mgr',
+      testMatch: /authenticated-mgr\.spec\.ts/,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: 'tests/e2e/.auth/mgr-user.json' },
+    },
+    {
+      name: 'authenticated-finance',
+      testMatch: /authenticated-finance\.spec\.ts/,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: 'tests/e2e/.auth/finance-user.json' },
+    },
+    // Golden multi-actor chains: no default storageState — each test opens its own contexts with
+    // the right role's storageState directly. trace kept on failure for CI diagnosis.
+    {
+      name: 'golden',
+      testMatch: /golden-(a|b|c)-.*\.spec\.ts/,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], trace: 'retain-on-failure' },
+    },
   ],
   // CI runs the PRODUCTION server (routes pre-compiled by an earlier `next build` step) so
   // navigations are fast and deterministic — `next dev` cold-compiles each route on first hit,

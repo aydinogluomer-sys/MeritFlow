@@ -267,6 +267,17 @@ jobs:
       - name: E2E — authenticated read-path + negative-authz (hr, emp)
         if: always()
         run: npm run test:e2e -- --project=authenticated-hr --project=authenticated-emp --no-deps
+      # ENGINEERING-17 — golden-path mutation chains (multi-actor). `--no-deps` because the setup
+      # step above already produced all storageState fixtures (hr/emp/mgr/finance/emp-b).
+      - name: E2E — golden A (full normal payout chain)
+        if: always()
+        run: npm run test:e2e -- --project=golden --grep "Golden A" --no-deps
+      - name: E2E — golden B (dispute chain)
+        if: always()
+        run: npm run test:e2e -- --project=golden --grep "Golden B" --no-deps
+      - name: E2E — golden C (security + IDOR)
+        if: always()
+        run: npm run test:e2e -- --project=golden --grep "Golden C" --no-deps
       - name: Upload Playwright traces on failure
         if: failure()
         uses: actions/upload-artifact@v4
