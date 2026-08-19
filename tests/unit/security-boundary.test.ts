@@ -42,12 +42,19 @@ describe('security / boundary invariants (Phase 8 Decision-Lock)', () => {
     const ONBOARDING_DIR = join(ACTIONS_DIR, 'onboarding');
     // settings/ actions use requireUser() (self-service identity, no role-gate needed — AD1).
     const SETTINGS_DIR = join(ACTIONS_DIR, 'settings');
+    // organizations/ actions (e.g. set-active-org) are self-service CONTEXT selection:
+    // requireUser() + DB membership validation (the org is verified against the caller's own
+    // memberships before use), no role-gate — same category as settings/ (ENGINEERING-14, AD1).
+    // Still covered below by the organizations/ requireUser( invariant.
+    const ORGANIZATIONS_DIR = join(ACTIONS_DIR, 'organizations');
     const files = tsFiles(ACTIONS_DIR).filter(
       (f) =>
         !f.startsWith(ONBOARDING_DIR + '\\') &&
         !f.startsWith(ONBOARDING_DIR + '/') &&
         !f.startsWith(SETTINGS_DIR + '\\') &&
-        !f.startsWith(SETTINGS_DIR + '/'),
+        !f.startsWith(SETTINGS_DIR + '/') &&
+        !f.startsWith(ORGANIZATIONS_DIR + '\\') &&
+        !f.startsWith(ORGANIZATIONS_DIR + '/'),
     );
     // Sanity: the non-onboarding action surface exists and was actually scanned.
     expect(files.length).toBeGreaterThan(0);
@@ -164,6 +171,28 @@ describe('security / boundary invariants (Phase 8 Decision-Lock)', () => {
     expect(
       offenders.map(rel),
       `Settings action(s) missing requireUser( — server-side identity verification is required for self-service actions (AD1):\n${offenders
+        .map(rel)
+        .join('\n')}`,
+    ).toEqual([]);
+  });
+
+  // ── Invariant 3c: organizations actions use requireUser( for server-side identity (AD1) ──
+  //
+  // organizations/ actions (set-active-org) select the caller's active-org CONTEXT; they are
+  // exempt from the requirePermission( invariant (no role-gate — you don't need a permission to
+  // pick which of YOUR orgs is active) but MUST still verify identity server-side and validate
+  // the org against the caller's own memberships (ENGINEERING-14, AD1). Mirrors settings/.
+  it('organizations context actions use requireUser( for server-side identity (AD1)', () => {
+    const ORGANIZATIONS_DIR = join(ACTIONS_DIR, 'organizations');
+    const files = tsFiles(ORGANIZATIONS_DIR);
+    // Sanity: the organizations action surface exists and was actually scanned.
+    expect(files.length).toBeGreaterThan(0);
+
+    const offenders = files.filter((f) => !readFileSync(f, 'utf8').includes('requireUser('));
+
+    expect(
+      offenders.map(rel),
+      `Organizations action(s) missing requireUser( — server-side identity verification is required for context-selection actions (AD1):\n${offenders
         .map(rel)
         .join('\n')}`,
     ).toEqual([]);
