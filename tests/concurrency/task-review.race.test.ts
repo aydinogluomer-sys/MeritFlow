@@ -66,6 +66,7 @@ describe('Race 4 — task approval x2 (same task)', () => {
 describe('Race 6 — period lock vs task approval (documented observation)', () => {
   let admin: Client;
   const period = crypto.randomUUID();
+  const pool = crypto.randomUUID();
   const taskId = crypto.randomUUID();
 
   beforeAll(async () => {
@@ -74,6 +75,16 @@ describe('Race 6 — period lock vs task approval (documented observation)', () 
       `insert into public.bonus_periods (id, organization_id, period_type, starts_on, ends_on, status, created_by)
        values ($1::uuid,$2::uuid,'monthly',date '2026-09-01',date '2026-09-30','open',$3::uuid)`,
       [period, ORG_A, HR_A],
+    );
+    await admin.query(
+      `insert into public.bonus_pools (id, organization_id, bonus_period_id, amount_minor, currency, status, created_by)
+       values ($1::uuid,$2::uuid,$3::uuid,10000000,'TRY','draft',$4::uuid)`,
+      [pool, ORG_A, period, HR_A],
+    );
+    await admin.query(
+      `update public.bonus_pools set status='locked', t_org=1, locked_at=now(), locked_by=$2::uuid
+        where id=$1::uuid and status='draft'`,
+      [pool, HR_A],
     );
     await createTask(admin, taskId);
   });
