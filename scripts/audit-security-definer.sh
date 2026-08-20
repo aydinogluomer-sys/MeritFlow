@@ -20,6 +20,13 @@ RESULT=$(psql "$DB_URL" --no-psqlrc -At -c "
   JOIN pg_namespace n ON n.oid = p.pronamespace
   WHERE p.prosecdef = true
     AND n.nspname NOT IN ('pg_catalog','information_schema','pg_toast')
+    AND NOT EXISTS (
+      SELECT 1
+      FROM pg_depend d
+      WHERE d.classid = 'pg_proc'::regclass
+        AND d.objid = p.oid
+        AND d.deptype = 'e'
+    )
   ORDER BY n.nspname, p.proname;
 ")
 
