@@ -82,7 +82,7 @@ select is(
 
 -- (#8) Old snapshot is immutable (ADR-006): UPDATE -> 23001.
 select throws_ok(
-  $$ update public.bonus_allocation_snapshots set undistributed_remainder_minor = 0 where id = _b7c_snap('a0000000-0000-0000-0000-000000000230') $$,
+  $$ update public.bonus_allocation_snapshots set undistributed_remainder_minor = 999999 where id = _b7c_snap('a0000000-0000-0000-0000-000000000230') $$,
   '23001', NULL, 'old snapshot is immutable (UPDATE -> 23001, ADR-006)');
 
 -- (#9) Re-approval required: re-accrual is blocked while the period is 'calculated'.
