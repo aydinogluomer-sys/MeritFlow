@@ -6,6 +6,7 @@ import { ExportPayoutSchema } from '@/lib/validation/schemas/payroll';
 import { requirePermission } from '@/lib/auth/rbac';
 import { getActiveOrg } from '@/lib/auth/org';
 import { getUser } from '@/lib/auth/session';
+import { rateLimiter, RateLimitExceededError } from '@/lib/rate-limit';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { toDomainError } from '@/lib/errors';
 import { commandFrom, COMMAND_OPERATIONS } from '@/lib/commands/command-meta';
@@ -22,6 +23,11 @@ export const exportPayout = validatedAction(ExportPayoutSchema, async (input) =>
   await requirePermission('payout.export');
   const org = await getActiveOrg();
   const user = await getUser();
+
+  // ENGINEERING-19 (8.4): sensitive-mutation rate limit (per org, 60s window).
+  if (!(await rateLimiter.check('export_payout', org!.organization_id, 10, 60))) {
+    throw new RateLimitExceededError('export_payout');
+  }
 
   const { commandId, correlationId } = commandFrom(input.commandId);
   const admin = createAdminClient();

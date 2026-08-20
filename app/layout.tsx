@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import { Inter } from 'next/font/google';
 import { Toaster } from 'sonner';
 import { NuqsAdapter } from 'nuqs/adapters/next/app';
@@ -14,11 +15,14 @@ export const metadata: Metadata = {
 };
 
 // UI language is Turkish (Decision Lock D8); i18n infrastructure is left open for V1.
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  // ENGINEERING-19 (8.3): read the per-request CSP nonce (set in proxy.ts). The nonce attribute on
+  // <html> is a no-op at runtime today but is the ready hook for any future inline <Script> tags.
+  const nonce = (await headers()).get('x-nonce') ?? '';
   return (
-    <html lang="tr" suppressHydrationWarning>
+    <html lang="tr" suppressHydrationWarning nonce={nonce}>
       <body
         className={`${inter.variable} min-h-screen bg-background text-foreground antialiased`}
       >

@@ -31,6 +31,10 @@ vi.mock('@/lib/auth/rbac', () => ({ requirePermission: requirePermissionMock }))
 vi.mock('@/lib/auth/org', () => ({ getActiveOrg: getActiveOrgMock }));
 vi.mock('@/lib/auth/session', () => ({ getUser: getUserMock }));
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: createAdminClientMock }));
+vi.mock('@/lib/rate-limit', () => ({
+  rateLimiter: { check: vi.fn().mockResolvedValue(true) },
+  RateLimitExceededError: class RateLimitExceededError extends Error {},
+}));
 vi.mock('@/lib/logger', () => ({ logInfo: logInfoMock, captureServerError: vi.fn() }));
 vi.mock('@/modules/point-ledger', () => ({
   manualOverride: manualOverrideModuleMock,

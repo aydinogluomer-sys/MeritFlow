@@ -1,0 +1,20 @@
+name: Dependency review
+
+# ENGINEERING-19 (8.2) — PR gate: flag newly-added dependencies with high+ vulnerabilities or
+# copyleft/viral licenses incompatible with a commercial SaaS product. Runs only on pull requests
+# (the action diffs the PR's dependency changes).
+on:
+  pull_request:
+
+jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          deny-licenses: GPL-2.0-only, GPL-3.0-only, AGPL-3.0-only, LGPL-2.1-only

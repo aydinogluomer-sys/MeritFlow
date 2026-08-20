@@ -45,10 +45,10 @@ const eslintConfig = [
     },
   },
   {
-    // Server actions legitimately import the admin client for RPC; unit tests mock/import it.
-    // Both are server-only contexts (not client components) — drop the admin restriction here.
-    // The module-boundary restriction (2) still applies.
-    files: ['src/app/actions/**', 'tests/**'],
+    // Server actions + the rate-limit lib (ENGINEERING-19) legitimately import the admin client for
+    // its SECURITY DEFINER RPC; unit tests mock/import it. All are server-only contexts (not client
+    // components) — drop the admin restriction here. The module-boundary restriction (2) still applies.
+    files: ['src/app/actions/**', 'src/lib/rate-limit/**', 'tests/**'],
     rules: {
       'no-restricted-imports': [
         'error',

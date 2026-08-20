@@ -8,6 +8,10 @@ vi.mock('@/lib/auth/org', () => ({ getActiveOrg: vi.fn() }));
 vi.mock('@/lib/auth/session', () => ({ getUser: vi.fn() }));
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }));
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn() }));
+vi.mock('@/lib/rate-limit', () => ({
+  rateLimiter: { check: vi.fn().mockResolvedValue(true) },
+  RateLimitExceededError: class RateLimitExceededError extends Error {},
+}));
 
 import { requirePermission } from '@/lib/auth/rbac';
 import { getActiveOrg } from '@/lib/auth/org';

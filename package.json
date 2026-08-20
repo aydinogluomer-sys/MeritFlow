@@ -14,6 +14,7 @@
     "test:e2e": "playwright test",
     "test:e2e:golden": "playwright test --project=golden",
     "test:fuzz": "cross-env FAST_CHECK_NUM_RUNS=5000 vitest run tests/unit/bonus-calculation/allocation.property.test.ts",
+    "sbom": "mkdir -p artifacts && cyclonedx-npm --output-format JSON --output-file artifacts/sbom.cdx.json",
     "test:concurrency": "vitest run --config vitest.concurrency.config.ts",
     "format": "prettier --write .",
     "db:reset": "supabase db reset",
@@ -50,6 +51,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@cyclonedx/cyclonedx-npm": "^5.0.0",
     "@eslint/eslintrc": "^3.2.0",
     "@playwright/test": "^1.49.1",
     "@testing-library/jest-dom": "^6.6.3",

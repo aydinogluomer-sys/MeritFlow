@@ -5,25 +5,9 @@ import { withSentryConfig } from '@sentry/nextjs';
 
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 
-// ENGINEERING-08: baseline security response headers applied to EVERY route.
-// CSP is Report-Only for now — there is no golden-path E2E yet (deferred to ENGINEERING-11)
-// to validate an enforcing policy at runtime, and an over-strict CSP would break the app
-// silently (build/unit would stay green). The rollout to an enforcing CSP is documented in
-// docs/runbooks/appsec.md. The 'unsafe-inline'/'unsafe-eval' allowances are placeholders to
-// be tightened (nonce/hash) when the policy is enforced.
-const CSP_REPORT_ONLY = [
-  "default-src 'self'",
-  "base-uri 'self'",
-  "object-src 'none'",
-  "frame-ancestors 'none'",
-  "form-action 'self'",
-  "img-src 'self' data: blob: https:",
-  "font-src 'self' data:",
-  "style-src 'self' 'unsafe-inline'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-  "connect-src 'self' https:",
-].join('; ');
-
+// ENGINEERING-08 + 19 (8.3): baseline security response headers applied to EVERY route.
+// CSP is now per-request nonce-keyed (proxy.ts, ENGINEERING-19). Only static non-nonce headers
+// live here — a static CSP header would conflict with the per-request enforcing policy.
 // Exported for the security-headers unit test (tests/unit/security-headers.test.ts).
 export const SECURITY_HEADERS: { key: string; value: string }[] = [
   { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
@@ -36,7 +20,6 @@ export const SECURITY_HEADERS: { key: string; value: string }[] = [
     value: 'camera=(), microphone=(), geolocation=(), interest-cohort=()',
   },
   { key: 'X-DNS-Prefetch-Control', value: 'off' },
-  { key: 'Content-Security-Policy-Report-Only', value: CSP_REPORT_ONLY },
 ];
 
 const nextConfig: NextConfig = {

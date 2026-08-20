@@ -6,6 +6,7 @@ import { ResolveDisputeSchema } from '@/lib/validation/schemas/disputes';
 import { requirePermission } from '@/lib/auth/rbac';
 import { getActiveOrg } from '@/lib/auth/org';
 import { getUser } from '@/lib/auth/session';
+import { rateLimiter, RateLimitExceededError } from '@/lib/rate-limit';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { commandFrom, COMMAND_OPERATIONS } from '@/lib/commands/command-meta';
 import { logInfo } from '@/lib/logger';
@@ -22,6 +23,11 @@ export const resolveDispute = validatedAction(ResolveDisputeSchema, async (input
   await requirePermission('dispute.resolve');
   const org = await getActiveOrg();
   const user = await getUser();
+
+  // ENGINEERING-19 (8.4): sensitive-mutation rate limit (per org, 60s window).
+  if (!(await rateLimiter.check('resolve_dispute', org!.organization_id, 10, 60))) {
+    throw new RateLimitExceededError('resolve_dispute');
+  }
 
   const { commandId, correlationId } = commandFrom(input.commandId);
   logInfo('command', {

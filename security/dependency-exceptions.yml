@@ -1,0 +1,12 @@
+# ENGINEERING-19 (8.1) — time-bounded dependency-audit exception registry.
+# Every exception MUST carry an `expires` date (YYYY-MM-DD). Indefinite exceptions are FORBIDDEN
+# (CLAUDE.md: no unlimited exceptions). scripts/check-dependency-exceptions.sh fails CI if any
+# exception's `expires` is in the past — forcing a renewal decision rather than silent drift.
+exceptions: []
+# Example format (commented out — copy above when a real, justified exception is needed):
+# - package: some-package
+#   cve: CVE-2024-XXXX
+#   severity: high
+#   reason: "No fix available; only triggered in dev tooling, not runtime"
+#   expires: "2099-12-31"
+#   owner: owner-a@acme.test

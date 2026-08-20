@@ -44,3 +44,6 @@ Thumbs.db
 
 # Sentry Config File
 .env.sentry-build-plugin
+
+# ENGINEERING-19 (8.5) — CycloneDX SBOM output (generated in CI, uploaded as artifact)
+/artifacts/

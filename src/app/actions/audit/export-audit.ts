@@ -5,6 +5,7 @@ import { validatedAction } from '@/lib/validation/action';
 import { ExportAuditSchema } from '@/lib/validation/schemas/audit';
 import { requirePermission, getPermissions } from '@/lib/auth/rbac';
 import { getActiveOrg } from '@/lib/auth/org';
+import { rateLimiter, RateLimitExceededError } from '@/lib/rate-limit';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { exportAudit as exportAuditModule, CompAccessRepository } from '@/modules/audit';
 
@@ -17,6 +18,12 @@ import { exportAudit as exportAuditModule, CompAccessRepository } from '@/module
 export const exportAudit = validatedAction(ExportAuditSchema, async (input) => {
   await requirePermission('audit.read');
   const org = await getActiveOrg();
+
+  // ENGINEERING-19 (8.4): sensitive-mutation rate limit (per org, 60s window).
+  if (!(await rateLimiter.check('export_audit', org!.organization_id, 5, 60))) {
+    throw new RateLimitExceededError('export_audit');
+  }
+
   const permissions = await getPermissions();
   const canSeeRaw = permissions.includes('audit.read') && permissions.includes('comp.read');
 

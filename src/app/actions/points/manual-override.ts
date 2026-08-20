@@ -6,6 +6,7 @@ import { ManualOverrideSchema } from '@/lib/validation/schemas/points';
 import { requirePermission } from '@/lib/auth/rbac';
 import { getActiveOrg } from '@/lib/auth/org';
 import { getUser } from '@/lib/auth/session';
+import { rateLimiter, RateLimitExceededError } from '@/lib/rate-limit';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { toDomainError } from '@/lib/errors';
 import { commandFrom, COMMAND_OPERATIONS } from '@/lib/commands/command-meta';
@@ -24,6 +25,11 @@ export const manualOverride = validatedAction(ManualOverrideSchema, async (input
   await requirePermission('point.override');
   const org = await getActiveOrg();
   const user = await getUser();
+
+  // ENGINEERING-19 (8.4): sensitive-mutation rate limit (per org, 60s window).
+  if (!(await rateLimiter.check('point_override', org!.organization_id, 20, 60))) {
+    throw new RateLimitExceededError('point_override');
+  }
 
   const { commandId, correlationId } = commandFrom(input.commandId);
   const admin = createAdminClient();

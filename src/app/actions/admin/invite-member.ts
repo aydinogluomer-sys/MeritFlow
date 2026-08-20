@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { validatedAction } from '@/lib/validation/action';
 import { requirePermission } from '@/lib/auth/rbac';
 import { getActiveOrg } from '@/lib/auth/org';
+import { rateLimiter, RateLimitExceededError } from '@/lib/rate-limit';
 import { commandFrom, COMMAND_OPERATIONS } from '@/lib/commands/command-meta';
 import { logInfo } from '@/lib/logger';
 import { inviteMember as inviteMemberModule } from '@/modules/admin';
@@ -29,7 +30,12 @@ export const inviteMember = validatedAction(
   }),
   async (input) => {
     await requirePermission('user.invite');
-    await getActiveOrg();
+    const org = await getActiveOrg();
+
+    // ENGINEERING-19 (8.4): sensitive-mutation rate limit (per org, 60s window).
+    if (!(await rateLimiter.check('invite_member', org!.organization_id, 10, 60))) {
+      throw new RateLimitExceededError('invite_member');
+    }
 
     const { commandId, correlationId } = commandFrom(input.commandId);
     logInfo('command', {

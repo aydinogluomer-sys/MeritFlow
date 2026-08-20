@@ -1,0 +1,57 @@
+# ENGINEERING-19 (8.6) — SECURITY DEFINER allowlist (schema.function, one per line).
+# Built from supabase/migrations/0001..0041. scripts/audit-security-definer.sh fails if the
+# live DB has a SECURITY DEFINER function NOT listed here (an un-reviewed privilege escalation)
+# or one missing search_path=''. Add a line ONLY after reviewing the new function.
+public.accept_invitation
+public.apply_dispute_point_adjustment
+public.apply_manual_point_adjustment
+public.apply_review_to_task
+public.check_rate_limit
+public.claim_command
+public.claim_outbox_events
+public.create_invitation
+public.create_organization
+public.current_org
+public.detect_duplicate_task
+public.detect_period_end_spike
+public.detect_same_reviewer_concentration
+public.detect_tiny_task_splitting
+public.enforce_bonus_ledger_balance
+public.enforce_bonus_ledger_payout_cap
+public.enforce_bonus_ledger_pool_cap
+public.enqueue_outbox_event
+public.get_leaderboard
+public.has_permission
+public.has_role
+public.has_support_grant
+public.log_audit
+public.log_comp_access
+public.log_comp_audit
+public.log_dispute_event
+public.log_task_event
+public.manages_team
+public.mark_payout_paid
+public.owns_review_decision
+public.post_bonus_accrual
+public.prevent_delete
+public.prevent_locked_pool_financial_mutation
+public.prevent_mutation
+public.prevent_mutation_except_approval
+public.prevent_mutation_on_completed_run
+public.prevent_mutation_on_locked_pool
+public.prevent_published_scoring_policy_version_mutation
+public.produce_payout_export
+public.prune_rate_limit_counters
+public.read_compensation_record
+public.recalculate_bonus_after_dispute
+public.run_anti_gaming_scan
+public.run_bonus_calculation
+public.score_task_on_approve
+public.shares_org
+public.team_of
+public.validate_bonus_period_transition
+public.validate_calculation_run
+public.validate_dispute_transition
+public.validate_eligibility_primary_team
+public.validate_export
+public.validate_task_review
