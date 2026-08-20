@@ -97,3 +97,25 @@ setup('authenticate as employee', async () => {
     path.join(AUTH_DIR, 'emp-user.json'),
   );
 });
+
+// ENGINEERING-17 — golden-path fixtures: manager (task.review), finance (payout.export/mark_paid),
+// and an Org-B employee (cross-tenant IDOR negative).
+setup('authenticate as manager', async () => {
+  await signInAndSaveState(
+    'mgr-alpha-a@acme.test',
+    'password123',
+    path.join(AUTH_DIR, 'mgr-user.json'),
+  );
+});
+
+setup('authenticate as finance', async () => {
+  await signInAndSaveState(
+    'finance-a@acme.test',
+    'password123',
+    path.join(AUTH_DIR, 'finance-user.json'),
+  );
+});
+
+setup('authenticate as org-b employee', async () => {
+  await signInAndSaveState('emp-b@globex.test', 'password123', path.join(AUTH_DIR, 'emp-b-user.json'));
+});

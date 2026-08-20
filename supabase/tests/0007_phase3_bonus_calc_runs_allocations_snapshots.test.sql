@@ -192,7 +192,7 @@ select throws_ok(
 select throws_ok(
   $$ update public.bonus_allocation_snapshots set undistributed_remainder_minor=1 where id='a0000000-0000-0000-0000-000000000035' $$,
   '23001',
-  'append-only: UPDATE on bonus_allocation_snapshots is not permitted',
+  'append-only: UPDATE of immutable calculation fields on bonus_allocation_snapshots is not permitted',
   'snapshot UPDATE rejected (immutable — INV-6/SI-14)');
 select throws_ok(
   $$ delete from public.bonus_allocation_snapshots where id='a0000000-0000-0000-0000-000000000035' $$,

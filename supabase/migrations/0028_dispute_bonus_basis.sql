@@ -291,17 +291,20 @@ begin
 
   -- raw_share, floor, frac, cap, floored allocation.
   update _bce_tmp set
-    raw_share_num = case when v_sum_adj = 0 then 0 else v_distributable::numeric * adjusted_score / v_sum_adj end;
+    raw_share_num = case when v_sum_adj = 0 then 0 else v_distributable::numeric * adjusted_score / v_sum_adj end
+  where true;
   update _bce_tmp set
     raw_share_minor = floor(raw_share_num)::bigint,
     frac            = raw_share_num - floor(raw_share_num),
     cap_minor       = case when cap_basis_minor is null then null
-                           else floor(cap_basis_minor * v_cap_rate * proration)::bigint end;
+                           else floor(cap_basis_minor * v_cap_rate * proration)::bigint end
+  where true;
   update _bce_tmp set
     cap_applied = case when cap_basis_minor is null then 'pending_missing_cap_basis'
                        when cap_minor < raw_share_minor then 'yes' else 'no' end,
     alloc_minor = case when cap_basis_minor is null then raw_share_minor   -- provisional floor (C)
-                       else least(cap_minor, raw_share_minor) end;
+                       else least(cap_minor, raw_share_minor) end
+  where true;
 
   select coalesce(sum(alloc_minor), 0) into v_dist from _bce_tmp;
   v_remainder := greatest(v_distributable - v_dist, 0);
