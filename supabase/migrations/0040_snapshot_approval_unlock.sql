@@ -91,4 +91,6 @@ create trigger trg_bonus_allocation_snapshots_immutable
 -- -----------------------------------------------------------------------------
 create trigger trg_audit_bonus_allocation_snapshots_approval
   after update on public.bonus_allocation_snapshots
-  for each row execute function public.log_audit();
+  for each row
+  when (old.approved_at is null and new.approved_at is not null)
+  execute function public.log_audit();
