@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { adminClient, createTestTask, runReconciliation } from './helpers/db-admin';
 
 // ENGINEERING-17 Golden B — dispute → resolution → invariants clean. HYBRID: the dispute
@@ -15,9 +16,23 @@ const HR_ID = 'a0000000-0000-0000-0000-0000000000a3';
 let taskId: string;
 let disputeId: string;
 
+async function authedClient(email: string): Promise<SupabaseClient> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) {
+    throw new Error('Golden B setup: missing NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY');
+  }
+
+  const client = createClient(url, anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { error } = await client.auth.signInWithPassword({ email, password: 'password123' });
+  if (error) throw new Error(`Golden B setup auth failed for ${email}: ${error.message}`);
+  return client;
+}
+
 test.describe.serial('Golden B — dispute chain', () => {
   test.beforeAll(async () => {
-    const admin = adminClient();
     taskId = await createTestTask({
       organizationId: ORG_A,
       teamId: TEAM_ALPHA,
@@ -29,7 +44,8 @@ test.describe.serial('Golden B — dispute chain', () => {
 
     // Insert the dispute at 'open' (state-machine entry), then assign a reviewer → 'under_review'
     // so the HR resolve form renders (mirrors the seed's dispute path; reviewer ≠ complainant/owner).
-    const { data: opened, error } = await admin
+    const employee = await authedClient('emp-alpha-a@acme.test');
+    const { data: opened, error } = await employee
       .from('disputes')
       .insert({
         organization_id: ORG_A,
@@ -47,7 +63,8 @@ test.describe.serial('Golden B — dispute chain', () => {
     if (error) throw new Error(`Golden B setup: ${error.message}`);
     disputeId = (opened as { id: string }).id;
 
-    await admin
+    const hr = await authedClient('hr-a@acme.test');
+    await hr
       .from('disputes')
       .update({ status: 'under_review', assigned_reviewer_id: HR_ID })
       .eq('id', disputeId)
