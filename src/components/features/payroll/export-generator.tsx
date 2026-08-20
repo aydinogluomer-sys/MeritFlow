@@ -65,6 +65,7 @@ export function ExportGenerator({ periodOptions, snapshotOptions }: ExportGenera
         toast.error(`Dışa aktarım üretilemedi (${result.error}).`);
         return;
       }
+      setCommandId(crypto.randomUUID());
       toast.success('Export oluşturuldu.');
       router.refresh();
     });
