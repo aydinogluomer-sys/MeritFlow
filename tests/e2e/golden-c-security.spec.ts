@@ -9,6 +9,14 @@ const TEAM_ALPHA = 'a0000000-0000-0000-0000-0000000000f1';
 const MGR_ID = 'a0000000-0000-0000-0000-0000000000a5';
 const EMP_ALPHA_ID = 'a0000000-0000-0000-0000-0000000000a7';
 
+function formatDate(value: Date): string {
+  return value.toISOString().slice(0, 10);
+}
+
+const RUN_OFFSET_DAYS = Date.now() % 300;
+const PERIOD_START = formatDate(new Date(Date.UTC(2099, 0, 1 + RUN_OFFSET_DAYS)));
+const PERIOD_END = formatDate(new Date(Date.UTC(2099, 0, 30 + RUN_OFFSET_DAYS)));
+
 let orgATaskId: string;
 
 test.describe('Golden C — cross-tenant IDOR + role boundary', () => {
@@ -64,8 +72,8 @@ test.describe('Golden C — cross-tenant IDOR + role boundary', () => {
   test('C5 — Finance cannot reach /bonus/periods/[id] (no period.manage) → /unauthorized', async ({ browser }) => {
     const periodId = await createTestPeriod({
       organizationId: ORG_A,
-      startsOn: '2099-06-01',
-      endsOn: '2099-06-30',
+      startsOn: PERIOD_START,
+      endsOn: PERIOD_END,
     });
     const ctx = await browser.newContext({ storageState: 'tests/e2e/.auth/finance-user.json' });
     const page = await ctx.newPage();
