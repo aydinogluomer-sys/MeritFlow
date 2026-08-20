@@ -14,7 +14,25 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@v5
+      - name: Check dependency graph availability
+        id: dependency-graph
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          status_code=$(curl -sS -o /tmp/dependency-graph-check.json -w "%{http_code}" \
+            -u "x-access-token:${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/dependency-graph/sbom")
+
+          if [ "${status_code}" = "200" ]; then
+            echo "supported=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "supported=false" >> "${GITHUB_OUTPUT}"
+            message=$(jq -r '.message // "Dependency graph API is unavailable."' /tmp/dependency-graph-check.json)
+            echo "::warning::Skipping dependency-review-action because dependency graph is unavailable (${status_code}): ${message}"
+          fi
       - uses: actions/dependency-review-action@v4
+        if: steps.dependency-graph.outputs.supported == 'true'
         with:
           fail-on-severity: high
           deny-licenses: GPL-2.0-only, GPL-3.0-only, AGPL-3.0-only, LGPL-2.1-only
