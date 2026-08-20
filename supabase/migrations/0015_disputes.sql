@@ -123,7 +123,8 @@ comment on function public.validate_dispute_transition() is
 -- -----------------------------------------------------------------------------
 -- log_dispute_event(): AUTO-WRITE the append-only dispute_events history on every
 -- disputes INSERT and status transition. SECURITY DEFINER so it can INSERT into
--- dispute_events (which has no authenticated write path). actor_id = auth.uid().
+-- dispute_events (which has no authenticated write path). actor_id prefers auth.uid()
+-- and falls back to reviewer/owner/complainant in trusted (auth.uid() is null) contexts.
 -- -----------------------------------------------------------------------------
 create or replace function public.log_dispute_event()
 returns trigger
@@ -133,7 +134,10 @@ set search_path = ''
 as $$
 declare
   v_event text;
+  v_actor uuid;
 begin
+  v_actor := coalesce(auth.uid(), new.assigned_reviewer_id, new.decision_owner_id, new.complainant_id);
+
   if tg_op = 'INSERT' then
     v_event := 'opened';
   elsif new.status is distinct from old.status then
@@ -152,7 +156,7 @@ begin
   insert into public.dispute_events
     (organization_id, dispute_id, event_type, actor_id, from_status, to_status)
   values
-    (new.organization_id, new.id, v_event, auth.uid(),
+    (new.organization_id, new.id, v_event, v_actor,
      case when tg_op = 'INSERT' then null else old.status end, new.status);
 
   return null;
@@ -160,7 +164,7 @@ end;
 $$;
 
 comment on function public.log_dispute_event() is
-  'Auto-writes the append-only dispute_events trail on every disputes INSERT / status transition (actor = auth.uid()).';
+  'Auto-writes the append-only dispute_events trail on every disputes INSERT / status transition (actor from auth.uid(), or reviewer/owner/complainant in trusted contexts).';
 
 -- =============================================================================
 -- disputes (mutable state machine). Confidential + personal-data.
