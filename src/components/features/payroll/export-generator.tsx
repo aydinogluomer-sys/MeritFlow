@@ -39,6 +39,7 @@ export function ExportGenerator({ periodOptions, snapshotOptions }: ExportGenera
   const [isPending, startTransition] = React.useTransition();
   const [error, setError] = React.useState<string | null>(null);
 
+  const [commandId, setCommandId] = React.useState(() => crypto.randomUUID());
   const [periodId, setPeriodId] = React.useState('');
   const [snapshotId, setSnapshotId] = React.useState('');
   const [format, setFormat] = React.useState<ExportFormat>('csv');
@@ -58,7 +59,7 @@ export function ExportGenerator({ periodOptions, snapshotOptions }: ExportGenera
       return;
     }
     startTransition(async () => {
-      const result = await exportPayout({ periodId, snapshotId, format });
+      const result = await exportPayout({ periodId, snapshotId, format, commandId });
       if (!result.ok) {
         setError(`Dışa aktarım üretilemedi (${result.error}).`);
         toast.error(`Dışa aktarım üretilemedi (${result.error}).`);
@@ -79,6 +80,7 @@ export function ExportGenerator({ periodOptions, snapshotOptions }: ExportGenera
           id="export-period"
           value={periodId}
           onChange={(e) => {
+            setCommandId(crypto.randomUUID());
             setPeriodId(e.target.value);
             setSnapshotId('');
           }}
@@ -104,7 +106,10 @@ export function ExportGenerator({ periodOptions, snapshotOptions }: ExportGenera
         <select
           id="export-snapshot"
           value={snapshotId}
-          onChange={(e) => setSnapshotId(e.target.value)}
+          onChange={(e) => {
+            setCommandId(crypto.randomUUID());
+            setSnapshotId(e.target.value);
+          }}
           disabled={isPending || periodId === ''}
           className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
         >
@@ -131,7 +136,10 @@ export function ExportGenerator({ periodOptions, snapshotOptions }: ExportGenera
         <select
           id="export-format"
           value={format}
-          onChange={(e) => setFormat(e.target.value as ExportFormat)}
+          onChange={(e) => {
+            setCommandId(crypto.randomUUID());
+            setFormat(e.target.value as ExportFormat);
+          }}
           disabled={isPending}
           className="h-9 w-40 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
         >

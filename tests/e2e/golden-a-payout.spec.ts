@@ -22,8 +22,14 @@ const TEAM_ALPHA = 'a0000000-0000-0000-0000-0000000000f1';
 const MGR_ID = 'a0000000-0000-0000-0000-0000000000a5';
 const EMP_ALPHA_ID = 'a0000000-0000-0000-0000-0000000000a7';
 const HR_ID = 'a0000000-0000-0000-0000-0000000000a3';
-const STARTS = '2099-01-01';
-const ENDS = '2099-01-31';
+
+function formatDate(value: Date): string {
+  return value.toISOString().slice(0, 10);
+}
+
+const RUN_OFFSET_DAYS = Date.now() % 300;
+const STARTS = formatDate(new Date(Date.UTC(2099, 0, 1 + RUN_OFFSET_DAYS)));
+const ENDS = formatDate(new Date(Date.UTC(2099, 0, 31 + RUN_OFFSET_DAYS)));
 
 let taskId: string;
 let periodId: string;
@@ -90,6 +96,7 @@ test.describe.serial('Golden A — full normal payout', () => {
         .select('id')
         .eq('organization_id', ORG_A)
         .eq('starts_on', STARTS)
+        .eq('ends_on', ENDS)
         .maybeSingle();
       expect(data?.id).toBeTruthy();
       periodId = data!.id as string;
@@ -159,25 +166,6 @@ test.describe.serial('Golden A — full normal payout', () => {
   });
 
   test('A7 — Finance exports payout (UI)', async ({ browser }) => {
-    const ctx = await browser.newContext({ storageState: 'tests/e2e/.auth/finance-user.json' });
-    const page = await ctx.newPage();
-    await page.goto('/payroll/exports');
-    const snapshot = await getLatestSnapshot(periodId);
-    await page.getByLabel('Prim dönemi (onaylı)').selectOption(periodId);
-    await page.getByLabel('Onaylı anlık görüntü').selectOption(snapshot!.id as string);
-    await page.getByLabel('Biçim').selectOption('csv');
-    // ConfirmDialog: trigger then confirm (scoped to the open <dialog>, same label).
-    await page.getByRole('button', { name: 'Dışa aktarım üret' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Dışa aktarım üret' }).click();
-
-    await expect(async () => {
-      const exports = await getExports(periodId);
-      expect(exports.length).toBeGreaterThanOrEqual(1);
-    }).toPass({ timeout: 15_000, intervals: [1_000] });
-    await ctx.close();
-  });
-
-  test('A7-dup — duplicate export is idempotent (≤ 1 new row)', async ({ browser }) => {
     const before = (await getExports(periodId)).length;
     const ctx = await browser.newContext({ storageState: 'tests/e2e/.auth/finance-user.json' });
     const page = await ctx.newPage();
@@ -185,14 +173,25 @@ test.describe.serial('Golden A — full normal payout', () => {
     const snapshot = await getLatestSnapshot(periodId);
     await page.getByLabel('Prim dönemi (onaylı)').selectOption(periodId);
     await page.getByLabel('Onaylı anlık görüntü').selectOption(snapshot!.id as string);
-    // Fire the confirmed export twice in quick succession.
+    await page.getByLabel('Biçim').selectOption('csv');
     for (let i = 0; i < 2; i++) {
       await page.getByRole('button', { name: 'Dışa aktarım üret' }).click();
       await page.getByRole('dialog').getByRole('button', { name: 'Dışa aktarım üret' }).click();
     }
-    await page.waitForTimeout(3_000); // settle both requests (the one sanctioned settle wait)
-    const after = (await getExports(periodId)).length;
-    expect(after - before).toBeLessThanOrEqual(1);
+
+    await expect(async () => {
+      const exports = await getExports(periodId);
+      expect(exports.length).toBeGreaterThanOrEqual(before + 1);
+      expect(exports.length - before).toBeLessThanOrEqual(1);
+    }).toPass({ timeout: 15_000, intervals: [1_000] });
+    await ctx.close();
+  });
+
+  test('A7-dup — exported period is no longer offered for new exports (UI)', async ({ browser }) => {
+    const ctx = await browser.newContext({ storageState: 'tests/e2e/.auth/finance-user.json' });
+    const page = await ctx.newPage();
+    await page.goto('/payroll/exports');
+    await expect(page.locator(`#export-period option[value="${periodId}"]`)).toHaveCount(0);
     await ctx.close();
   });
 
