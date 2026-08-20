@@ -8,3 +8,12 @@ export type {
   RecalculateInput,
   BonusCalculationContext,
 } from './domain/types';
+// ENGINEERING-18 — pure TS mirror of the SQL allocation engine (property-fuzzed reference).
+export { allocateBonus } from './domain/allocation';
+export type {
+  EmployeeInput,
+  PoolConfig,
+  CapApplied,
+  AllocationRow,
+  AllocationResult,
+} from './domain/allocation';

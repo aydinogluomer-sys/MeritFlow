@@ -1,0 +1,37 @@
+name: Nightly fuzz
+
+# ENGINEERING-18 — deep property-based fuzz of the allocation engine (5000 runs, seed 42). Runs
+# nightly + on demand. Reproduce a counterexample locally with: npm run test:fuzz (fast-check prints
+# the shrunk case + seed/path on failure).
+on:
+  schedule:
+    - cron: '0 2 * * *' # 02:00 UTC daily
+  workflow_dispatch: # manual trigger
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    env:
+      FAST_CHECK_NUM_RUNS: '5000'
+      NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-anon-key
+      SUPABASE_SERVICE_ROLE_KEY: ci-service-role-key
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Deep fuzz (5000 runs, seed 42 — reproduce with npm run test:fuzz)
+        run: npm run test:fuzz
+      - name: Upload shrunk counterexample on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-counterexample
+          path: |
+            .fast-check-counterexample
+            test-results/
+          retention-days: 14
+          if-no-files-found: ignore
