@@ -1,4 +1,5 @@
 import { toDomainError } from '@/lib/errors';
+import { systemClock, type Clock } from '@/lib/time';
 import type {
   AssignReviewerInput,
   DisputeContext,
@@ -15,7 +16,11 @@ type ServerClient = Awaited<ReturnType<typeof import('@/lib/supabase/server').cr
  * D9 (reviewer ≠ complainant/decision_owner) are enforced in the DB, not here.
  */
 export class DisputeRepository {
-  constructor(private readonly supabase: ServerClient) {}
+  constructor(
+    private readonly supabase: ServerClient,
+    // ENGINEERING-24: injectable clock (default = real time) for the resolved_at timestamp.
+    private readonly clock: Clock = systemClock,
+  ) {}
 
   async open(input: OpenDisputeInput, ctx: DisputeContext): Promise<string> {
     const { data, error } = await this.supabase
@@ -49,7 +54,7 @@ export class DisputeRepository {
         status: 'resolved',
         resolution: input.resolution,
         decision_note: input.decisionNote,
-        resolved_at: new Date().toISOString(),
+        resolved_at: this.clock.now().toISOString(),
       })
       .eq('id', input.disputeId)
       .eq('organization_id', ctx.organizationId)

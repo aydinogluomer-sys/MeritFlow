@@ -1,4 +1,5 @@
 import { toDomainError } from '@/lib/errors';
+import { systemClock, type Clock } from '@/lib/time';
 import type { Json } from '@/types/database.generated';
 import type { EnqueueOutboxInput, OutboxContext, OutboxEventRow } from '../domain/types';
 
@@ -11,7 +12,11 @@ type AdminClient = Awaited<ReturnType<typeof import('@/lib/supabase/admin').crea
  * admin-client updates.
  */
 export class OutboxRepository {
-  constructor(private readonly admin: AdminClient) {}
+  constructor(
+    private readonly admin: AdminClient,
+    // ENGINEERING-24: injectable clock (default = real time) so backoff / processed_at are testable.
+    private readonly clock: Clock = systemClock,
+  ) {}
 
   /** Idempotent enqueue; returns the event id (the existing id on a duplicate key). */
   async enqueue(input: EnqueueOutboxInput, ctx: OutboxContext): Promise<string> {
@@ -37,7 +42,7 @@ export class OutboxRepository {
   async markCompleted(id: string): Promise<void> {
     const { error } = await this.admin
       .from('outbox_events')
-      .update({ status: 'completed', processed_at: new Date().toISOString() })
+      .update({ status: 'completed', processed_at: this.clock.now().toISOString() })
       .eq('id', id);
     if (error) throw toDomainError(error);
   }
@@ -48,7 +53,7 @@ export class OutboxRepository {
       .from('outbox_events')
       .update({
         status: 'pending',
-        available_at: new Date(Date.now() + backoffSeconds * 1000).toISOString(),
+        available_at: new Date(this.clock.now().getTime() + backoffSeconds * 1000).toISOString(),
         last_error: lastError,
       })
       .eq('id', id);
@@ -58,7 +63,7 @@ export class OutboxRepository {
   async markDead(id: string, lastError: string): Promise<void> {
     const { error } = await this.admin
       .from('outbox_events')
-      .update({ status: 'dead', last_error: lastError, processed_at: new Date().toISOString() })
+      .update({ status: 'dead', last_error: lastError, processed_at: this.clock.now().toISOString() })
       .eq('id', id);
     if (error) throw toDomainError(error);
   }
