@@ -2,6 +2,7 @@ import 'server-only';
 
 import { cookies } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
+import { toDomainError } from '@/lib/errors';
 import { getUser } from './session';
 
 export const ACTIVE_ORG_COOKIE = 'meritflow-active-org';
@@ -22,10 +23,11 @@ export async function getMemberships(): Promise<Membership[]> {
   const user = await getUser();
   if (!user) return [];
   const supabase = await createClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('memberships')
     .select('organization_id, profile_id, primary_role')
     .eq('profile_id', user.id);
+  if (error) throw toDomainError(error);
   return (data ?? []) as Membership[];
 }
 

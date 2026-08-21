@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { createClient } from '@/lib/supabase/server';
+import { toDomainError } from '@/lib/errors';
 import { getActiveOrg } from './org';
 
 /**
@@ -14,10 +15,11 @@ export async function getPermissions(): Promise<string[]> {
   if (!org) return [];
 
   const supabase = await createClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('role_permissions')
     .select('permission_key')
     .eq('role_key', org.primary_role);
+  if (error) throw toDomainError(error);
 
   return (data ?? []).map((r) => (r as { permission_key: string }).permission_key);
 }
