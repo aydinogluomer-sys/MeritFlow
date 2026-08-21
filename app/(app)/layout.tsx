@@ -9,8 +9,16 @@ import { ErrorBoundary } from '@/components/error-boundary';
 
 // Authenticated shell. Identity is validated server-side; unauthenticated users are
 // redirected to /login (middleware also guards, this is defense-in-depth).
+// ENGINEERING-26: getUser() now throws on auth service errors (fail-closed). Catching here
+// and redirecting to /login is the correct behavior: if we cannot verify identity, treat
+// as unauthenticated rather than showing an error page at the protected URL.
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const user = await getUser();
+  let user;
+  try {
+    user = await getUser();
+  } catch {
+    redirect('/login');
+  }
   if (!user) redirect('/login');
 
   const org = await getActiveOrg();
