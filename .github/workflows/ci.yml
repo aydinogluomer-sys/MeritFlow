@@ -132,6 +132,17 @@ jobs:
           echo "Schema drift check: OK (no uncommitted changes)"
       - name: Run pgTAP suite
         run: npx --no-install supabase test db
+      # ENGINEERING-23 (§12): the committed generated DB types must match a fresh generation off the
+      # applied schema. CI never regenerates the committed file — it only proves it is not stale.
+      - name: DB type drift check (ENGINEERING-23)
+        run: |
+          npx --no-install supabase gen types --lang typescript --local > /tmp/database.generated.ts
+          if ! diff -q /tmp/database.generated.ts src/types/database.generated.ts > /dev/null 2>&1; then
+            echo "::error::DB type drift detected — run 'npm run db:types' and commit src/types/database.generated.ts"
+            diff /tmp/database.generated.ts src/types/database.generated.ts || true
+            exit 1
+          fi
+          echo "DB types: no drift"
       - name: SECURITY DEFINER catalog audit (ENGINEERING-19 8.6)
         env:
           SUPABASE_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres

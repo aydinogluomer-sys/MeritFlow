@@ -18,7 +18,8 @@
     "test:concurrency": "vitest run --config vitest.concurrency.config.ts",
     "format": "prettier --write .",
     "db:reset": "supabase db reset",
-    "db:test": "supabase test db"
+    "db:test": "supabase test db",
+    "db:types": "supabase gen types --lang typescript --local > src/types/database.generated.ts"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.2.6",

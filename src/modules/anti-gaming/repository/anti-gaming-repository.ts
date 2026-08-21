@@ -14,7 +14,9 @@ export class AntiGamingRepository {
   async runScan(input: RunScanInput, ctx: AntiGamingContext): Promise<number> {
     const { data, error } = await this.admin.rpc(RUN_ANTI_GAMING_SCAN_RPC, {
       p_organization_id: ctx.organizationId,
-      p_bonus_period_id: input.periodId ?? null,
+      // Optional (SQL `default null`): omit when absent — the typed Args model it as `?: string`,
+      // and an omitted key resolves to the same SQL null as an explicit null.
+      p_bonus_period_id: input.periodId ?? undefined,
     });
     if (error) throw toDomainError(error);
     return data as number;

@@ -15,10 +15,12 @@ export class DisputeAdjustmentRepository {
   async applyPointAdjustment(input: ResolveDisputeInput, ctx: DisputeContext): Promise<void> {
     const { error } = await this.admin.rpc('apply_dispute_point_adjustment', {
       p_dispute_id: input.disputeId,
-      p_points_delta: input.pointsDelta,
+      // Caller (resolve-dispute.ts) only invokes this when resolution='accepted' AND pointsDelta is
+      // present/truthy, so the non-null assertion is a guaranteed invariant, not a hope.
+      p_points_delta: input.pointsDelta!,
       p_reason: input.decisionNote,
       p_actor: ctx.userId,
-      p_bonus_period_id: input.bonusPeriodId ?? null,
+      p_bonus_period_id: input.bonusPeriodId ?? undefined,
     });
     if (error) throw toDomainError(error);
   }
@@ -26,7 +28,8 @@ export class DisputeAdjustmentRepository {
   async recalculateAfterDispute(input: ResolveDisputeInput, ctx: DisputeContext): Promise<void> {
     const { error } = await this.admin.rpc('recalculate_bonus_after_dispute', {
       p_organization_id: ctx.organizationId,
-      p_bonus_period_id: input.bonusPeriodId,
+      // Caller only invokes this inside `if (input.bonusPeriodId)`, so it is guaranteed present.
+      p_bonus_period_id: input.bonusPeriodId!,
       p_triggered_by: ctx.userId,
     });
     if (error) throw toDomainError(error);

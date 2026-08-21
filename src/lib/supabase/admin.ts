@@ -2,6 +2,7 @@ import 'server-only';
 
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { publicEnv, serverEnv } from '@/lib/env';
+import type { Database } from '@/types/database.generated';
 
 /**
  * Service-role (admin) Supabase client — BYPASSES RLS.
@@ -16,7 +17,7 @@ import { publicEnv, serverEnv } from '@/lib/env';
 export function createAdminClient() {
   const { SUPABASE_SERVICE_ROLE_KEY } = serverEnv();
 
-  return createSupabaseClient(
+  return createSupabaseClient<Database>(
     publicEnv.NEXT_PUBLIC_SUPABASE_URL,
     SUPABASE_SERVICE_ROLE_KEY,
     {
