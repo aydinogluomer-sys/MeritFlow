@@ -101,14 +101,47 @@ values
    'd1000000-0000-0000-0000-0000000000a2')
 on conflict (id) do nothing;
 
+-- ------------------ scoring policy + task refs for task_approved --------------
+insert into public.scoring_policies (id, organization_id, name, status, created_by) values
+  ('d1000000-0000-0000-0000-0000000000d1', 'd1000000-0000-0000-0000-000000000001',
+   'N1 Default Scoring', 'active', 'd1000000-0000-0000-0000-0000000000a2')
+on conflict (id) do nothing;
+
+insert into public.scoring_policy_versions
+  (id, organization_id, scoring_policy_id, version_no, status,
+   multipliers, revision_penalty_rule, timeliness_thresholds, published_at, published_by, created_by)
+values
+  ('d1000000-0000-0000-0000-0000000000d2', 'd1000000-0000-0000-0000-000000000001',
+   'd1000000-0000-0000-0000-0000000000d1', 1, 'published',
+   '{"complexity":{"low":1.0,"medium":1.25,"high":1.5,"critical":2.0},"impact":{"low":1.0,"medium":1.2,"high":1.5,"strategic":2.0},"quality":{"acceptable":0.75,"good":1.0,"excellent":1.25,"poor":0},"timeliness":{"early":1.1,"on_time":1.0,"late_minor":0.85,"late_major":0.5}}'::jsonb,
+   '{"rate_per_revision":0.05,"cap":0.25}'::jsonb, '{}'::jsonb,
+   now(), 'd1000000-0000-0000-0000-0000000000a2', 'd1000000-0000-0000-0000-0000000000a2')
+on conflict (id) do nothing;
+
+insert into public.teams (id, organization_id, name, status, manager_id) values
+  ('d1000000-0000-0000-0000-0000000000a9', 'd1000000-0000-0000-0000-000000000001',
+   'N1 Team A', 'active', 'd1000000-0000-0000-0000-0000000000a2')
+on conflict (id) do nothing;
+
+insert into public.tasks
+  (id, organization_id, team_id, title, status, created_by, assigned_to, complexity, impact,
+   base_points, scoring_policy_version_id)
+values
+  ('d1000000-0000-0000-0000-0000000000f1', 'd1000000-0000-0000-0000-000000000001',
+   'd1000000-0000-0000-0000-0000000000a9', 'N1 fixture approved task source', 'assigned',
+   'd1000000-0000-0000-0000-0000000000a2', 'd1000000-0000-0000-0000-0000000000a4', 'medium', 'high',
+   120, 'd1000000-0000-0000-0000-0000000000d2')
+on conflict (id) do nothing;
+
 -- ------------------------ point_ledger (task_approved) -----------------------
 insert into public.point_ledger
   (id, organization_id, employee_id, event_type, points_delta, reason,
-   scoring_policy_version_id, reverses_entry_id, created_by)
+   scoring_policy_version_id, reverses_entry_id, task_id, created_by)
 values
   ('d1000000-0000-0000-0000-0000000000e1', 'd1000000-0000-0000-0000-000000000001',
    'd1000000-0000-0000-0000-0000000000a4', 'task_approved', 120, 'n1 fixture: approved task points',
-   null, null, 'd1000000-0000-0000-0000-0000000000a2')
+   'd1000000-0000-0000-0000-0000000000d2', null, 'd1000000-0000-0000-0000-0000000000f1',
+   'd1000000-0000-0000-0000-0000000000a2')
 on conflict (id) do nothing;
 
 -- =============================================================================
