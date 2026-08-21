@@ -84,6 +84,14 @@ jobs:
       - uses: actions/checkout@v5
       - name: Migration naming, ordering, destructive-op and index-safety check
         run: bash scripts/check-migrations.sh supabase/migrations
+      # ENGINEERING-22 (§11): static DB-surface manifest audit — every migration table/view/
+      # SECURITY DEFINER function must be classified in security/db-surface.yml (no Docker).
+      - name: DB surface manifest audit (ENGINEERING-22)
+        run: bash scripts/audit-db-surface.sh supabase/migrations security/db-surface.yml security/security-definer-allowlist.txt
+      # False-green proof: the audit MUST flag an injected phantom table. The selftest owns its exit
+      # code (0 on pass), so no `|| true` — a real regression here fails the job.
+      - name: DB surface manifest selftest (false-green proof)
+        run: DB_SURFACE_AUDIT_SELFTEST=1 bash scripts/audit-db-surface.sh supabase/migrations security/db-surface.yml security/security-definer-allowlist.txt
 
   # ── Database: apply every migration from scratch + run pgTAP (Supabase via Docker) ──
   db:

@@ -1,0 +1,405 @@
+# =============================================================================
+# ENGINEERING-22 (§11) — role x table access-intent matrix. This is a DESIGN / audit record of the
+# INTENDED read/write access per application role, derived from the RLS policies in the migrations.
+# It is NOT enforced by CI (RLS correctness is proven by pgTAP + cross-tenant tests); it exists so an
+# auditor / legal reviewer can see, at a glance, who is meant to read or write each surface.
+#
+# read  : true | false | own | masked
+#   own    = only the caller's own rows (own organization_id + employee_id / recipient / complainant)
+#   masked = comp only via read_compensation_record (masked summary; raw salary never exposed — AD3)
+# write : true | false   (role-driven write capability via an RLS INSERT/UPDATE policy or a definer RPC;
+#                          universal self-updates like editing one's own profile are noted, not a role power)
+#
+# Notes on non-obvious rows (verified against RLS):
+#   - bonus_ledger / point_ledger / bonus_allocations / v_finance_*: Finance is VIEW-ONLY (SI-12) —
+#     finance cannot raw-read allocations/point_ledger; bonus_ledger raw read is Finance + Auditor ONLY
+#     (HR/employee excluded — migration 0014). Employees see their own bonus via bonus_allocations, not
+#     the money ledger.
+#   - compensation_records: employee read=false (D2); HR/Finance read=masked via read_compensation_record.
+#   - rate_limit_counters: every application role false — server-only via check_rate_limit() (0041).
+# trusted_server = service_role / SECURITY DEFINER context (full access); anon = unauthenticated (none).
+# =============================================================================
+version: "1"
+
+roles:
+  - owner
+  - hr
+  - manager
+  - finance
+  - auditor
+  - employee
+  - support
+  - anon
+  - trusted_server
+
+matrix:
+  organizations:
+    owner:   {read: true,  write: true}
+    hr:      {read: true,  write: false}
+    manager: {read: true,  write: false}
+    finance: {read: true,  write: false}
+    auditor: {read: true,  write: false}
+    employee: {read: true, write: false}
+    support: {read: true,  write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  organization_settings:
+    owner:   {read: true,  write: true}
+    hr:      {read: true,  write: false}
+    manager: {read: true,  write: false}
+    finance: {read: true,  write: false}
+    auditor: {read: true,  write: false}
+    employee: {read: true, write: false}
+    support: {read: true,  write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  profiles:
+    owner:   {read: true,  write: false}
+    hr:      {read: true,  write: false}
+    manager: {read: true,  write: false}
+    finance: {read: true,  write: false}
+    auditor: {read: true,  write: false}
+    employee: {read: true, write: false}
+    support: {read: true,  write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  roles:
+    owner:   {read: true,  write: false}
+    hr:      {read: true,  write: false}
+    manager: {read: true,  write: false}
+    finance: {read: true,  write: false}
+    auditor: {read: true,  write: false}
+    employee: {read: true, write: false}
+    support: {read: true,  write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  permissions:
+    owner:   {read: true,  write: false}
+    hr:      {read: true,  write: false}
+    manager: {read: true,  write: false}
+    finance: {read: true,  write: false}
+    auditor: {read: true,  write: false}
+    employee: {read: true, write: false}
+    support: {read: true,  write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  role_permissions:
+    owner:   {read: true,  write: false}
+    hr:      {read: true,  write: false}
+    manager: {read: true,  write: false}
+    finance: {read: true,  write: false}
+    auditor: {read: true,  write: false}
+    employee: {read: true, write: false}
+    support: {read: true,  write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  memberships:
+    owner:   {read: true,  write: true}
+    hr:      {read: own,   write: false}
+    manager: {read: own,   write: false}
+    finance: {read: own,   write: false}
+    auditor: {read: true,  write: false}
+    employee: {read: own,  write: false}
+    support: {read: true,  write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  teams:
+    owner:   {read: true,  write: true}
+    hr:      {read: true,  write: false}
+    manager: {read: true,  write: false}
+    finance: {read: true,  write: false}
+    auditor: {read: true,  write: false}
+    employee: {read: true, write: false}
+    support: {read: true,  write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  team_memberships:
+    owner:   {read: true,  write: true}
+    hr:      {read: true,  write: false}
+    manager: {read: true,  write: false}
+    finance: {read: true,  write: false}
+    auditor: {read: true,  write: false}
+    employee: {read: true, write: false}
+    support: {read: true,  write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  support_access_grants:
+    owner:   {read: true,  write: true}
+    hr:      {read: false, write: false}
+    manager: {read: false, write: false}
+    finance: {read: false, write: false}
+    auditor: {read: true,  write: false}
+    employee: {read: false, write: false}
+    support: {read: own,   write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  audit_logs:
+    owner:   {read: true,  write: false}
+    hr:      {read: true,  write: false}
+    manager: {read: false, write: false}
+    finance: {read: false, write: false}
+    auditor: {read: true,  write: false}
+    employee: {read: false, write: false}
+    support: {read: false, write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  scoring_policies:
+    owner:   {read: true,  write: true}
+    hr:      {read: true,  write: true}
+    manager: {read: false, write: false}
+    finance: {read: false, write: false}
+    auditor: {read: true,  write: false}
+    employee: {read: false, write: false}
+    support: {read: false, write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  scoring_policy_versions:
+    owner:   {read: true,  write: true}
+    hr:      {read: true,  write: true}
+    manager: {read: false, write: false}
+    finance: {read: false, write: false}
+    auditor: {read: true,  write: false}
+    employee: {read: false, write: false}
+    support: {read: false, write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  point_ledger:
+    owner:   {read: true,  write: false}
+    hr:      {read: true,  write: false}
+    manager: {read: true,  write: false}
+    finance: {read: false, write: false}
+    auditor: {read: true,  write: false}
+    employee: {read: own,  write: false}
+    support: {read: true,  write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  compensation_records:
+    owner:   {read: false,  write: false}
+    hr:      {read: masked, write: false}
+    manager: {read: false,  write: false}
+    finance: {read: masked, write: false}
+    auditor: {read: false,  write: false}
+    employee: {read: false, write: false}
+    support: {read: false,  write: false}
+    anon:    {read: false,  write: false}
+    trusted_server: {read: true, write: true}
+  bonus_periods:
+    owner:   {read: true,  write: true}
+    hr:      {read: true,  write: true}
+    manager: {read: true,  write: false}
+    finance: {read: true,  write: false}
+    auditor: {read: true,  write: false}
+    employee: {read: true, write: false}
+    support: {read: true,  write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  bonus_pools:
+    owner:   {read: false, write: false}
+    hr:      {read: true,  write: false}
+    manager: {read: false, write: false}
+    finance: {read: true,  write: true}
+    auditor: {read: true,  write: false}
+    employee: {read: false, write: false}
+    support: {read: true,  write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  bonus_pool_components:
+    owner:   {read: false, write: false}
+    hr:      {read: true,  write: false}
+    manager: {read: false, write: false}
+    finance: {read: true,  write: true}
+    auditor: {read: true,  write: false}
+    employee: {read: false, write: false}
+    support: {read: false, write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  bonus_pool_eligibility:
+    owner:   {read: false, write: false}
+    hr:      {read: true,  write: false}
+    manager: {read: false, write: false}
+    finance: {read: true,  write: false}
+    auditor: {read: true,  write: false}
+    employee: {read: own,  write: false}
+    support: {read: false, write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  bonus_calculation_runs:
+    owner:   {read: false, write: false}
+    hr:      {read: true,  write: false}
+    manager: {read: false, write: false}
+    finance: {read: true,  write: false}
+    auditor: {read: true,  write: false}
+    employee: {read: false, write: false}
+    support: {read: true,  write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  bonus_allocations:
+    owner:   {read: false, write: false}
+    hr:      {read: true,  write: false}
+    manager: {read: false, write: false}
+    finance: {read: false, write: false}
+    auditor: {read: true,  write: false}
+    employee: {read: own,  write: false}
+    support: {read: true,  write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  bonus_allocation_snapshots:
+    owner:   {read: false, write: false}
+    hr:      {read: true,  write: false}
+    manager: {read: false, write: false}
+    finance: {read: true,  write: false}
+    auditor: {read: true,  write: false}
+    employee: {read: false, write: false}
+    support: {read: true,  write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  bonus_ledger:
+    owner:   {read: false, write: false}
+    hr:      {read: false, write: false}
+    manager: {read: false, write: false}
+    finance: {read: true,  write: false}
+    auditor: {read: true,  write: false}
+    employee: {read: false, write: false}
+    support: {read: false, write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  disputes:
+    owner:   {read: false, write: false}
+    hr:      {read: true,  write: true}
+    manager: {read: own,   write: true}
+    finance: {read: false, write: false}
+    auditor: {read: true,  write: false}
+    employee: {read: own,  write: true}
+    support: {read: false, write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  dispute_events:
+    owner:   {read: false, write: false}
+    hr:      {read: true,  write: false}
+    manager: {read: own,   write: false}
+    finance: {read: false, write: false}
+    auditor: {read: true,  write: false}
+    employee: {read: own,  write: false}
+    support: {read: false, write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  anti_gaming_flags:
+    owner:   {read: true,  write: false}
+    hr:      {read: true,  write: true}
+    manager: {read: true,  write: true}
+    finance: {read: false, write: false}
+    auditor: {read: true,  write: false}
+    employee: {read: false, write: false}
+    support: {read: false, write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  notifications:
+    owner:   {read: own,   write: false}
+    hr:      {read: own,   write: false}
+    manager: {read: own,   write: false}
+    finance: {read: own,   write: false}
+    auditor: {read: own,   write: false}
+    employee: {read: own,  write: false}
+    support: {read: false, write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  exports:
+    owner:   {read: false, write: false}
+    hr:      {read: false, write: false}
+    manager: {read: false, write: false}
+    finance: {read: true,  write: true}
+    auditor: {read: true,  write: false}
+    employee: {read: false, write: false}
+    support: {read: false, write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  tasks:
+    owner:   {read: true,  write: false}
+    hr:      {read: true,  write: false}
+    manager: {read: true,  write: true}
+    finance: {read: false, write: false}
+    auditor: {read: true,  write: false}
+    employee: {read: own,  write: true}
+    support: {read: false, write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  task_events:
+    owner:   {read: true,  write: false}
+    hr:      {read: true,  write: false}
+    manager: {read: true,  write: false}
+    finance: {read: false, write: false}
+    auditor: {read: true,  write: false}
+    employee: {read: own,  write: false}
+    support: {read: false, write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  task_reviews:
+    owner:   {read: true,  write: false}
+    hr:      {read: true,  write: false}
+    manager: {read: true,  write: true}
+    finance: {read: false, write: false}
+    auditor: {read: true,  write: false}
+    employee: {read: own,  write: false}
+    support: {read: false, write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  invitations:
+    owner:   {read: true,  write: true}
+    hr:      {read: false, write: false}
+    manager: {read: false, write: false}
+    finance: {read: false, write: false}
+    auditor: {read: false, write: false}
+    employee: {read: false, write: false}
+    support: {read: false, write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  outbox_events:
+    owner:   {read: false, write: false}
+    hr:      {read: false, write: false}
+    manager: {read: false, write: false}
+    finance: {read: false, write: false}
+    auditor: {read: false, write: false}
+    employee: {read: false, write: false}
+    support: {read: false, write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  command_log:
+    owner:   {read: false, write: false}
+    hr:      {read: false, write: false}
+    manager: {read: false, write: false}
+    finance: {read: false, write: false}
+    auditor: {read: false, write: false}
+    employee: {read: false, write: false}
+    support: {read: false, write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  rate_limit_counters:
+    owner:   {read: false, write: false}
+    hr:      {read: false, write: false}
+    manager: {read: false, write: false}
+    finance: {read: false, write: false}
+    auditor: {read: false, write: false}
+    employee: {read: false, write: false}
+    support: {read: false, write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  v_finance_payout:
+    owner:   {read: false, write: false}
+    hr:      {read: false, write: false}
+    manager: {read: false, write: false}
+    finance: {read: true,  write: false}
+    auditor: {read: true,  write: false}
+    employee: {read: false, write: false}
+    support: {read: false, write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  v_finance_period_totals:
+    owner:   {read: false, write: false}
+    hr:      {read: false, write: false}
+    manager: {read: false, write: false}
+    finance: {read: true,  write: false}
+    auditor: {read: true,  write: false}
+    employee: {read: false, write: false}
+    support: {read: false, write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
