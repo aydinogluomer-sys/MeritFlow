@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SECURITY_HEADERS } from '../../next.config';
+import { buildCsp } from '../../proxy';
 
 // ENGINEERING-08: pins the baseline security response headers so a regression (someone dropping
 // HSTS / frame protection / the no-surveillance Permissions-Policy) fails CI.
@@ -30,13 +31,18 @@ describe('security headers (ENGINEERING-08)', () => {
     expect(pp).toContain('geolocation=()');
   });
 
-  it('ships a CSP baseline (report-only) that locks framing and defaults to self', () => {
-    const csp = byKey['Content-Security-Policy-Report-Only'];
-    expect(csp).toBeDefined();
-    expect(csp).toContain("default-src 'self'");
-    expect(csp).toContain("frame-ancestors 'none'");
-    expect(csp).toContain("object-src 'none'");
-    // Report-Only (not enforcing) until the CSP is validated against golden-path E2E (11).
+  it('CSP is enforced per-request via proxy.ts nonce (not in static headers)', () => {
+    // Static headers no longer carry either CSP variant — the enforcing nonce-keyed CSP lives in
+    // proxy.ts (ENGINEERING-19). Neither key should appear here.
+    expect(byKey['Content-Security-Policy-Report-Only']).toBeUndefined();
     expect(byKey['Content-Security-Policy']).toBeUndefined();
+  });
+
+  it('buildCsp() produces a nonce-keyed enforcing policy without unsafe-inline in script-src', () => {
+    const csp = buildCsp('test-nonce-abc');
+    expect(csp).toContain("'nonce-test-nonce-abc'");
+    expect(csp).toContain("'strict-dynamic'");
+    const scriptSrc = csp.split(';').find((d) => d.trim().startsWith('script-src'));
+    expect(scriptSrc).not.toContain("'unsafe-inline'");
   });
 });

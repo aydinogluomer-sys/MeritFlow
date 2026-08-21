@@ -6,6 +6,7 @@ import { GrantSupportAccessSchema } from '@/lib/validation/schemas/support';
 import { requirePermission } from '@/lib/auth/rbac';
 import { getActiveOrg } from '@/lib/auth/org';
 import { getUser } from '@/lib/auth/session';
+import { rateLimiter, RateLimitExceededError } from '@/lib/rate-limit';
 import { commandFrom, COMMAND_OPERATIONS } from '@/lib/commands/command-meta';
 import { logInfo } from '@/lib/logger';
 import { grantSupportAccess as grantSupportAccessModule } from '@/modules/admin';
@@ -26,6 +27,11 @@ export const grantSupportAccess = validatedAction(GrantSupportAccessSchema, asyn
   await requirePermission('support.grant');
   const org = await getActiveOrg();
   const user = await getUser();
+
+  // ENGINEERING-19 (8.4): sensitive-mutation rate limit (per org, 60s window).
+  if (!(await rateLimiter.check('grant_support', org!.organization_id, 5, 60))) {
+    throw new RateLimitExceededError('grant_support');
+  }
 
   const { commandId, correlationId } = commandFrom(input.commandId);
   logInfo('command', {

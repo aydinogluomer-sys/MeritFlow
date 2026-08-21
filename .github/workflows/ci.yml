@@ -11,6 +11,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 # One in-flight run per ref; new pushes cancel the previous run.
 concurrency:
   group: ci-${{ github.ref }}
@@ -57,6 +60,22 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run test
+
+  # ── AppSec gate (ENGINEERING-19 8.1): dependency audit (high+ → fail) + exception-expiry check.
+  #    Independent — runs in parallel with lint/typecheck/unit (no `needs`). ──
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Dependency audit (critical + high → fail)
+        run: npm audit --audit-level=high
+      - name: Check no dependency exceptions have expired
+        run: bash scripts/check-dependency-exceptions.sh
 
   # ── Migration safety lint — static (naming/ordering/destructive/index); no Docker ──
   migration-lint:
@@ -105,6 +124,10 @@ jobs:
           echo "Schema drift check: OK (no uncommitted changes)"
       - name: Run pgTAP suite
         run: npx --no-install supabase test db
+      - name: SECURITY DEFINER catalog audit (ENGINEERING-19 8.6)
+        env:
+          SUPABASE_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: bash scripts/audit-security-definer.sh
       - name: Stop Supabase
         if: always()
         run: npx --no-install supabase stop
@@ -198,6 +221,15 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - name: Generate SBOM (CycloneDX)
+        run: npm run sbom
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-cdx
+          path: artifacts/sbom.cdx.json
+          retention-days: 90
+          if-no-files-found: error
 
   # ── End-to-end (Playwright). The playwright.config webServer auto-starts `npm run dev`,
   #    so this job only needs a booted, seeded Supabase + the local keys in the app env.

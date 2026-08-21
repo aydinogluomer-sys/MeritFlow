@@ -6,6 +6,7 @@ import { RecalculateSchema } from '@/lib/validation/schemas/bonus';
 import { requirePermission } from '@/lib/auth/rbac';
 import { getActiveOrg } from '@/lib/auth/org';
 import { getUser } from '@/lib/auth/session';
+import { rateLimiter, RateLimitExceededError } from '@/lib/rate-limit';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { toDomainError } from '@/lib/errors';
 import { commandFrom, COMMAND_OPERATIONS } from '@/lib/commands/command-meta';
@@ -22,6 +23,11 @@ export const recalculate = validatedAction(RecalculateSchema, async (input) => {
   await requirePermission('period.manage');
   const org = await getActiveOrg();
   const user = await getUser();
+
+  // ENGINEERING-19 (8.4): sensitive-mutation rate limit (per org, 60s window).
+  if (!(await rateLimiter.check('recalculate', org!.organization_id, 5, 60))) {
+    throw new RateLimitExceededError('recalculate');
+  }
 
   const { commandId, correlationId } = commandFrom(input.commandId);
   const admin = createAdminClient();

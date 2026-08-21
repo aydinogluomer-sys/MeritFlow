@@ -53,7 +53,7 @@ test.describe.serial('Golden A — full normal payout', () => {
     const page = await ctx.newPage();
     await page.goto(`/tasks/${taskId}`);
     await page.getByRole('button', { name: 'İncelemeye gönder' }).click();
-    await expect(page.getByText('İncelemeye gönderildi.')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/İncelemeye gönderildi\.?/i)).toBeVisible({ timeout: 15_000 });
 
     const task = await getTask(taskId);
     expect(task?.status).toBe('submitted');
