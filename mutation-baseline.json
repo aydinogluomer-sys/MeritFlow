@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "generated": "2026-08-22",
+  "note": "Mutation-score floors for the critical pure-logic scope (ENGINEERING-21). minScore = measured score minus a ~2pt tolerance (Stryker timing can flake a mutant to Timeout). scripts/check-mutation-score.js enforces these against reports/mutation/report.json nightly.",
+  "scopes": {
+    "error-translation": {
+      "file": "src/lib/errors/translate.ts",
+      "measured": 100.0,
+      "minScore": 98,
+      "survivors": "0 (2 equivalent StringLiteral mutants on the `?? ''` fallbacks excluded via // Stryker disable — the fallback value never changes the output)"
+    },
+    "bonus-allocation": {
+      "file": "src/modules/bonus-calculation/domain/allocation.ts",
+      "measured": 88.66,
+      "minScore": 86,
+      "survivors": "11 — all analysed EQUIVALENT (documented in tests/unit/bonus-calculation/allocation.deterministic.test.ts): redundant defensive branches (T===0 subsumed by T<=1; T<1 / T===1.2->true differ only at unreachable inputs; sumAdj===0 unreachable; remainder>0 guarded by Math.min) and the LR tie-break's redundant `? 1 : 0` second branch (a -1/0 comparator already yields a stable ascending sort)."
+    }
+  }
+}
