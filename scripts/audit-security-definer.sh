@@ -12,14 +12,22 @@ FAIL=0
 
 echo "=== SECURITY DEFINER audit ==="
 
-# All SECURITY DEFINER functions outside the system schemas (name|proconfig).
+# All app-owned SECURITY DEFINER functions outside the system / Supabase-managed schemas
+# (name|proconfig). Platform-owned helpers such as pgbouncer.get_auth and
+# supabase_functions.http_request are not created by this repo and cannot be hardened here.
 RESULT=$(psql "$DB_URL" --no-psqlrc -At -c "
   SELECT n.nspname || '.' || p.proname AS fn,
          array_to_string(p.proconfig, ',') AS cfg
   FROM pg_proc p
   JOIN pg_namespace n ON n.oid = p.pronamespace
   WHERE p.prosecdef = true
-    AND n.nspname NOT IN ('pg_catalog','information_schema','pg_toast')
+    AND n.nspname NOT IN (
+      'pg_catalog',
+      'information_schema',
+      'pg_toast',
+      'pgbouncer',
+      'supabase_functions'
+    )
     AND NOT EXISTS (
       SELECT 1
       FROM pg_depend d
