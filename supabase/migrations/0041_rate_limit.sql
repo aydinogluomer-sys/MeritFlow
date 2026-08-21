@@ -76,6 +76,6 @@ comment on function public.prune_rate_limit_counters() is
   'Deletes rate_limit_counters rows older than 1 day (opportunistic cleanup). SECURITY DEFINER.';
 
 revoke execute on function public.check_rate_limit(text, uuid, int, int) from public, anon;
-grant execute on function public.check_rate_limit(text, uuid, int, int) to authenticated, service_role;
+grant execute on function public.check_rate_limit(text, uuid, int, int) to service_role;
 revoke execute on function public.prune_rate_limit_counters() from public, anon;
 grant execute on function public.prune_rate_limit_counters() to service_role;

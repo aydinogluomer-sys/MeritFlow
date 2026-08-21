@@ -45,7 +45,8 @@ while IFS='|' read -r fn cfg; do
     echo "FAIL: $fn — missing search_path in proconfig (=$cfg)"
     FAIL=1
   elif ! echo "$cfg" | grep -qE "search_path=$|search_path=''|search_path=\"\""; then
-    echo "WARN: $fn — search_path is set but not empty: $cfg"
+    echo "FAIL: $fn — search_path is set but not empty: $cfg"
+    FAIL=1
   fi
   # Check 2: must be in the allowlist.
   if ! grep -qxF "$fn" "$ALLOWLIST"; then
