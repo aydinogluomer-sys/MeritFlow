@@ -35,7 +35,13 @@ export async function proxy(request: NextRequest) {
   const nonce = btoa(crypto.randomUUID());
   request.headers.set('x-nonce', nonce);
 
-  // Carry the mutated request headers forward so RSC can read x-nonce via headers().
+  // ENGINEERING-20 (§9A): per-request correlation id. Forwarded on the request header so the Node
+  // server action (validatedAction) can read it via headers() and open a telemetry context scope —
+  // AsyncLocalStorage cannot cross the Edge→Node boundary, so a header is the carrier.
+  const requestId = crypto.randomUUID();
+  request.headers.set('x-request-id', requestId);
+
+  // Carry the mutated request headers forward so RSC can read x-nonce / x-request-id via headers().
   let response = NextResponse.next({ request: { headers: request.headers } });
 
   const supabase = createServerClient(
@@ -72,8 +78,10 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Enforcing per-request CSP on the final response.
+  // Enforcing per-request CSP on the final response. Set x-request-id here too (not on the first
+  // NextResponse.next) because the Supabase cookie setAll callback reassigns `response`.
   response.headers.set('Content-Security-Policy', buildCsp(nonce));
+  response.headers.set('x-request-id', requestId);
   return response;
 }
 

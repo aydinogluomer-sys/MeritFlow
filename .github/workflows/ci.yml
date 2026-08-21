@@ -205,6 +205,31 @@ jobs:
         if: always()
         run: npx --no-install supabase stop
 
+  # ── N-1 → N migration upgrade proof (ENGINEERING-20 §9B): prove representative N-1 data survives
+  #    the latest migration. The drill reaches the N-1 baseline (stash N + `supabase db reset`),
+  #    loads the fixture, applies ONLY N on top, then checks data-agnostic financial invariants.
+  #    Does NOT `supabase db reset` to apply N — N lands on top of pre-existing data (the real
+  #    upgrade path). Runs in parallel with `db` / `perf-smoke` (all depend on the fast gates). ──
+  n1-upgrade:
+    needs: [migration-lint, lint, typecheck, unit]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Start Supabase (Docker)
+        run: npx --no-install supabase start
+      - name: N-1 → N upgrade drill
+        env:
+          SUPABASE_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: bash scripts/n1-upgrade-drill.sh
+      - name: Stop Supabase
+        if: always()
+        run: npx --no-install supabase stop
+
   # ── Production build — dummy public env; no live Supabase needed at build time ──
   build:
     needs: [lint, typecheck, unit]
