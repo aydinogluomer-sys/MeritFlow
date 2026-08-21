@@ -9,7 +9,12 @@ interface SupabaseLikeError {
 
 /** Map a Postgres SQLSTATE / PostgREST code (and RLS message) to a stable MeritFlowErrorCode. */
 function codeFor(err: SupabaseLikeError): MeritFlowErrorCode {
+  // Stryker disable next-line StringLiteral: the '' fallback VALUE is irrelevant — a missing code
+  // hits the switch default (INTERNAL) regardless of what the fallback string is. Equivalent mutant.
   const sqlstate = err.code ?? '';
+  // Stryker disable next-line StringLiteral: '' only guards `.toLowerCase()` against an undefined
+  // message; its VALUE never changes the RLS `.includes('row-level security')` result (false for any
+  // non-RLS string). Equivalent mutant.
   const message = (err.message ?? '').toLowerCase();
 
   // RLS: the policy-violation message is the reliable signal — it can arrive under different

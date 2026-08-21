@@ -1,0 +1,36 @@
+name: Nightly Quality
+
+# ENGINEERING-21 (§10) — mutation testing (StrykerJS) is slow, so it runs nightly (and on-demand),
+# NEVER in the per-PR ci.yml pipeline. It measures the suite's assertion strength on the critical
+# pure-logic scope and gates against mutation-baseline.json.
+on:
+  schedule:
+    - cron: '0 2 * * *' # 02:00 UTC nightly
+  workflow_dispatch: {} # manual trigger
+
+permissions:
+  contents: read
+
+jobs:
+  mutation:
+    name: Mutation Testing (Stryker)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Run Stryker (critical scope)
+        run: npm run test:mutation
+      - name: Check score regression against baseline
+        run: node scripts/check-mutation-score.js
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report-${{ github.run_number }}
+          path: reports/mutation/
+          retention-days: 30
+          if-no-files-found: warn
