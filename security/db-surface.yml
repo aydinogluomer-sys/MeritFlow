@@ -1,0 +1,482 @@
+# =============================================================================
+# ENGINEERING-22 (§11) — DB surface manifest. Every public table / view / SECURITY DEFINER
+# function is classified here. scripts/audit-db-surface.sh (migration-lint CI job) fails if the
+# migrations expose any surface item NOT recorded below — so new surface must be classified before
+# it can merge. This is a design/audit record, NOT a policy checker (RLS correctness lives in the
+# migrations + pgTAP; intended read/write access is documented in security/access-matrix.yml).
+#
+# financial_class enum:
+#   compensation_sensitive  comp records (HR/Finance gated, comp audit — AD3/D2)
+#   financial               bonus_*, point_ledger, exports, v_finance_*
+#   catalog                 roles/permissions/role_permissions, scoring_policy*
+#   operational             tasks/task_reviews, memberships, teams/team_*, disputes, notifications,
+#                           invitations, profiles, organizations, organization_settings, anti_gaming_flags
+#   audit_log               audit_logs, task_events, dispute_events (append-only trails)
+#   admin                   outbox_events, command_log, rate_limit_counters, support_access_grants
+#
+# grants: authenticated privileges are taken verbatim from the migration GRANTs (0007 + later);
+# service_role is `all` on every table (trusted server). Absence of an authenticated privilege =
+# server-only for that verb. RLS is ENABLE + FORCE on every table (verified: migrations 0007/0041).
+# =============================================================================
+version: "1"
+generated_from: "supabase/migrations/0001..0041"
+
+tables:
+  organizations:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: operational
+    grants:
+      authenticated: [select, update]
+      service_role: [all]
+    notes: "Tenant root; org-wide read, settings write gated by org.settings.write. No DELETE."
+  organization_settings:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: operational
+    grants:
+      authenticated: [select, insert, update]
+      service_role: [all]
+    notes: "Org default policy (cap_default/locale); audited; write gated by org.settings.write."
+  profiles:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: operational
+    grants:
+      authenticated: [select, insert, update]
+      service_role: [all]
+    notes: "Global identity (profile.id = auth.users.id); personal-data. No DELETE."
+  roles:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: catalog
+    grants:
+      authenticated: [select]
+      service_role: [all]
+    notes: "Global RBAC role catalog (fixed taxonomy D4); read-only for authenticated."
+  permissions:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: catalog
+    grants:
+      authenticated: [select]
+      service_role: [all]
+    notes: "Global permission catalog; authorization source read via DB (AD1). Read-only."
+  role_permissions:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: catalog
+    grants:
+      authenticated: [select]
+      service_role: [all]
+    notes: "Global role->permission map = server-side authz source (AD1). Read-only."
+  memberships:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: operational
+    grants:
+      authenticated: [select, insert, update]
+      service_role: [all]
+    notes: "Tenant RLS anchor (org, profile, primary_role); confidential; audited."
+  teams:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: operational
+    grants:
+      authenticated: [select, insert, update]
+      service_role: [all]
+    notes: "Org teams; write gated by team.manage. No DELETE."
+  team_memberships:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: operational
+    grants:
+      authenticated: [select, insert, update]
+      service_role: [all]
+    notes: "Primary team is canonical here (is_primary, AD9); write gated by team.manage."
+  support_access_grants:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: admin
+    grants:
+      authenticated: [select, insert, update]
+      service_role: [all]
+    notes: "Time-boxed support access (D4); grant gated by support.grant; access is audited."
+  audit_logs:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: audit_log
+    grants:
+      authenticated: [select]
+      service_role: [all]
+    notes: "Append-only audit trail; read Auditor/HR/Owner (audit.read); comp payloads masked (AD3)."
+  scoring_policies:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: catalog
+    grants:
+      authenticated: [select, insert, update]
+      service_role: [all]
+    notes: "Scoring policy header; write gated by policy.manage. No DELETE."
+  scoring_policy_versions:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: catalog
+    grants:
+      authenticated: [select, insert, update]
+      service_role: [all]
+    notes: "Locked scoring policy version (AD7); published version immutable (trigger). No DELETE."
+  point_ledger:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: financial
+    grants:
+      authenticated: [select]
+      service_role: [all]
+    notes: "Append-only single-entry ledger (ADR-005); server-only writes; correction = reversal."
+  compensation_records:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: compensation_sensitive
+    grants:
+      authenticated: [insert, update]
+      service_role: [all]
+    notes: "Comp-sensitive (AD3/D2). Only column-scoped SELECT(id) to authenticated — NO raw comp read; read via read_compensation_record RPC; access audited."
+  bonus_periods:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: financial
+    grants:
+      authenticated: [select, insert, update]
+      service_role: [all]
+    notes: "Period lifecycle state machine (D11/AD10); write gated by period.manage. No DELETE."
+  bonus_pools:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: financial
+    grants:
+      authenticated: [select, insert, update]
+      service_role: [all]
+    notes: "Pool per period; locked financial fields frozen (AD10); read HR/Finance/Auditor. No DELETE."
+  bonus_pool_components:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: financial
+    grants:
+      authenticated: [select, insert, update]
+      service_role: [all]
+    notes: "Pool weighting components (MVP individual=1.0, D1); write gated by pool.create. No DELETE."
+  bonus_pool_eligibility:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: financial
+    grants:
+      authenticated: [select]
+      service_role: [all]
+    notes: "Per-employee eligibility/proration (D10/AD9); server-only writes."
+  bonus_calculation_runs:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: financial
+    grants:
+      authenticated: [select]
+      service_role: [all]
+    notes: "Run header state machine (running/completed/superseded); server-only writes; read HR/Finance/Auditor."
+  bonus_allocations:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: financial
+    grants:
+      authenticated: [select]
+      service_role: [all]
+    notes: "Per-(run,employee) allocation; frozen once run completes (SI-14); read employee-own + HR/Auditor (Finance view-only, SI-12)."
+  bonus_allocation_snapshots:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: financial
+    grants:
+      authenticated: [select]
+      service_role: [all]
+    notes: "Immutable freeze marker per run (INV-6/AD7); one-time approval transition only (0040); server-only writes."
+  bonus_ledger:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: financial
+    grants:
+      authenticated: [select]
+      service_role: [all]
+    notes: "Double-entry money ledger (ADR-017); append-only; Sigma-debit=Sigma-credit per txn; raw read Finance/Auditor only (SI-12)."
+  disputes:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: operational
+    grants:
+      authenticated: [select, insert, update]
+      service_role: [all]
+    notes: "Dispute state machine (D9); read complainant/reviewer/HR/Auditor; resolver != owner. No DELETE."
+  dispute_events:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: audit_log
+    grants:
+      authenticated: [select]
+      service_role: [all]
+    notes: "Append-only dispute trail; auto-written by definer trigger; no authenticated write path."
+  anti_gaming_flags:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: operational
+    grants:
+      authenticated: [select, update]
+      service_role: [all]
+    notes: "Deterministic-rule flags (D5); server-only INSERT (rule engine); human review, no auto-penalty."
+  notifications:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: operational
+    grants:
+      authenticated: [select, update]
+      service_role: [all]
+    notes: "Per-recipient delivery sink; server-only INSERT; recipient-only read/mark-read."
+  exports:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: financial
+    grants:
+      authenticated: [select, insert]
+      service_role: [all]
+    notes: "Payout export record (SI-3/AD6); no export without a snapshot; append-only; read Finance/Auditor."
+  tasks:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: operational
+    grants:
+      authenticated: [select, insert, update]
+      service_role: [all]
+    notes: "Task lifecycle; create/assign/review gated by task.* permissions. No DELETE."
+  task_events:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: audit_log
+    grants:
+      authenticated: [select]
+      service_role: [all]
+    notes: "Append-only task history; server/trigger writes only."
+  task_reviews:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: operational
+    grants:
+      authenticated: [select, insert]
+      service_role: [all]
+    notes: "Review decisions (approve triggers scoring); no self-approval (anti-gaming). No update/delete."
+  invitations:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: operational
+    grants:
+      authenticated: [select]
+      service_role: [all]
+    notes: "Pending member invites; read gated by user.invite; mint/accept via SECURITY DEFINER RPCs."
+  outbox_events:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: admin
+    grants:
+      authenticated: [select]
+      service_role: [all]
+    notes: "Transactional outbox (ENGINEERING-09); server-only enqueue/claim via definer RPCs."
+  command_log:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: admin
+    grants:
+      authenticated: [select]
+      service_role: [all]
+    notes: "Idempotency command log (ENGINEERING-15); server-only claim via definer RPC (unique guard)."
+  rate_limit_counters:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: admin
+    grants:
+      authenticated: []
+      service_role: [all]
+    notes: "Fixed-window rate-limit counters (ENGINEERING-19); NO authenticated grant — server-only via check_rate_limit() definer RPC."
+
+views:
+  v_finance_payout:
+    financial_class: financial
+    grants:
+      authenticated: [select]
+      service_role: [select]
+    notes: "security_invoker view; SELECT granted to authenticated but row visibility is gated by the underlying bonus_ledger RLS (effective read: Finance/Auditor). NO raw points/quality/cap_basis/comp (SI-12)."
+  v_finance_period_totals:
+    financial_class: financial
+    grants:
+      authenticated: [select]
+      service_role: [select]
+    notes: "security_invoker period roll-up; RLS-gated to Finance/Auditor; NO raw allocation/point/comp detail (SI-12)."
+
+security_definer_functions:
+  # rls_helper — read-only helpers consumed by RLS policies (fixed search_path; no recursion).
+  public.current_org:
+    category: rls_helper
+    notes: "Active organization id for the request (RLS anchor)."
+  public.has_permission:
+    category: rls_helper
+    notes: "DB-sourced permission check (AD1); never trusts JWT claims."
+  public.has_role:
+    category: rls_helper
+    notes: "Role check within the active org."
+  public.has_support_grant:
+    category: rls_helper
+    notes: "Active, unexpired support access grant for an org (D4)."
+  public.manages_team:
+    category: rls_helper
+    notes: "Whether the caller manages the given team (manager visibility)."
+  public.owns_review_decision:
+    category: rls_helper
+    notes: "D9 guard: caller is the owner of the disputed decision."
+  public.shares_org:
+    category: rls_helper
+    notes: "Whether two profiles share the active org (same-tenant check)."
+  public.team_of:
+    category: rls_helper
+    notes: "Employee's primary team within the active org (is_primary, AD9)."
+  # state_guard — BEFORE/constraint triggers enforcing state machines + immutability.
+  public.validate_bonus_period_transition:
+    category: state_guard
+    notes: "Bonus period state machine + AD10 pool-lock-before-period-lock."
+  public.validate_calculation_run:
+    category: state_guard
+    notes: "Run state machine + AD10 locked-period/pool guard."
+  public.validate_dispute_transition:
+    category: state_guard
+    notes: "Dispute state machine + post-open identity immutability (D9)."
+  public.validate_eligibility_primary_team:
+    category: state_guard
+    notes: "AD9 is_primary team validator for eligibility/allocation rows."
+  public.validate_export:
+    category: state_guard
+    notes: "Export INSERT gate: snapshot/period match + AD6/SI-15 pending-cap block."
+  public.validate_task_review:
+    category: state_guard
+    notes: "Review integrity: no self-approval; quality=poor cannot approve (D3)."
+  public.prevent_delete:
+    category: state_guard
+    notes: "Blocks DELETE on retention/append-only tables."
+  public.prevent_mutation:
+    category: state_guard
+    notes: "Blocks UPDATE/DELETE on append-only tables (ledger/events/snapshots)."
+  public.prevent_mutation_except_approval:
+    category: state_guard
+    notes: "Snapshot immutability except the one-time approval transition (0040)."
+  public.prevent_mutation_on_completed_run:
+    category: state_guard
+    notes: "Freezes allocations once the parent run leaves running (SI-14)."
+  public.prevent_mutation_on_locked_pool:
+    category: state_guard
+    notes: "Blocks mutation of components tied to a locked pool (AD10)."
+  public.prevent_locked_pool_financial_mutation:
+    category: state_guard
+    notes: "Freezes locked-pool financial fields; change requires a new version (AD10)."
+  public.prevent_published_scoring_policy_version_mutation:
+    category: state_guard
+    notes: "Freezes a published scoring policy version (AD7)."
+  public.enforce_bonus_ledger_balance:
+    category: state_guard
+    notes: "Double-entry balance: Sigma-debit = Sigma-credit per (org, txn) (ADR-017)."
+  public.enforce_bonus_ledger_pool_cap:
+    category: state_guard
+    notes: "BL-2: Sigma-accrual <= pool (deferred constraint trigger)."
+  public.enforce_bonus_ledger_payout_cap:
+    category: state_guard
+    notes: "BL-3: payout <= net accrual per employee (reversal-aware, deferred)."
+  # mutation_engine — SECURITY DEFINER write/compute RPCs + append-only trail writers.
+  public.create_organization:
+    category: mutation_engine
+    notes: "Onboarding: bootstraps org + owner membership + default scoring policy."
+  public.create_invitation:
+    category: mutation_engine
+    notes: "Mints a member invite (user.invite); role != owner; audited."
+  public.accept_invitation:
+    category: mutation_engine
+    notes: "Validates token; creates profile + membership atomically (invitee has no membership yet)."
+  public.apply_review_to_task:
+    category: mutation_engine
+    notes: "Applies a review decision to a task (approve path triggers scoring)."
+  public.score_task_on_approve:
+    category: mutation_engine
+    notes: "Deterministic scoring on approval; writes task_approved point_ledger (AD7)."
+  public.apply_manual_point_adjustment:
+    category: mutation_engine
+    notes: "Manual point override: reason + audit + separate ledger entry."
+  public.apply_dispute_point_adjustment:
+    category: mutation_engine
+    notes: "Post-dispute point correction as an append-only ledger entry."
+  public.run_bonus_calculation:
+    category: mutation_engine
+    notes: "Pro-rata engine: allocations + immutable snapshot (D1/D6/largest-remainder)."
+  public.recalculate_bonus_after_dispute:
+    category: mutation_engine
+    notes: "New calculation run + snapshot after a dispute-driven basis change."
+  public.post_bonus_accrual:
+    category: mutation_engine
+    notes: "Approved snapshot -> balanced accrual (debit pool / credit accrual)."
+  public.produce_payout_export:
+    category: mutation_engine
+    notes: "Approved period -> exports record + period approved->exported (payout.export)."
+  public.mark_payout_paid:
+    category: mutation_engine
+    notes: "Exported period -> balanced payout (debit accrual / credit payout) + period->closed."
+  public.read_compensation_record:
+    category: mutation_engine
+    notes: "The ONLY comp read path (HR/Finance); emits a comp-access audit (AD3)."
+  public.log_comp_access:
+    category: mutation_engine
+    notes: "Writes the comp-access audit entry (AD3)."
+  public.log_comp_audit:
+    category: mutation_engine
+    notes: "Writes the masked comp-change audit entry (AD3)."
+  public.log_audit:
+    category: mutation_engine
+    notes: "Generic critical-mutation audit writer (append-only)."
+  public.log_task_event:
+    category: mutation_engine
+    notes: "Auto-writes the append-only task_events trail."
+  public.log_dispute_event:
+    category: mutation_engine
+    notes: "Auto-writes the append-only dispute_events trail."
+  public.run_anti_gaming_scan:
+    category: mutation_engine
+    notes: "Runs the 5 deterministic detectors; raises flags (no auto-penalty, D5)."
+  public.detect_duplicate_task:
+    category: mutation_engine
+    notes: "Anti-gaming detector: duplicate task submissions."
+  public.detect_tiny_task_splitting:
+    category: mutation_engine
+    notes: "Anti-gaming detector: tiny-split task farming."
+  public.detect_same_reviewer_concentration:
+    category: mutation_engine
+    notes: "Anti-gaming detector: same-reviewer concentration."
+  public.detect_period_end_spike:
+    category: mutation_engine
+    notes: "Anti-gaming detector: period-end submission spike."
+  public.get_leaderboard:
+    category: mutation_engine
+    notes: "Privacy-first leaderboard read (anonymized/percentile; no public shaming)."
+  public.claim_command:
+    category: mutation_engine
+    notes: "Idempotency claim on command_log before a critical mutation (ENGINEERING-15)."
+  public.enqueue_outbox_event:
+    category: mutation_engine
+    notes: "Transactional outbox enqueue (ENGINEERING-09)."
+  public.claim_outbox_events:
+    category: mutation_engine
+    notes: "Worker claim of pending outbox events (retry/backoff)."
+  public.check_rate_limit:
+    category: mutation_engine
+    notes: "Atomic fixed-window rate-limit increment (ENGINEERING-19); server-only."
+  public.prune_rate_limit_counters:
+    category: mutation_engine
+    notes: "Opportunistic cleanup of stale rate-limit windows."
