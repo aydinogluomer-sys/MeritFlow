@@ -2,6 +2,7 @@
 // client — AD1 / boundary test). The exact client type is taken from createClient via a
 // type-only import so it always matches `await createClient()`.
 import { toDomainError } from '@/lib/errors';
+import type { TablesInsert } from '@/types/database.generated';
 
 type ServerClient = Awaited<ReturnType<typeof import('@/lib/supabase/server').createClient>>;
 
@@ -26,7 +27,7 @@ export class TaskRepository {
   async insert(row: Record<string, unknown>): Promise<string> {
     const { data, error } = await this.supabase
       .from('tasks')
-      .insert(row)
+      .insert(row as TablesInsert<'tasks'>)
       .select('id')
       .single();
     if (error) throw toDomainError(error);

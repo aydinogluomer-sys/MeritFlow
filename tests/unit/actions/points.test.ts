@@ -66,16 +66,16 @@ describe('manualOverride', () => {
     );
   });
 
-  it('taskId omitted -> p_task_id null', async () => {
+  it('taskId omitted -> p_task_id undefined (omitted; SQL default null)', async () => {
     const { rpc } = mockRpc({ data: 'ledger1', error: null });
     const { taskId: _omit, ...noTask } = base;
     void _omit;
     await manualOverride(noTask);
 
-    expect(rpc).toHaveBeenCalledWith(
-      'apply_manual_point_adjustment',
-      expect.objectContaining({ p_task_id: null }),
-    );
+    // The typed RPC Args model p_task_id as optional (`?: string`); omitting it is equivalent to the
+    // SQL `default null` — the wire result is identical to sending an explicit null.
+    const arg = rpc.mock.calls[0]![1] as Record<string, unknown>;
+    expect(arg.p_task_id).toBeUndefined();
   });
 
   it('authz fail: no rpc, ok:false', async () => {

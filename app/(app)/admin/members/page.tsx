@@ -66,7 +66,9 @@ export default async function MembersPage() {
 
   const { data, error } = await supabase
     .from('memberships')
-    .select('profile_id, primary_role, status, profiles(display_name)')
+    // Disambiguate the embed: memberships has TWO FKs to profiles (profile_id + invited_by), so the
+    // typed client (and PostgREST) require the FK hint to pick the member's profile.
+    .select('profile_id, primary_role, status, profiles!profile_id(display_name)')
     .eq('organization_id', org!.organization_id)
     .eq('status', 'active');
 

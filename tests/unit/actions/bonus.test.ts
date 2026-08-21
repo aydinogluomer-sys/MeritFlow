@@ -162,11 +162,12 @@ describe('runScan', () => {
     expect(arg).toHaveProperty('p_bonus_period_id', PERIOD_ID);
   });
 
-  it('periodId omitted -> p_bonus_period_id null', async () => {
+  it('periodId omitted -> p_bonus_period_id undefined (omitted; SQL default null)', async () => {
     const { rpc } = mockRpc({ data: 0, error: null });
     await runScan({});
     const arg = rpc.mock.calls[0]![1] as Record<string, unknown>;
-    expect(arg.p_bonus_period_id).toBeNull();
+    // Typed RPC Args model p_bonus_period_id as optional (`?: string`); omitting it == SQL default null.
+    expect(arg.p_bonus_period_id).toBeUndefined();
   });
 
   it('authz fail: no rpc, ok:false', async () => {

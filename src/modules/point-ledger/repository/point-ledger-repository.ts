@@ -22,7 +22,8 @@ export class PointLedgerRepository {
       p_reason: input.reason,
       p_actor: ctx.userId,
       p_second_approver: input.secondApproverId,
-      p_task_id: input.taskId ?? null,
+      // Optional (SQL `default null`): omit when absent (typed Args = `?: string`).
+      p_task_id: input.taskId ?? undefined,
     });
     if (error) throw toDomainError(error);
     return data as string;

@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { hasPermission } from '@/lib/auth/rbac';
 import { createClient } from '@/lib/supabase/server';
 import {
@@ -104,7 +105,10 @@ type ReconResult = { tone: Tone; label: string; detail: string };
 // errors — we degrade to an amber "no record" state, never a 500.
 async function readLastReconciliation(): Promise<ReconResult> {
   try {
-    const supabase = await createClient();
+    // `reconciliation_runs` intentionally does NOT exist (ENGINEERING-05 is a read-only verifier that
+    // persists nothing). The typed client rejects unknown table names at compile time, so probe via
+    // an untyped view of the client and degrade to the amber "no record" state on the runtime error.
+    const supabase = (await createClient()) as unknown as SupabaseClient;
     const { data, error } = await supabase
       .from('reconciliation_runs')
       .select('ran_at, result')

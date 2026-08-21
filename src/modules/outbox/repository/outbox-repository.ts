@@ -1,4 +1,5 @@
 import { toDomainError } from '@/lib/errors';
+import type { Json } from '@/types/database.generated';
 import type { EnqueueOutboxInput, OutboxContext, OutboxEventRow } from '../domain/types';
 
 type AdminClient = Awaited<ReturnType<typeof import('@/lib/supabase/admin').createAdminClient>>;
@@ -17,7 +18,9 @@ export class OutboxRepository {
     const { data, error } = await this.admin.rpc('enqueue_outbox_event', {
       p_organization_id: ctx.organizationId,
       p_event_type: input.eventType,
-      p_payload: input.payload,
+      // Domain payload is Record<string, unknown>; it is a JSON object at runtime (serialized into
+      // the jsonb arg). Narrow to the generated Json type at the DB boundary.
+      p_payload: input.payload as Json,
       p_idempotency_key: input.idempotencyKey,
     });
     if (error) throw toDomainError(error);

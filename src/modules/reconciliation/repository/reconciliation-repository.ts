@@ -1,4 +1,5 @@
 import { toDomainError } from '@/lib/errors';
+import { poolRefFromMetadata } from '@/lib/db-schemas/bonus-snapshot-metadata';
 import { INVARIANT_SEVERITY, type ReconciliationContext, type ReconciliationFinding } from '../domain/types';
 
 type AdminClient = Awaited<ReturnType<typeof import('@/lib/supabase/admin').createAdminClient>>;
@@ -28,10 +29,13 @@ interface LedgerRow {
   amount_minor: number | string;
 }
 
-/** pool_ref_minor from a snapshot's calculation_metadata, or NaN when absent/indeterminable. */
+/**
+ * pool_ref_minor from a snapshot's calculation_metadata, or NaN when absent/indeterminable.
+ * Delegates to the Zod-validated {@link poolRefFromMetadata} (ENGINEERING-23) — the raw jsonb is
+ * safeParse'd, so a malformed payload yields NaN (indeterminate), never a throw.
+ */
 function poolRefOf(snap: SnapshotRow): number {
-  const raw = snap.calculation_metadata?.pool_ref_minor;
-  return raw == null || raw === '' ? NaN : Number(raw);
+  return poolRefFromMetadata(snap.calculation_metadata);
 }
 
 /**
