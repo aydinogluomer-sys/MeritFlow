@@ -10,6 +10,10 @@ export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
+  // retries: 2 is INFRA-stability tolerance only (Supabase start, Next.js 180s webServer boot, and
+  // other transient CI startup hiccups). Logic/assertion flakes MUST NOT be masked with retries —
+  // fix the root cause. The stability script (scripts/test-stability.sh) runs golden x10 with
+  // --retries=0 to surface true flakes. (ENGINEERING-27)
   retries: process.env.CI ? 2 : 0,
   // In CI also emit the `github` reporter: failed tests become ::error:: annotations that are
   // readable via the public Checks API (job logs require repo-admin auth), so a failure's exact
