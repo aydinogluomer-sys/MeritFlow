@@ -34,3 +34,34 @@ jobs:
           path: reports/mutation/
           retention-days: 30
           if-no-files-found: warn
+
+  # ENGINEERING-30 — SQL mutation probes. Injects 10 high-risk mutations into the migration SQL one
+  # at a time (temporarily; always restored), applies a fresh DB, and runs pgTAP. A mutation pgTAP
+  # still passes = a hole in the SQL suite (SURVIVED = job fails). Needs Docker (own job).
+  sql-mutation:
+    name: SQL Mutation Probes (ENGINEERING-30)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Start Supabase (Docker)
+        run: npx --no-install supabase start
+      - name: Reset DB (clean baseline)
+        run: npx --no-install supabase db reset --local
+      - name: Run SQL mutation probes
+        run: bash scripts/sql-mutation-probe.sh
+      - name: Upload mutation probe report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sql-mutation-report-${{ github.run_number }}
+          path: reports/sql-mutation/
+          retention-days: 30
+          if-no-files-found: warn
+      - name: Stop Supabase
+        if: always()
+        run: npx --no-install supabase stop
