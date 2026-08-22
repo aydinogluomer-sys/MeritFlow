@@ -92,6 +92,11 @@ jobs:
       # code (0 on pass), so no `|| true` — a real regression here fails the job.
       - name: DB surface manifest selftest (false-green proof)
         run: DB_SURFACE_AUDIT_SELFTEST=1 bash scripts/audit-db-surface.sh supabase/migrations security/db-surface.yml security/security-definer-allowlist.txt
+      # ENGINEERING-29: module manifest drift gate — src/modules/ and module-manifest.json must agree
+      # (unregistered folder / placeholder-with-index / implemented-without-index / stale .gitkeep).
+      # Pure Node builtins, no Docker.
+      - name: Module manifest drift check (ENGINEERING-29)
+        run: node scripts/check-module-manifest.js
 
   # ── Database: apply every migration from scratch + run pgTAP (Supabase via Docker) ──
   db:
