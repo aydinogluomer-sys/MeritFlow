@@ -34,3 +34,29 @@ jobs:
           path: reports/mutation/
           retention-days: 30
           if-no-files-found: warn
+
+  # ENGINEERING-27 — test determinism / flake budget. Repeats the critical scopes to surface
+  # order/state/timing flakes. Concurrency races need a real Postgres (contrary to "infra-free"), so
+  # this job boots Supabase; golden x10 is --skip-golden here (it needs the full built-app E2E env —
+  # run `bash scripts/test-stability.sh` manually for that).
+  stability:
+    name: Test stability (unit x20 + concurrency x20)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Start Supabase (Docker)
+        run: npx --no-install supabase start
+      - name: Reset DB — migrations + seed (for the concurrency races)
+        run: npx --no-install supabase db reset
+      - name: Test stability (unit critical x20 + concurrency x20)
+        env:
+          TEST_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: bash scripts/test-stability.sh --skip-golden
+      - name: Stop Supabase
+        if: always()
+        run: npx --no-install supabase stop

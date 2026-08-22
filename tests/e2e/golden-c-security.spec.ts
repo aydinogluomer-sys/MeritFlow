@@ -13,7 +13,9 @@ function formatDate(value: Date): string {
   return value.toISOString().slice(0, 10);
 }
 
-const RUN_OFFSET_DAYS = Date.now() % 300;
+// ENGINEERING-27: derive the offset from the CI run number, NOT the wall clock — deterministic
+// within a run (reproducible on re-run) and unique across runs. `Date.now() % 300` was not reproducible.
+const RUN_OFFSET_DAYS = Number(process.env.GITHUB_RUN_NUMBER ?? '0') % 300;
 const PERIOD_START = formatDate(new Date(Date.UTC(2099, 0, 1 + RUN_OFFSET_DAYS)));
 const PERIOD_END = formatDate(new Date(Date.UTC(2099, 0, 30 + RUN_OFFSET_DAYS)));
 
