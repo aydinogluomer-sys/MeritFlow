@@ -16,7 +16,7 @@ jobs:
     name: Mutation Testing (Stryker)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v5
         with:
           node-version: '22'
@@ -43,7 +43,7 @@ jobs:
     name: Test stability (unit x20 + concurrency x20)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v5
         with:
           node-version: '22'
