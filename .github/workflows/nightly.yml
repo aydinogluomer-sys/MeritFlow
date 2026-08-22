@@ -28,7 +28,7 @@ jobs:
         run: node scripts/check-mutation-score.js
       - name: Upload mutation report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutation-report-${{ github.run_number }}
           path: reports/mutation/

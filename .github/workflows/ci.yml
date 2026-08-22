@@ -273,7 +273,7 @@ jobs:
       - name: Generate SBOM (CycloneDX)
         run: npm run sbom
       - name: Upload SBOM artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sbom-cdx
           path: artifacts/sbom.cdx.json
@@ -361,7 +361,7 @@ jobs:
         run: npm run test:e2e -- --project=golden --grep "Golden C" --no-deps
       - name: Upload Playwright traces on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-traces
           path: test-results/
