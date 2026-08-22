@@ -1,4 +1,5 @@
 import { toDomainError } from '@/lib/errors';
+import { systemClock, type Clock } from '@/lib/time';
 import type {
   GrantContext,
   GrantSupportAccessInput,
@@ -16,7 +17,11 @@ type ServerClient = Awaited<ReturnType<typeof import('@/lib/supabase/server').cr
  * user.invite + role<>'owner' + active org and writes its own audit row.
  */
 export class AdminRepository {
-  constructor(private readonly supabase: ServerClient) {}
+  constructor(
+    private readonly supabase: ServerClient,
+    // ENGINEERING-24: injectable clock (default = real time) for the revoked_at audit timestamp.
+    private readonly clock: Clock = systemClock,
+  ) {}
 
   /** Insert a time-bounded, scoped support-access grant; returns the new grant id. */
   async grantSupportAccess(input: GrantSupportAccessInput, ctx: GrantContext): Promise<string> {
@@ -41,7 +46,7 @@ export class AdminRepository {
   async revokeSupportAccess(input: RevokeSupportAccessInput, ctx: RevokeContext): Promise<void> {
     const { error } = await this.supabase
       .from('support_access_grants')
-      .update({ status: 'revoked', revoked_at: new Date().toISOString() })
+      .update({ status: 'revoked', revoked_at: this.clock.now().toISOString() })
       .eq('id', input.grantId)
       .eq('organization_id', ctx.organizationId)
       .eq('status', 'active');
