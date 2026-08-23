@@ -1,0 +1,133 @@
+{
+  "version": 1,
+  "generated": "ENGINEERING-29",
+  "modules": [
+    {
+      "name": "admin",
+      "status": "implemented",
+      "publicApi": ["grantSupportAccess", "revokeSupportAccess", "inviteMember", "AdminRepository"],
+      "layers": ["application", "domain", "repository"]
+    },
+    {
+      "name": "anti-gaming",
+      "status": "implemented",
+      "publicApi": ["runScan", "AntiGamingRepository"],
+      "layers": ["application", "domain", "repository"]
+    },
+    {
+      "name": "audit",
+      "status": "implemented",
+      "publicApi": ["exportAudit", "AuditRepository", "CompAccessRepository", "csvField", "jsonbField", "AUDIT_CSV_HEADER"],
+      "layers": ["application", "domain", "repository"]
+    },
+    {
+      "name": "auth",
+      "status": "placeholder",
+      "note": "Auth helpers intentionally live in src/lib/auth (Phase 3.5); this module folder reserved for V2+ promotion.",
+      "publicApi": [],
+      "layers": []
+    },
+    {
+      "name": "bonus-calculation",
+      "status": "implemented",
+      "publicApi": ["runCalculation", "recalculate", "allocateBonus", "BonusCalculationRepository"],
+      "layers": ["application", "domain", "repository"]
+    },
+    {
+      "name": "bonus-ledger",
+      "status": "implemented",
+      "publicApi": ["postAccrual", "BonusLedgerRepository"],
+      "layers": ["application", "domain", "repository"]
+    },
+    {
+      "name": "bonus-periods",
+      "status": "implemented",
+      "publicApi": ["createPeriod", "createPool", "BonusPeriodsRepository"],
+      "layers": ["application", "domain", "repository"]
+    },
+    {
+      "name": "bonus-pools",
+      "status": "placeholder",
+      "publicApi": [],
+      "layers": []
+    },
+    {
+      "name": "disputes",
+      "status": "implemented",
+      "publicApi": ["openDispute", "assignReviewer", "resolveDispute", "DisputeRepository", "DisputeAdjustmentRepository"],
+      "layers": ["application", "domain", "repository"]
+    },
+    {
+      "name": "exports",
+      "status": "implemented",
+      "publicApi": ["exportPayout", "markPaid", "ExportsRepository"],
+      "layers": ["application", "domain", "repository"]
+    },
+    {
+      "name": "notifications",
+      "status": "placeholder",
+      "publicApi": [],
+      "layers": []
+    },
+    {
+      "name": "organizations",
+      "status": "placeholder",
+      "publicApi": [],
+      "layers": []
+    },
+    {
+      "name": "outbox",
+      "status": "implemented",
+      "publicApi": ["enqueueOutboxEvent", "drainOutbox", "OutboxRepository", "DEFAULT_OUTBOX_HANDLERS"],
+      "layers": ["application", "domain", "repository"]
+    },
+    {
+      "name": "point-ledger",
+      "status": "implemented",
+      "publicApi": ["manualOverride", "PointLedgerRepository"],
+      "layers": ["application", "domain", "repository"]
+    },
+    {
+      "name": "reconciliation",
+      "status": "implemented",
+      "publicApi": ["runReconciliation", "ReconciliationRepository"],
+      "layers": ["application", "domain", "repository"]
+    },
+    {
+      "name": "reports",
+      "status": "placeholder",
+      "publicApi": [],
+      "layers": []
+    },
+    {
+      "name": "reviews",
+      "status": "implemented",
+      "publicApi": ["reviewTask", "ReviewRepository"],
+      "layers": ["application", "domain", "repository"]
+    },
+    {
+      "name": "scoring",
+      "status": "implemented",
+      "publicApi": ["getScoringBreakdown", "ScoringRepository"],
+      "layers": ["application", "domain", "repository"]
+    },
+    {
+      "name": "tasks",
+      "status": "implemented",
+      "publicApi": ["createTask", "submitTask", "TaskRepository"],
+      "layers": ["application", "domain", "repository"]
+    },
+    {
+      "name": "teams",
+      "status": "placeholder",
+      "publicApi": [],
+      "layers": []
+    },
+    {
+      "name": "users",
+      "status": "placeholder",
+      "publicApi": [],
+      "layers": []
+    }
+  ]
+}
