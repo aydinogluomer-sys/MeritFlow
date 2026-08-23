@@ -21,7 +21,15 @@
     "format": "prettier --write .",
     "db:reset": "supabase db reset",
     "db:test": "supabase test db",
-    "db:types": "supabase gen types --lang typescript --local > src/types/database.generated.ts"
+    "db:types": "supabase gen types --lang typescript --local > src/types/database.generated.ts",
+    "verify:fast": "bash scripts/verify-fast.sh",
+    "verify:security": "bash scripts/verify-security.sh",
+    "verify:contracts": "bash scripts/verify-contracts.sh",
+    "verify:db": "bash scripts/verify-db.sh",
+    "verify:concurrency": "bash scripts/verify-concurrency.sh",
+    "verify:perf": "bash scripts/verify-perf.sh",
+    "verify:e2e:golden": "bash scripts/verify-e2e-golden.sh",
+    "verify:engineering": "bash scripts/verify-engineering.sh"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.2.6",
