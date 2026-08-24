@@ -150,7 +150,7 @@ select is((select count(*) from public.anti_gaming_flags where organization_id='
   (select n from _ag_cnt), 'idempotent: flag count unchanged after re-scan');
 
 -- (#10) Permission catalog unchanged (scan is server/HR — no new permission).
-select is((select count(*) from public.permissions), 20::bigint, 'permission catalog unchanged (20)');
+select is((select count(*) from public.permissions), 22::bigint, 'permission catalog 22');
 
 -- =============================================================================
 -- SECTION B — RLS as authenticated users (authorization surface)

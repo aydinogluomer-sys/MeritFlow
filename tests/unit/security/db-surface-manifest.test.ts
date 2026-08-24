@@ -54,8 +54,8 @@ describe('db-surface.yml', () => {
     expect(surface.tables).toBeTypeOf('object');
     expect(surface.views).toBeTypeOf('object');
     expect(surface.security_definer_functions).toBeTypeOf('object');
-    // Sanity on the known surface size (35 tables + 2 views + 53 definer funcs).
-    expect(Object.keys(surface.tables)).toHaveLength(35);
+    // Sanity on the known surface size (37 tables + 2 views + 53 definer funcs).
+    expect(Object.keys(surface.tables)).toHaveLength(37);
     expect(Object.keys(surface.views)).toHaveLength(2);
     expect(Object.keys(surface.security_definer_functions)).toHaveLength(53);
   });

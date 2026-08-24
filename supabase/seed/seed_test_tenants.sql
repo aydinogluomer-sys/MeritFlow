@@ -964,3 +964,42 @@ on conflict (id) do nothing;
 insert into public.memberships (organization_id, profile_id, primary_role) values
   ('c0000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-0000000000c6', 'auditor')
 on conflict (organization_id, profile_id) do nothing;
+
+-- =============================================================================
+-- Phase P0 seed — Product Intelligence shared foundation (DEV/STAGING ONLY)
+-- Refs: implementation plan §2.5/§2.6. The two intelligence permissions + role wiring are ALSO in
+-- migration 0042 (production-safe); repeated here idempotently so the seed stands alone. Feature
+-- flags: the 9 module keys (§2.5) seeded per org, all default OFF (a missing row also resolves
+-- false). Insight-store fixtures are inserted inline by the pgTAP suite (0041), not here.
+-- =============================================================================
+
+-- Intelligence permissions (catalog 20 -> 22) — idempotent mirror of 0042.
+insert into public.permissions (key, label, domain, is_sensitive) values
+  ('intelligence.read',   'Read intelligence insights',   'intelligence', false),
+  ('intelligence.manage', 'Manage intelligence insights', 'intelligence', false)
+on conflict (key) do nothing;
+
+insert into public.role_permissions (role_key, permission_key)
+select r, p from (values
+  ('owner',   'intelligence.read'), ('owner',   'intelligence.manage'),
+  ('admin',   'intelligence.read'), ('admin',   'intelligence.manage'),
+  ('hr',      'intelligence.read'),
+  ('finance', 'intelligence.read'),
+  ('manager', 'intelligence.read'),
+  ('auditor', 'intelligence.read')
+) as rp(r, p)
+on conflict (role_key, permission_key) do nothing;
+
+-- Feature flags: 9 keys (§2.5) x 3 seeded orgs (A/B/C), all OFF. Rollout is tenant-based (§21).
+insert into public.feature_flags (organization_id, flag_key, stage, enabled)
+select o, k, 'off', false
+from (values
+  ('a0000000-0000-0000-0000-000000000001'::uuid),
+  ('b0000000-0000-0000-0000-000000000002'::uuid),
+  ('c0000000-0000-0000-0000-000000000003'::uuid)
+) as orgs(o)
+cross join (values
+  ('health_engine'), ('opportunity_intelligence'), ('cycle_postmortem'), ('policy_debt'),
+  ('credit_recovery'), ('policy_change_impact'), ('digital_twin'), ('intelligence'), ('assist')
+) as flags(k)
+on conflict (organization_id, flag_key) do nothing;

@@ -159,7 +159,7 @@ select throws_ok(
   '23514', NULL, 'run on an approved period is rejected (gate = locked/calculated only)');
 
 -- (#14) permission catalog unchanged.
-select is((select count(*) from public.permissions), 20::bigint, 'permission catalog stays 20');
+select is((select count(*) from public.permissions), 22::bigint, 'permission catalog 22');
 
 -- =============================================================================
 -- SECTION D — authz

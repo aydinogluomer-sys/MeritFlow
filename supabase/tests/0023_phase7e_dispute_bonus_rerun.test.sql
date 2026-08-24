@@ -190,7 +190,7 @@ select throws_ok(
 reset role;
 
 -- (#14) permission catalog unchanged.
-select is((select count(*) from public.permissions), 20::bigint, 'permission catalog stays 20');
+select is((select count(*) from public.permissions), 22::bigint, 'permission catalog 22');
 
 select * from finish();
 rollback;

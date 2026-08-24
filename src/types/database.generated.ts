@@ -1163,6 +1163,116 @@ export type Database = {
           },
         ]
       }
+      feature_flags: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          flag_key: string
+          id: string
+          organization_id: string
+          stage: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          flag_key: string
+          id?: string
+          organization_id: string
+          stage?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          flag_key?: string
+          id?: string
+          organization_id?: string
+          stage?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feature_flags_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      intelligence_insights: {
+        Row: {
+          bonus_period_id: string | null
+          created_at: string
+          deterministic_payload: Json
+          evidence_refs: Json
+          first_detected_at: string
+          id: string
+          insight_type: string
+          last_detected_at: string
+          model_payload: Json | null
+          organization_id: string
+          resolution_code: string | null
+          resolved_at: string | null
+          severity: string
+          status: string
+          subject_id: string | null
+          subject_type: string
+        }
+        Insert: {
+          bonus_period_id?: string | null
+          created_at?: string
+          deterministic_payload: Json
+          evidence_refs: Json
+          first_detected_at?: string
+          id?: string
+          insight_type: string
+          last_detected_at?: string
+          model_payload?: Json | null
+          organization_id: string
+          resolution_code?: string | null
+          resolved_at?: string | null
+          severity: string
+          status?: string
+          subject_id?: string | null
+          subject_type: string
+        }
+        Update: {
+          bonus_period_id?: string | null
+          created_at?: string
+          deterministic_payload?: Json
+          evidence_refs?: Json
+          first_detected_at?: string
+          id?: string
+          insight_type?: string
+          last_detected_at?: string
+          model_payload?: Json | null
+          organization_id?: string
+          resolution_code?: string | null
+          resolved_at?: string | null
+          severity?: string
+          status?: string
+          subject_id?: string | null
+          subject_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intelligence_insights_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intelligence_insights_period_org_fk"
+            columns: ["bonus_period_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "bonus_periods"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
       invitations: {
         Row: {
           created_at: string

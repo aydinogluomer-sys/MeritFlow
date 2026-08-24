@@ -232,8 +232,8 @@ select is((select count(*) from public.exports where id='b0000000-0000-0000-0000
 
 -- ---- no new permission: catalog unchanged (matches 0001) -----------------------------
 reset role;
-select is((select count(*) from public.permissions), 20::bigint,
-  'permission catalog unchanged (20) — exports added NO permission (payout.export pre-existed)');
+select is((select count(*) from public.permissions), 22::bigint,
+  'permission catalog 22 — exports added NO permission (payout.export pre-existed)');
 
 select * from finish();
 rollback;

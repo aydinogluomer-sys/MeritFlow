@@ -383,6 +383,29 @@ matrix:
     support: {read: false, write: false}
     anon:    {read: false, write: false}
     trusted_server: {read: true, write: true}
+  # Phase P0: read = intelligence.read holders OR the subject employee (own explainable data);
+  # writes are server-only (no client INSERT/UPDATE policy). support has no membership → no read.
+  intelligence_insights:
+    owner:   {read: true,  write: false}
+    hr:      {read: true,  write: false}
+    manager: {read: true,  write: false}
+    finance: {read: true,  write: false}
+    auditor: {read: true,  write: false}
+    employee: {read: own,  write: false}
+    support: {read: false, write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
+  # Phase P0: any org member reads its own org's flags; write gated by intelligence.manage (owner/admin).
+  feature_flags:
+    owner:   {read: true,  write: true}
+    hr:      {read: true,  write: false}
+    manager: {read: true,  write: false}
+    finance: {read: true,  write: false}
+    auditor: {read: true,  write: false}
+    employee: {read: true, write: false}
+    support: {read: false, write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
   v_finance_payout:
     owner:   {read: false, write: false}
     hr:      {read: false, write: false}
