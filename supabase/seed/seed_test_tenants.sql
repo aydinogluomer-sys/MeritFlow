@@ -991,15 +991,25 @@ select r, p from (values
 on conflict (role_key, permission_key) do nothing;
 
 -- Feature flags: 9 keys (§2.5) x 3 seeded orgs (A/B/C), all OFF. Rollout is tenant-based (§21).
-insert into public.feature_flags (organization_id, flag_key, stage, enabled)
-select o, k, 'off', false
-from (values
-  ('a0000000-0000-0000-0000-000000000001'::uuid),
-  ('b0000000-0000-0000-0000-000000000002'::uuid),
-  ('c0000000-0000-0000-0000-000000000003'::uuid)
-) as orgs(o)
-cross join (values
-  ('health_engine'), ('opportunity_intelligence'), ('cycle_postmortem'), ('policy_debt'),
-  ('credit_recovery'), ('policy_change_impact'), ('digital_twin'), ('intelligence'), ('assist')
-) as flags(k)
-on conflict (organization_id, flag_key) do nothing;
+-- GUARDED (to_regclass): feature_flags is introduced by the LATEST migration (0042). The N-1 upgrade
+-- drill (scripts/n1-upgrade-drill.sh) runs THIS seed against the N-1 schema (0001..0041, before 0042
+-- lands), where the table does not exist yet — so this block must no-op when it is absent. At full
+-- reset (N=0042) the table exists and the insert runs unchanged. GENERAL RULE: any shared-seed block
+-- that references a table introduced by the latest migration must be guarded this way.
+do $$
+begin
+  if to_regclass('public.feature_flags') is not null then
+    insert into public.feature_flags (organization_id, flag_key, stage, enabled)
+    select o, k, 'off', false
+    from (values
+      ('a0000000-0000-0000-0000-000000000001'::uuid),
+      ('b0000000-0000-0000-0000-000000000002'::uuid),
+      ('c0000000-0000-0000-0000-000000000003'::uuid)
+    ) as orgs(o)
+    cross join (values
+      ('health_engine'), ('opportunity_intelligence'), ('cycle_postmortem'), ('policy_debt'),
+      ('credit_recovery'), ('policy_change_impact'), ('digital_twin'), ('intelligence'), ('assist')
+    ) as flags(k)
+    on conflict (organization_id, flag_key) do nothing;
+  end if;
+end $$;

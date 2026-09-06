@@ -18,12 +18,13 @@
 #   mirroring scripts/restore-drill.sh --dump.
 #
 # INJECTION / FALSE-GREEN PROOF (DoD): running with N1_DRILL_INJECT=1 corrupts migration N AFTER it
-# is applied (drops rate_limit_counters.count) so the post-migration schema assertion FAILS and the
-# drill exits non-zero — proving a green run is not vacuous. Evidence (record in a PR / runbook):
+# is applied (drops intelligence_insights.deterministic_payload — a real NOT NULL column added by N)
+# so the post-migration schema assertion FAILS and the drill exits non-zero — proving a green run is
+# not vacuous. Evidence (record in a PR / runbook):
 #   $ N1_DRILL_INJECT=1 bash scripts/n1-upgrade-drill.sh
 #   ... "SCHEMA ASSERTION FAILED: migration N did not land intact ..." ; exit code 1
-# A normal run (no flag) passes the same assertion. (The literal `ALTER TABLE rate_limit_counters
-# DROP COLUMN count` named in the spec is exactly the corruption injected here.)
+# A normal run (no flag) passes the same assertion. (N is currently 0042; the assertion targets its
+# two tables — feature_flags + intelligence_insights — and the injection drops a 0042 column.)
 
 set -uo pipefail # NOT -e: run each invariant, collect, then decide (house style, like restore-drill.sh)
 
@@ -71,24 +72,30 @@ psql "$DB_URL" -v ON_ERROR_STOP=1 -f "$MIGRATIONS_DIR/$LAST_BASENAME" \
   || { echo "DRILL: FAILED — migration N (upgrade) errored" >&2; exit 1; }
 
 # 3b) Optional false-green injection (DoD): corrupt N so the schema assertion below must fail.
+# Drop a real 0042 NOT NULL column (deterministic_payload); CASCADE removes its dependent CHECK so
+# the drop succeeds and the column-count assertion below drops to 6/7 -> BROKEN.
 if [ "${N1_DRILL_INJECT:-0}" = "1" ]; then
-  echo "-- [inject] dropping rate_limit_counters.count to prove the drill catches a broken migration --"
-  psql "$DB_URL" -v ON_ERROR_STOP=1 -c "alter table public.rate_limit_counters drop column count;" || true
+  echo "-- [inject] dropping intelligence_insights.deterministic_payload to prove the drill catches a broken migration --"
+  psql "$DB_URL" -v ON_ERROR_STOP=1 -c "alter table public.intelligence_insights drop column deterministic_payload cascade;" || true
 fi
 
-# 4) Post-migration schema assertion: migration N landed intact (its table + columns + RPC exist).
+# 4) Post-migration schema assertion: migration N (0042) landed intact — its two tables + key columns
+#    exist. 0042 adds NO RPC (unlike 0041's check_rate_limit), so this checks tables/columns only.
 echo "-- post-migration schema assertion (migration N applied cleanly) --"
 SCHEMA_OK=$(psql "$DB_URL" -tAqc "
   select case when
     (select count(*) from information_schema.columns
-       where table_schema='public' and table_name='rate_limit_counters'
-         and column_name in ('key','organization_id','window_start','count')) = 4
-    and to_regprocedure('public.check_rate_limit(text,uuid,integer,integer)') is not null
+       where table_schema='public' and table_name='feature_flags'
+         and column_name in ('organization_id','flag_key','stage','enabled')) = 4
+    and (select count(*) from information_schema.columns
+       where table_schema='public' and table_name='intelligence_insights'
+         and column_name in ('organization_id','insight_type','subject_type','severity',
+                             'status','deterministic_payload','evidence_refs')) = 7
   then 'OK' else 'BROKEN' end")
 if [ "$SCHEMA_OK" = "OK" ]; then
   echo "schema assertion: OK"
 else
-  echo "SCHEMA ASSERTION FAILED: migration N did not land intact (rate_limit_counters/check_rate_limit)" >&2
+  echo "SCHEMA ASSERTION FAILED: migration N did not land intact (feature_flags/intelligence_insights)" >&2
   fail=1
 fi
 
