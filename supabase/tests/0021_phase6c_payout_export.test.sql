@@ -188,7 +188,7 @@ select lives_ok('set constraints all immediate',
   'all bonus_ledger transactions balance (accrual + payout) and BL-2/BL-3 pass');
 
 -- (#15) Permission catalog is unchanged (no new permission).
-select is((select count(*) from public.permissions), 20::bigint, 'permission catalog stays 20');
+select is((select count(*) from public.permissions), 22::bigint, 'permission catalog 22');
 
 -- =============================================================================
 -- SECTION D — authz + Finance view + cross-tenant (authenticated)

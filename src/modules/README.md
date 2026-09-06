@@ -23,7 +23,7 @@ through its public index.
 > `scripts/check-module-manifest.js` (ENGINEERING-29). If the code and the manifest drift apart, CI
 > fails — so a "status" or "public API" claim here is CI evidence, not a promise.
 
-### Implemented (14)
+### Implemented (15)
 
 | Module              | Status      | Public API highlights                                             | Layers                          |
 | ------------------- | ----------- | ----------------------------------------------------------------- | ------------------------------- |
@@ -35,6 +35,7 @@ through its public index.
 | `bonus-periods`     | implemented | createPeriod, createPool, BonusPeriodsRepository                 | application · domain · repository |
 | `disputes`          | implemented | openDispute, assignReviewer, resolveDispute, DisputeRepository, DisputeAdjustmentRepository | application · domain · repository |
 | `exports`           | implemented | exportPayout, markPaid, ExportsRepository                        | application · domain · repository |
+| `intelligence`      | implemented | metricRegistry, validateSemanticQuery, IntelligenceRepository, FeatureFlagResolver, emitIntelligenceEvent | domain · metrics · dimensions · repository · feature-flags · telemetry |
 | `outbox`            | implemented | enqueueOutboxEvent, drainOutbox, OutboxRepository, DEFAULT_OUTBOX_HANDLERS | application · domain · repository |
 | `point-ledger`      | implemented | manualOverride, PointLedgerRepository                            | application · domain · repository |
 | `reconciliation`    | implemented | runReconciliation, ReconciliationRepository                      | application · domain · repository |

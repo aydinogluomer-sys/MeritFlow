@@ -64,6 +64,12 @@
       "layers": ["application", "domain", "repository"]
     },
     {
+      "name": "intelligence",
+      "status": "implemented",
+      "publicApi": ["metricRegistry", "validateSemanticQuery", "IntelligenceRepository", "FeatureFlagResolver", "emitIntelligenceEvent", "parseInsight", "assertTransition"],
+      "layers": ["domain", "metrics", "dimensions", "repository", "feature-flags", "telemetry"]
+    },
+    {
       "name": "notifications",
       "status": "placeholder",
       "publicApi": [],

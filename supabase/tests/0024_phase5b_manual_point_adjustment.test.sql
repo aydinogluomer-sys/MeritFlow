@@ -195,11 +195,10 @@ select throws_ok(
 -- Catalog invariant.
 -- ---------------------------------------------------------------------------
 
--- (#16) permissions catalog is unchanged (still 20 — the role grant above adds no
---       permission row).
+-- (#16) permissions catalog is 22 (the role grant above adds no permission row).
 select is(
   (select count(*) from public.permissions),
-  20::bigint, 'permissions catalog stays 20 (test-only role grant adds no permission)');
+  22::bigint, 'permissions catalog 22 (test-only role grant adds no permission)');
 
 select * from finish();
 rollback;

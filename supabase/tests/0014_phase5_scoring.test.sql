@@ -77,7 +77,7 @@ update public.tasks set status='in_progress' where id='a0000000-0000-0000-0000-0
 update public.tasks set status='submitted'   where id='a0000000-0000-0000-0000-000000000142';
 
 -- (#6) permission catalog unchanged.
-select is((select count(*) from public.permissions), 20::bigint, 'permission catalog unchanged (20) — no new permission');
+select is((select count(*) from public.permissions), 22::bigint, 'permission catalog 22 — no new permission');
 
 -- =============================================================================
 -- SECTION B — RLS as authenticated users

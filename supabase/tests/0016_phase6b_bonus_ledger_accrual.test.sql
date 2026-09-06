@@ -144,7 +144,7 @@ select throws_ok(
   'append-only: UPDATE on an accrual row blocked (BL-1)');
 
 -- (#13) Permission catalog unchanged (no new permission for accrual/approval).
-select is((select count(*) from public.permissions), 20::bigint, 'permission catalog unchanged (20)');
+select is((select count(*) from public.permissions), 22::bigint, 'permission catalog 22');
 
 -- =============================================================================
 -- SECTION B — RLS as authenticated users (money-ledger raw read = Finance + Auditor)

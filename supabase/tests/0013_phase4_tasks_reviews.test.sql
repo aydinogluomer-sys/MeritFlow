@@ -119,7 +119,7 @@ select throws_ok(
   'cross-org scoring_policy_version rejected (SI-7)');
 
 -- (#10) No new permission — catalog matches the 0001 assertion.
-select is((select count(*) from public.permissions), 20::bigint, 'permission catalog unchanged (20) — no new task permission');
+select is((select count(*) from public.permissions), 22::bigint, 'permission catalog 22 — no new task permission');
 
 -- =============================================================================
 -- SECTION B — RLS as authenticated users

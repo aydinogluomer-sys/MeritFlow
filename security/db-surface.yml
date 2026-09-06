@@ -16,10 +16,10 @@
 #
 # grants: authenticated privileges are taken verbatim from the migration GRANTs (0007 + later);
 # service_role is `all` on every table (trusted server). Absence of an authenticated privilege =
-# server-only for that verb. RLS is ENABLE + FORCE on every table (verified: migrations 0007/0041).
+# server-only for that verb. RLS is ENABLE + FORCE on every table (verified: migrations 0007/0042).
 # =============================================================================
 version: "1"
-generated_from: "supabase/migrations/0001..0041"
+generated_from: "supabase/migrations/0001..0042"
 
 tables:
   organizations:
@@ -302,6 +302,22 @@ tables:
       authenticated: []
       service_role: [all]
     notes: "Fixed-window rate-limit counters (ENGINEERING-19); NO authenticated grant — server-only via check_rate_limit() definer RPC."
+  intelligence_insights:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: operational
+    notes: "Shared insight store (Phase P0, plan §2.4). deterministic_payload+evidence_refs authoritative; model_payload advisory/nullable (null in P0). Server-only writes; read = intelligence.read OR employee-own (subject). Evidence+action invariants enforced by CHECK."
+    grants:
+      authenticated: [select]
+      service_role: [all]
+  feature_flags:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: operational
+    notes: "Per-tenant feature rollout flags (Phase P0, plan §2.5/§21); org-scoped read; INSERT/UPDATE gated by intelligence.manage; default off; no DELETE."
+    grants:
+      authenticated: [select, insert, update]
+      service_role: [all]
 
 views:
   v_finance_payout:

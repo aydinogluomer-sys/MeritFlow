@@ -1,5 +1,7 @@
 # ENGINEERING-19 (8.6) — SECURITY DEFINER allowlist (schema.function, one per line).
-# Built from supabase/migrations/0001..0041. scripts/audit-security-definer.sh fails if the
+# Built from supabase/migrations/0001..0042. scripts/audit-security-definer.sh fails if the
+# NOTE: migration 0042 (Phase P0 intelligence foundation) adds NO SECURITY DEFINER function —
+#       insight writes are server-only via the service_role client, so this list is unchanged.
 # live DB has a SECURITY DEFINER function NOT listed here (an un-reviewed privilege escalation)
 # or one missing search_path=''. Add a line ONLY after reviewing the new function.
 public.accept_invitation
