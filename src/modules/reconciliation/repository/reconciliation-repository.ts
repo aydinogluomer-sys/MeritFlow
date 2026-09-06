@@ -1,4 +1,5 @@
 import { toDomainError } from '@/lib/errors';
+import { toMinorAmount } from '@/lib/money';
 import { poolRefFromMetadata } from '@/lib/db-schemas/bonus-snapshot-metadata';
 import { INVARIANT_SEVERITY, type ReconciliationContext, type ReconciliationFinding } from '../domain/types';
 
@@ -83,7 +84,8 @@ export class ReconciliationRepository {
     for (const a of allocations) {
       finalSumByRun.set(
         a.calculation_run_id,
-        (finalSumByRun.get(a.calculation_run_id) ?? 0) + Number(a.final_amount_minor),
+        (finalSumByRun.get(a.calculation_run_id) ?? 0) +
+          toMinorAmount(a.final_amount_minor, 'final_amount_minor'),
       );
     }
 
@@ -93,7 +95,9 @@ export class ReconciliationRepository {
       if (!snap) continue; // missing snapshot is reported by checkMissingSnapshot
       const poolRef = poolRefOf(snap);
       if (Number.isNaN(poolRef)) continue; // no pool_ref basis → not an SI-13 subject
-      const actualSum = (finalSumByRun.get(run.id) ?? 0) + Number(snap.undistributed_remainder_minor);
+      const actualSum =
+        (finalSumByRun.get(run.id) ?? 0) +
+        toMinorAmount(snap.undistributed_remainder_minor, 'undistributed_remainder_minor');
       if (actualSum !== poolRef) {
         findings.push({
           invariant: 'INV-SI13-POOL-SUM',
@@ -117,8 +121,8 @@ export class ReconciliationRepository {
     const byTxn = new Map<string, { debit: number; credit: number }>();
     for (const r of rows) {
       const acc = byTxn.get(r.transaction_id) ?? { debit: 0, credit: 0 };
-      if (r.entry_type === 'debit') acc.debit += Number(r.amount_minor);
-      else if (r.entry_type === 'credit') acc.credit += Number(r.amount_minor);
+      if (r.entry_type === 'debit') acc.debit += toMinorAmount(r.amount_minor, 'amount_minor');
+      else if (r.entry_type === 'credit') acc.credit += toMinorAmount(r.amount_minor, 'amount_minor');
       byTxn.set(r.transaction_id, acc);
     }
 
@@ -208,7 +212,10 @@ export class ReconciliationRepository {
     const accruedBySnap = new Map<string, number>();
     for (const r of ledger) {
       if (!r.snapshot_id) continue;
-      accruedBySnap.set(r.snapshot_id, (accruedBySnap.get(r.snapshot_id) ?? 0) + Number(r.amount_minor));
+      accruedBySnap.set(
+        r.snapshot_id,
+        (accruedBySnap.get(r.snapshot_id) ?? 0) + toMinorAmount(r.amount_minor, 'amount_minor'),
+      );
     }
     if (accruedBySnap.size === 0) return [];
 

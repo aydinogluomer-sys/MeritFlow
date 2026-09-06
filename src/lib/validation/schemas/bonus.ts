@@ -25,7 +25,8 @@ export const CreatePeriodSchema = z.object({
  */
 export const CreatePoolSchema = z.object({
   bonusPeriodId: z.string().uuid(),
-  amountMinor: z.number().int().min(0),
+  // ENGINEERING-25: minor-unit integer, guarded to the JS safe-integer ceiling (money precision).
+  amountMinor: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
   currency: z.string().length(3).default('TRY'),
 });
 

@@ -7,6 +7,11 @@
 // D6 (capped rows excluded from the largest-remainder bump), D10 (proration applies to the CAP
 // only, not the score), AD6 (missing cap_basis → pending_missing_cap_basis), AD8 (T_org: T=1.2
 // needs top_up_approved, else the pool stays as pool_ref).
+//
+// ENGINEERING-25: minor-unit money inputs (amountMinor, capBasisMinor) are guarded to safe
+// non-negative integers at entry. Factors (adjustedScore, capRate, prorataFactor) are float and are
+// NOT guarded — they are multipliers, not money.
+import { assertMinorAmount } from '@/lib/money';
 
 export interface EmployeeInput {
   employeeId: string;
@@ -47,6 +52,9 @@ export interface AllocationResult {
 export function allocateBonus(employees: EmployeeInput[], pool: PoolConfig): AllocationResult {
   const { amountMinor: A, tOrg: T, topUpApproved, capRate } = pool;
 
+  // ENGINEERING-25: guard the money inputs (safe non-negative integers) at the boundary.
+  assertMinorAmount(pool.amountMinor, 'pool.amountMinor');
+
   // ── distributable + pool_ref (AD8) ──────────────────────────────────────────────────────────
   let distributableMinor: number;
   let poolRefMinor: number;
@@ -79,6 +87,8 @@ export function allocateBonus(employees: EmployeeInput[], pool: PoolConfig): All
   }
 
   const work: Work[] = eligible.map((e) => {
+    // ENGINEERING-25: a present cap basis is money — guard it (null = pending, AD6, is valid).
+    if (e.capBasisMinor !== null) assertMinorAmount(e.capBasisMinor, 'capBasisMinor');
     const rawShareNum = sumAdj === 0 ? 0 : (distributableMinor * e.adjustedScore) / sumAdj;
     const rawShareMinor = Math.floor(rawShareNum);
     const frac = rawShareNum - rawShareMinor;
