@@ -148,6 +148,17 @@ jobs:
             exit 1
           fi
           echo "DB types: no drift"
+      # Docker-free regen escape hatch: publish the CI-generated types so the drift file can be
+      # regenerated + committed WITHOUT a working local Docker daemon. `always()` is required so this
+      # runs even when the drift check above exits non-zero; that step writes /tmp/database.generated.ts
+      # before it diffs/exits, so the file exists to upload.
+      - name: Upload CI-generated DB types (Docker-free regen escape hatch)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-generated-types
+          path: /tmp/database.generated.ts
+          if-no-files-found: warn
       - name: SECURITY DEFINER catalog audit (ENGINEERING-19 8.6)
         env:
           SUPABASE_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
