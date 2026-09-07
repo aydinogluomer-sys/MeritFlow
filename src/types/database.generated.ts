@@ -1730,6 +1730,119 @@ export type Database = {
           },
         ]
       }
+      policy_change_requests: {
+        Row: {
+          allow_retroactive: boolean
+          created_at: string
+          decided_at: string | null
+          decision_note: string | null
+          effective_date: string | null
+          finance_approved_at: string | null
+          finance_approved_by: string | null
+          from_version_id: string
+          hr_approved_at: string | null
+          hr_approved_by: string | null
+          id: string
+          organization_id: string
+          reason: string
+          requested_by: string
+          scoring_policy_id: string
+          status: string
+          to_draft_version_id: string
+          updated_at: string
+        }
+        Insert: {
+          allow_retroactive?: boolean
+          created_at?: string
+          decided_at?: string | null
+          decision_note?: string | null
+          effective_date?: string | null
+          finance_approved_at?: string | null
+          finance_approved_by?: string | null
+          from_version_id: string
+          hr_approved_at?: string | null
+          hr_approved_by?: string | null
+          id?: string
+          organization_id: string
+          reason: string
+          requested_by: string
+          scoring_policy_id: string
+          status?: string
+          to_draft_version_id: string
+          updated_at?: string
+        }
+        Update: {
+          allow_retroactive?: boolean
+          created_at?: string
+          decided_at?: string | null
+          decision_note?: string | null
+          effective_date?: string | null
+          finance_approved_at?: string | null
+          finance_approved_by?: string | null
+          from_version_id?: string
+          hr_approved_at?: string | null
+          hr_approved_by?: string | null
+          id?: string
+          organization_id?: string
+          reason?: string
+          requested_by?: string
+          scoring_policy_id?: string
+          status?: string
+          to_draft_version_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "policy_change_requests_finance_approver_org_fk"
+            columns: ["organization_id", "finance_approved_by"]
+            isOneToOne: false
+            referencedRelation: "memberships"
+            referencedColumns: ["organization_id", "profile_id"]
+          },
+          {
+            foreignKeyName: "policy_change_requests_from_version_org_fk"
+            columns: ["from_version_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "scoring_policy_versions"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "policy_change_requests_hr_approver_org_fk"
+            columns: ["organization_id", "hr_approved_by"]
+            isOneToOne: false
+            referencedRelation: "memberships"
+            referencedColumns: ["organization_id", "profile_id"]
+          },
+          {
+            foreignKeyName: "policy_change_requests_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policy_change_requests_policy_org_fk"
+            columns: ["scoring_policy_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "scoring_policies"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "policy_change_requests_requested_by_org_fk"
+            columns: ["organization_id", "requested_by"]
+            isOneToOne: false
+            referencedRelation: "memberships"
+            referencedColumns: ["organization_id", "profile_id"]
+          },
+          {
+            foreignKeyName: "policy_change_requests_to_version_org_fk"
+            columns: ["to_draft_version_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "scoring_policy_versions"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           alias: string | null
