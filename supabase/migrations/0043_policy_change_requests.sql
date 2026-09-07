@@ -22,14 +22,10 @@
 -- runs a calculation, or mutates a published scoring_policy_version. No edits to committed migrations.
 -- =============================================================================
 
--- -----------------------------------------------------------------------------
--- 0) Enable a same-org COMPOSITE FK target on scoring_policy_versions. 0008 gave the table a PK(id)
---    + unique(scoring_policy_id, version_no) but NO unique(id, organization_id); a composite FK
---    (version_id, organization_id) needs that exact unique. Additive constraint (id is already unique
---    so this adds no new semantics) — the 0027/exports precedent. NOT a mutation of any published row.
--- -----------------------------------------------------------------------------
-alter table public.scoring_policy_versions
-  add constraint scoring_policy_versions_id_org_uq unique (id, organization_id);
+-- NOTE: the same-org COMPOSITE FK target on scoring_policy_versions — unique (id, organization_id),
+-- named scoring_policy_versions_id_org_uq — ALREADY EXISTS (added by migration 0009; also relied on
+-- by 0013/0019). policy_change_requests' composite FKs below resolve against it directly; adding it
+-- again here would abort with "constraint ... already exists", so there is no ALTER in this slice.
 
 -- -----------------------------------------------------------------------------
 -- validate_policy_change_request(): the state machine + governance invariants (§8.2/§8.7/§8.11).
