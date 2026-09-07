@@ -171,7 +171,7 @@ select is((select status from public.bonus_allocations where bonus_period_id='a0
 select ok((select cap_minor is null from public.bonus_allocations where bonus_period_id='a0000000-0000-0000-0000-000000000274' and employee_id='a0000000-0000-0000-0000-000000000205'), 'AD6: no cap applied (cap_minor null — no unlimited cap materialized)');
 
 -- (#15) permission catalog unchanged.
-select is((select count(*) from public.permissions), 22::bigint, 'permission catalog 22');
+select is((select count(*) from public.permissions), 23::bigint, 'permission catalog 23');
 
 -- =============================================================================
 -- SECTION B — RLS as authenticated users (allocation reads)

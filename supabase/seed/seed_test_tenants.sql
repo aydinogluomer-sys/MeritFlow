@@ -1013,3 +1013,60 @@ begin
     on conflict (organization_id, flag_key) do nothing;
   end if;
 end $$;
+
+-- =============================================================================
+-- Phase P1 / slice 6-A seed — Policy Change Impact governance (DEV/STAGING ONLY)
+-- Refs: implementation plan §8. Idempotent mirror of migration 0043's permission (catalog 22 -> 23)
+-- + deterministic policy_change_requests fixtures for RLS / cross-tenant / governance pgTAP (0042).
+-- GUARDED (to_regclass): policy_change_requests is introduced by the LATEST migration (0043); the
+-- N-1 upgrade drill runs this seed against the N-1 schema (before 0043), so the fixtures must no-op
+-- when the table is absent (same rule as the feature_flags block above).
+-- =============================================================================
+
+-- policy.impact.read permission (catalog 22 -> 23) — idempotent mirror of 0043.
+insert into public.permissions (key, label, domain, is_sensitive) values
+  ('policy.impact.read', 'Read policy change impact', 'intelligence', false)
+on conflict (key) do nothing;
+
+insert into public.role_permissions (role_key, permission_key)
+select r, 'policy.impact.read' from (values ('owner'), ('admin'), ('hr'), ('finance'), ('auditor')) as t(r)
+on conflict (role_key, permission_key) do nothing;
+
+-- Org B DRAFT version (v2) so a symmetric cross-tenant change request exists (Org A already has the
+-- published d2 + draft d3 from the Phase 3B-A block). One multiplier differs from the published b-d2.
+insert into public.scoring_policy_versions
+  (id, organization_id, scoring_policy_id, version_no, status,
+   multipliers, revision_penalty_rule, timeliness_thresholds, created_by)
+values
+  ('b0000000-0000-0000-0000-0000000000d3', 'b0000000-0000-0000-0000-000000000002',
+   'b0000000-0000-0000-0000-0000000000d1', 2, 'draft',
+   '{"complexity":{"low":1.0,"medium":1.25,"high":1.6,"critical":2.0},"impact":{"low":1.0,"medium":1.2,"high":1.5,"strategic":2.0},"quality":{"acceptable":0.75,"good":1.0,"excellent":1.25,"poor":0},"timeliness":{"early":1.1,"on_time":1.0,"late_minor":0.85,"late_major":0.5}}'::jsonb,
+   '{"rate_per_revision":0.05,"cap":0.25}'::jsonb, '{}'::jsonb,
+   'b0000000-0000-0000-0000-0000000000b1')
+on conflict (id) do nothing;
+
+do $$
+begin
+  if to_regclass('public.policy_change_requests') is not null then
+    -- Org A change request (from published d2 -> draft d3 of policy d1), requested by HR A (a3).
+    -- Org B change request (from published b-d2 -> draft b-d3 of policy b-d1), requested by Owner B.
+    -- Inserted in 'draft' (the only valid INSERT state), then walked to 'submitted' so the pgTAP
+    -- approval/gating tests have a submitted request to act on. Trusted context (auth.uid() null).
+    insert into public.policy_change_requests
+      (id, organization_id, scoring_policy_id, from_version_id, to_draft_version_id, reason, requested_by)
+    values
+      ('a0000000-0000-0000-0000-0000000000cf', 'a0000000-0000-0000-0000-000000000001',
+       'a0000000-0000-0000-0000-0000000000d1', 'a0000000-0000-0000-0000-0000000000d2',
+       'a0000000-0000-0000-0000-0000000000d3', 'seed: raise complexity/high multiplier',
+       'a0000000-0000-0000-0000-0000000000a3'),
+      ('b0000000-0000-0000-0000-0000000000cf', 'b0000000-0000-0000-0000-000000000002',
+       'b0000000-0000-0000-0000-0000000000d1', 'b0000000-0000-0000-0000-0000000000d2',
+       'b0000000-0000-0000-0000-0000000000d3', 'seed: org B draft proposal',
+       'b0000000-0000-0000-0000-0000000000b1')
+    on conflict (id) do nothing;
+
+    update public.policy_change_requests set status = 'submitted'
+      where id in ('a0000000-0000-0000-0000-0000000000cf', 'b0000000-0000-0000-0000-0000000000cf')
+        and status = 'draft';
+  end if;
+end $$;

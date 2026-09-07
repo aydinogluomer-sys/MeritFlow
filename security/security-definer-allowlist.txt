@@ -1,9 +1,9 @@
 # ENGINEERING-19 (8.6) — SECURITY DEFINER allowlist (schema.function, one per line).
-# Built from supabase/migrations/0001..0042. scripts/audit-security-definer.sh fails if the
-# NOTE: migration 0042 (Phase P0 intelligence foundation) adds NO SECURITY DEFINER function —
-#       insight writes are server-only via the service_role client, so this list is unchanged.
-# live DB has a SECURITY DEFINER function NOT listed here (an un-reviewed privilege escalation)
-# or one missing search_path=''. Add a line ONLY after reviewing the new function.
+# Built from supabase/migrations/0001..0043. scripts/audit-security-definer.sh fails if the live DB
+# has a SECURITY DEFINER function NOT listed here (an un-reviewed privilege escalation) or one
+# missing search_path=''. Add a line ONLY after reviewing the new function.
+# NOTE: 0042 (P0 intelligence foundation) added NO definer function. 0043 (P1 Module 6-A) adds ONE:
+#       validate_policy_change_request (state-machine/governance trigger; search_path='').
 public.accept_invitation
 public.apply_dispute_point_adjustment
 public.apply_manual_point_adjustment
@@ -56,4 +56,5 @@ public.validate_calculation_run
 public.validate_dispute_transition
 public.validate_eligibility_primary_team
 public.validate_export
+public.validate_policy_change_request
 public.validate_task_review

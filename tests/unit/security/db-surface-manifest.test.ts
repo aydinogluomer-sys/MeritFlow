@@ -54,10 +54,10 @@ describe('db-surface.yml', () => {
     expect(surface.tables).toBeTypeOf('object');
     expect(surface.views).toBeTypeOf('object');
     expect(surface.security_definer_functions).toBeTypeOf('object');
-    // Sanity on the known surface size (37 tables + 2 views + 53 definer funcs).
-    expect(Object.keys(surface.tables)).toHaveLength(37);
+    // Sanity on the known surface size (38 tables + 2 views + 54 definer funcs).
+    expect(Object.keys(surface.tables)).toHaveLength(38);
     expect(Object.keys(surface.views)).toHaveLength(2);
-    expect(Object.keys(surface.security_definer_functions)).toHaveLength(53);
+    expect(Object.keys(surface.security_definer_functions)).toHaveLength(54);
   });
 
   it('2. every table has rls_enabled=true and rls_forced=true (RLS-less table = forbidden)', () => {

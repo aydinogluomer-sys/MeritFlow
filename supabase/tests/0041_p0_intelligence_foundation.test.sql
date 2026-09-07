@@ -45,9 +45,9 @@ select ok(has_table_privilege('authenticated', 'public.feature_flags', 'UPDATE')
 select ok(not has_table_privilege('authenticated', 'public.feature_flags', 'DELETE'),
   'authenticated may NOT DELETE feature_flags');
 
--- ---- permission catalog (20 -> 22) ------------------------------------------
-select is((select count(*) from public.permissions), 22::bigint,
-  'permission catalog is 22 (intelligence.read + intelligence.manage added)');
+-- ---- permission catalog (P0 added 2 -> 22; P1 6-A adds policy.impact.read -> 23) -----------
+select is((select count(*) from public.permissions), 23::bigint,
+  'permission catalog is 23 (P0 intelligence.read/manage + P1 policy.impact.read)');
 select is((select count(*) from public.permissions where key in ('intelligence.read', 'intelligence.manage')),
   2::bigint, 'both intelligence permissions exist');
 select is((select count(*) from public.role_permissions

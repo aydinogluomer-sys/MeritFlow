@@ -16,10 +16,10 @@
 #
 # grants: authenticated privileges are taken verbatim from the migration GRANTs (0007 + later);
 # service_role is `all` on every table (trusted server). Absence of an authenticated privilege =
-# server-only for that verb. RLS is ENABLE + FORCE on every table (verified: migrations 0007/0042).
+# server-only for that verb. RLS is ENABLE + FORCE on every table (verified: migrations 0007/0043).
 # =============================================================================
 version: "1"
-generated_from: "supabase/migrations/0001..0042"
+generated_from: "supabase/migrations/0001..0043"
 
 tables:
   organizations:
@@ -318,6 +318,14 @@ tables:
     grants:
       authenticated: [select, insert, update]
       service_role: [all]
+  policy_change_requests:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: operational
+    notes: "Policy Change Impact governance (Module 6 / P1, plan §8.7). Mutable state machine (draft->submitted->approved|rejected|changes_requested) proposing a published->draft scoring_policy_version change; dual HR+Finance approval (role-gated, one-time, self-stamped); retroactive effective_date blocked (§8.11); published version never mutated (§8.2). Read policy.impact.read; write policy.manage (create/submit) + HR/Finance (approve/decide); no DELETE; audited."
+    grants:
+      authenticated: [select, insert, update]
+      service_role: [all]
 
 views:
   v_finance_payout:
@@ -378,6 +386,9 @@ security_definer_functions:
   public.validate_task_review:
     category: state_guard
     notes: "Review integrity: no self-approval; quality=poor cannot approve (D3)."
+  public.validate_policy_change_request:
+    category: state_guard
+    notes: "Policy change request state machine + governance invariants (plan §8.2/§8.7/§8.11): from=published/to=draft/same policy, one-time self-stamped HR/Finance approval slots, dual-approval gate, retroactive block. Never mutates a scoring_policy_version."
   public.prevent_delete:
     category: state_guard
     notes: "Blocks DELETE on retention/append-only tables."

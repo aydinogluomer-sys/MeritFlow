@@ -124,8 +124,8 @@ select throws_ok(
   'organization_id immutable after insert');
 
 -- (#12) No new permission was added — catalog count matches the 0001 assertion (20).
-select is((select count(*) from public.permissions), 22::bigint,
-  'permission catalog 22 — notifications added NO permission');
+select is((select count(*) from public.permissions), 23::bigint,
+  'permission catalog 23 — notifications added NO permission');
 
 -- =============================================================================
 -- SECTION B — RLS as authenticated users
