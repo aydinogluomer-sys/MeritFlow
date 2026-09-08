@@ -102,7 +102,7 @@
     {
       "name": "policy-complexity",
       "status": "implemented",
-      "publicApi": ["evaluateStaticComplexity", "evaluatePolicyComplexity", "PolicyComplexityRepository"],
+      "publicApi": ["evaluateStaticComplexity", "evaluatePolicyComplexity", "PolicyComplexityRepository", "evaluateRuntimeComplexity", "computeDebtEvaluation", "computeVersionTrend", "findSimplificationCandidates", "evaluatePolicyDebt", "getPolicyComplexityTrend"],
       "layers": ["application", "domain", "repository"]
     },
     {
