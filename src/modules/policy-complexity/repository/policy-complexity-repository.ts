@@ -3,7 +3,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/database.generated';
 import { toDomainError } from '@/lib/errors';
 import { configFromVersionRow } from '../domain/complexity-rules';
-import type { ComplexityDriver, ScoringPolicyConfig } from '../domain/types';
+import type { BucketUsage } from '../domain/simplification';
+import type { ComplexityDriver, RuntimeSignals, ScoringPolicyConfig } from '../domain/types';
 
 // Phase P1 / slice 4-A — policy-complexity repository. READS a scoring_policy_version's config
 // (never mutates it — §26) and persists an append-only evaluation. Artifact READS run through the
@@ -38,6 +39,13 @@ export interface NewEvaluationRow {
   staticScore: number;
   totalScore: number;
   components: ComplexityDriver[];
+  runtimeScore?: number | null; // 4-B: a full (static+runtime) evaluation sets this; 4-A leaves it null
+}
+
+/** A policy version's identity for the trend read (§6.7). */
+export interface PolicyVersionRef {
+  policyVersionId: string;
+  versionNo: number;
 }
 
 interface EvaluationRow {
@@ -128,7 +136,8 @@ export class PolicyComplexityRepository {
     return data ? toDomain(data as unknown as EvaluationRow) : null;
   }
 
-  /** Persist an evaluation (SERVER-ONLY — expects the admin client). runtime_score stays NULL (4-B). */
+  /** Persist an evaluation (SERVER-ONLY — expects the admin client). runtime_score = null for a 4-A
+   * static-only row; set for a 4-B full (static+runtime) row. Append-only (unique version+rule_set). */
   async insert(row: NewEvaluationRow): Promise<PolicyComplexityEvaluation> {
     const { data, error } = await this.table()
       .insert({
@@ -136,7 +145,7 @@ export class PolicyComplexityRepository {
         policy_version_id: row.policyVersionId,
         rule_set_version: row.ruleSetVersion,
         static_score: row.staticScore,
-        runtime_score: null,
+        runtime_score: row.runtimeScore ?? null,
         total_score: row.totalScore,
         components: row.components,
       })
@@ -144,5 +153,88 @@ export class PolicyComplexityRepository {
       .single();
     if (error) throw toDomainError(error);
     return toDomain(data as unknown as EvaluationRow);
+  }
+
+  // ── Module 4-B: runtime-signal reads (READ-ONLY over operational tables — §26) ────────────────
+
+  /** Count rows matching a filtered point_ledger / runs query (head:true → no rows fetched). The
+   * supabase query builder is a thenable (PromiseLike), not a Promise — accept it as such. */
+  private async count(query: PromiseLike<{ count: number | null; error: unknown }>): Promise<number> {
+    const { count, error } = await query;
+    if (error) throw toDomainError(error);
+    return count ?? 0;
+  }
+
+  /**
+   * Read the frozen runtime signals of a policy version (§6.5). Overrides are attributed via the
+   * point_ledger→tasks join (the manual-adjustment RPC does not stamp scoring_policy_version_id, but
+   * tasks do); recalculations via bonus_calculation_runs.policy_version_id; scored volume via
+   * point_ledger.scoring_policy_version_id (set on task_approved). All sources are append-only/terminal.
+   * Dispute-adjustment usage is DEFERRED (not cleanly version-attributable — see RuntimeSignals note).
+   */
+  async readRuntimeSignals(versionId: string, organizationId: string): Promise<RuntimeSignals> {
+    const [taskApprovedCount, overrideCount, recalculationCount] = await Promise.all([
+      this.count(
+        this.supabase
+          .from('point_ledger')
+          .select('id', { count: 'exact', head: true })
+          .eq('organization_id', organizationId)
+          .eq('scoring_policy_version_id', versionId)
+          .eq('event_type', 'task_approved'),
+      ),
+      this.count(
+        this.supabase
+          .from('point_ledger')
+          .select('id, tasks!inner(scoring_policy_version_id)', { count: 'exact', head: true })
+          .eq('organization_id', organizationId)
+          .eq('event_type', 'manual_adjustment')
+          .eq('tasks.scoring_policy_version_id', versionId),
+      ),
+      this.count(
+        this.supabase
+          .from('bonus_calculation_runs')
+          .select('id', { count: 'exact', head: true })
+          .eq('organization_id', organizationId)
+          .eq('policy_version_id', versionId)
+          .eq('status', 'superseded'),
+      ),
+    ]);
+    return { overrideCount, recalculationCount, taskApprovedCount };
+  }
+
+  /** Which scoring buckets the version's scored work actually used (from task_approved metadata). */
+  async readBucketUsage(versionId: string, organizationId: string): Promise<BucketUsage> {
+    const { data, error } = await this.supabase
+      .from('point_ledger')
+      .select('metadata')
+      .eq('organization_id', organizationId)
+      .eq('scoring_policy_version_id', versionId)
+      .eq('event_type', 'task_approved');
+    if (error) throw toDomainError(error);
+    const dims = ['complexity', 'impact', 'quality', 'timeliness'] as const;
+    const used: Record<string, Set<string>> = { complexity: new Set(), impact: new Set(), quality: new Set(), timeliness: new Set() };
+    for (const row of (data ?? []) as Array<{ metadata: Record<string, unknown> | null }>) {
+      const md = row.metadata ?? {};
+      for (const d of dims) {
+        const v = md[d];
+        if (typeof v === 'string' && v.length > 0) used[d]!.add(v);
+      }
+    }
+    return { complexity: [...used.complexity!], impact: [...used.impact!], quality: [...used.quality!], timeliness: [...used.timeliness!] };
+  }
+
+  /** All versions of a scoring policy (id + version_no) for the trend read (§6.7). */
+  async listVersionsForPolicy(scoringPolicyId: string, organizationId: string): Promise<PolicyVersionRef[]> {
+    const { data, error } = await this.supabase
+      .from('scoring_policy_versions')
+      .select('id, version_no')
+      .eq('organization_id', organizationId)
+      .eq('scoring_policy_id', scoringPolicyId)
+      .order('version_no', { ascending: true });
+    if (error) throw toDomainError(error);
+    return ((data ?? []) as Array<{ id: string; version_no: number }>).map((v) => ({
+      policyVersionId: v.id,
+      versionNo: v.version_no,
+    }));
   }
 }
