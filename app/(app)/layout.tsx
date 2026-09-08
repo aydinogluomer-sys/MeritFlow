@@ -3,6 +3,7 @@ import { getUser } from '@/lib/auth/session';
 import { getActiveOrg } from '@/lib/auth/org';
 import { getPermissions } from '@/lib/auth/rbac';
 import { createClient } from '@/lib/supabase/server';
+import { FeatureFlagResolver } from '@/modules/intelligence';
 import { AppNav } from '@/components/app-nav';
 import { CommandPalette } from '@/components/command-palette';
 import { ErrorBoundary } from '@/components/error-boundary';
@@ -42,6 +43,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const displayName = profile?.display_name ?? user.email ?? 'Kullanıcı';
 
+  // Feature-flag-gated nav items (§21). Resolve the flags used by the nav (currently the Policy
+  // Change Impact surface) so the entry is hidden when the org has it off.
+  const flagResolver = new FeatureFlagResolver(supabase, org.organization_id);
+  const featureFlags = (await flagResolver.isEnabled('policy_change_impact'))
+    ? ['policy_change_impact']
+    : [];
+
   return (
     <div className="flex min-h-screen">
       <AppNav
@@ -50,6 +58,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         displayName={displayName}
         email={user.email ?? ''}
         orgSlug={orgRow?.slug ?? null}
+        featureFlags={featureFlags}
       />
       {/* Global Cmd/Ctrl+K palette. `permissions` is the DB-derived set (AD1); the palette
           only navigates to routes the user is already entitled to (Phase-UI-6, 6A). */}
