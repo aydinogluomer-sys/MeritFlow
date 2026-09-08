@@ -1927,6 +1927,60 @@ export type Database = {
           },
         ]
       }
+      policy_complexity_evaluations: {
+        Row: {
+          components: Json
+          created_at: string
+          evaluated_at: string
+          id: string
+          organization_id: string
+          policy_version_id: string
+          rule_set_version: string
+          runtime_score: number | null
+          static_score: number
+          total_score: number
+        }
+        Insert: {
+          components: Json
+          created_at?: string
+          evaluated_at?: string
+          id?: string
+          organization_id: string
+          policy_version_id: string
+          rule_set_version: string
+          runtime_score?: number | null
+          static_score: number
+          total_score: number
+        }
+        Update: {
+          components?: Json
+          created_at?: string
+          evaluated_at?: string
+          id?: string
+          organization_id?: string
+          policy_version_id?: string
+          rule_set_version?: string
+          runtime_score?: number | null
+          static_score?: number
+          total_score?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "policy_complexity_evaluations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policy_complexity_evaluations_version_org_fk"
+            columns: ["policy_version_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "scoring_policy_versions"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           alias: string | null
