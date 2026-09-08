@@ -12,6 +12,7 @@ import {
   MessageSquareWarning,
   Download,
   SlidersHorizontal,
+  Scale,
   ShieldAlert,
   ScrollText,
   Users,
@@ -34,6 +35,8 @@ type NavItem = {
   icon: LucideIcon;
   section: SectionKey;
   permission?: string;
+  /** Optional feature flag — item is shown only when the flag is enabled for the org (§21 rollout). */
+  flag?: string;
 };
 
 // Role-based IA (doc 09). Every item has a live route (<Link>) and an icon. Items with a
@@ -57,6 +60,7 @@ const SECTIONS: NavItem[] = [
   { label: 'Bonus Dönemleri', href: '/bonus/periods', icon: CalendarRange, section: 'management', permission: 'period.manage' },
   { label: 'İtirazlar', href: '/disputes', icon: MessageSquareWarning, section: 'management', permission: 'dispute.open' },
   { label: 'Ödeme Export', href: '/payroll/exports', icon: Download, section: 'management', permission: 'payout.export' },
+  { label: 'Politika Değişiklik Etkisi', href: '/policy-impact', icon: Scale, section: 'management', permission: 'policy.impact.read', flag: 'policy_change_impact' },
   { label: 'Puan Override', href: '/points/override', icon: SlidersHorizontal, section: 'management', permission: 'point.override' },
   { label: 'Anti-Gaming', href: '/anti-gaming', icon: ShieldAlert, section: 'management', permission: 'period.manage' },
 
@@ -113,17 +117,22 @@ export function AppNav({
   displayName,
   email,
   orgSlug,
+  featureFlags = [],
 }: {
   permissions: string[];
   orgRole: string | null;
   displayName: string;
   email: string;
   orgSlug: string | null;
+  /** Enabled feature flags for the active org — gates items carrying a `flag` (§21 rollout). */
+  featureFlags?: string[];
 }) {
   const pathname = usePathname();
 
   const visible = SECTIONS.filter(
-    (item) => !item.permission || permissions.includes(item.permission),
+    (item) =>
+      (!item.permission || permissions.includes(item.permission)) &&
+      (!item.flag || featureFlags.includes(item.flag)),
   );
 
   const roleLabel = orgRole ? (ROLE_LABELS[orgRole] ?? orgRole) : null;
