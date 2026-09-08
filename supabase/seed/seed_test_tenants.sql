@@ -1070,3 +1070,32 @@ begin
         and status = 'draft';
   end if;
 end $$;
+
+-- =============================================================================
+-- Phase P1 / slice 6-B seed — Policy Change Impact artifacts (DEV/STAGING ONLY)
+-- Refs: implementation plan §8.8. Deterministic policy_change_impacts fixtures for RLS / cross-tenant
+-- / immutability pgTAP (0043). Normally SERVER-ONLY writes (service_role); here via the bypassrls
+-- migration role. GUARDED (to_regclass): the table is introduced by the LATEST migration (0044); the
+-- N-1 upgrade drill runs this seed against the N-1 schema, so the block must no-op when it is absent.
+-- One artifact per org referencing that org's 6-A change request + a locked reference period (30).
+-- =============================================================================
+do $$
+begin
+  if to_regclass('public.policy_change_impacts') is not null then
+    insert into public.policy_change_impacts
+      (id, organization_id, change_request_id, reference_period_id, impact_version,
+       from_version_id, to_draft_version_id, financial_impact, employee_distribution)
+    values
+      ('a0000000-0000-0000-0000-0000000000e6', 'a0000000-0000-0000-0000-000000000001',
+       'a0000000-0000-0000-0000-0000000000cf', 'a0000000-0000-0000-0000-000000000030', 1,
+       'a0000000-0000-0000-0000-0000000000d2', 'a0000000-0000-0000-0000-0000000000d3',
+       '{"employeesAffected":2,"higher":1,"lower":1,"unchanged":0,"fromBudgetMinor":10000000,"toBudgetMinor":10000000,"budgetDeltaMinor":0,"budgetDeltaPct":0,"medianEmployeeDeltaMinor":0,"maxNegativeDeltaMinor":-500000}'::jsonb,
+       '[{"employeeId":"a0000000-0000-0000-0000-0000000000a7","fromMinor":6000000,"toMinor":6500000,"deltaMinor":500000},{"employeeId":"a0000000-0000-0000-0000-0000000000a8","fromMinor":4000000,"toMinor":3500000,"deltaMinor":-500000}]'::jsonb),
+      ('b0000000-0000-0000-0000-0000000000e6', 'b0000000-0000-0000-0000-000000000002',
+       'b0000000-0000-0000-0000-0000000000cf', 'b0000000-0000-0000-0000-000000000030', 1,
+       'b0000000-0000-0000-0000-0000000000d2', 'b0000000-0000-0000-0000-0000000000d3',
+       '{"employeesAffected":0,"higher":0,"lower":0,"unchanged":1,"fromBudgetMinor":5000000,"toBudgetMinor":5000000,"budgetDeltaMinor":0,"budgetDeltaPct":0,"medianEmployeeDeltaMinor":0,"maxNegativeDeltaMinor":0}'::jsonb,
+       '[{"employeeId":"b0000000-0000-0000-0000-0000000000b2","fromMinor":5000000,"toMinor":5000000,"deltaMinor":0}]'::jsonb)
+    on conflict (id) do nothing;
+  end if;
+end $$;

@@ -96,7 +96,7 @@
     {
       "name": "policy-change-impact",
       "status": "implemented",
-      "publicApi": ["diffPolicyVersions", "computePolicyDiff", "createPolicyChangeRequest", "PolicyChangeRequestRepository"],
+      "publicApi": ["diffPolicyVersions", "computePolicyDiff", "createPolicyChangeRequest", "PolicyChangeRequestRepository", "scoreTask", "runBacktest", "generatePolicyChangeImpact", "PolicyChangeImpactRepository"],
       "layers": ["application", "domain", "repository", "schemas"]
     },
     {

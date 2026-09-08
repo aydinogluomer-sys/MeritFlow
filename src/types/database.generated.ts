@@ -1730,6 +1730,90 @@ export type Database = {
           },
         ]
       }
+      policy_change_impacts: {
+        Row: {
+          change_request_id: string
+          complexity_delta: Json | null
+          created_at: string
+          employee_distribution: Json
+          financial_impact: Json
+          from_version_id: string
+          generated_at: string
+          health_delta: Json | null
+          id: string
+          impact_version: number
+          organization_id: string
+          reference_period_id: string
+          to_draft_version_id: string
+        }
+        Insert: {
+          change_request_id: string
+          complexity_delta?: Json | null
+          created_at?: string
+          employee_distribution: Json
+          financial_impact: Json
+          from_version_id: string
+          generated_at?: string
+          health_delta?: Json | null
+          id?: string
+          impact_version?: number
+          organization_id: string
+          reference_period_id: string
+          to_draft_version_id: string
+        }
+        Update: {
+          change_request_id?: string
+          complexity_delta?: Json | null
+          created_at?: string
+          employee_distribution?: Json
+          financial_impact?: Json
+          from_version_id?: string
+          generated_at?: string
+          health_delta?: Json | null
+          id?: string
+          impact_version?: number
+          organization_id?: string
+          reference_period_id?: string
+          to_draft_version_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "policy_change_impacts_from_version_org_fk"
+            columns: ["from_version_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "scoring_policy_versions"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "policy_change_impacts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policy_change_impacts_period_org_fk"
+            columns: ["reference_period_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "bonus_periods"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "policy_change_impacts_request_org_fk"
+            columns: ["change_request_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "policy_change_requests"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "policy_change_impacts_to_version_org_fk"
+            columns: ["to_draft_version_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "scoring_policy_versions"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
       policy_change_requests: {
         Row: {
           allow_retroactive: boolean
