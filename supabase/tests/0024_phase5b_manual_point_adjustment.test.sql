@@ -198,7 +198,7 @@ select throws_ok(
 -- (#16) permissions catalog is 22 (the role grant above adds no permission row).
 select is(
   (select count(*) from public.permissions),
-  22::bigint, 'permissions catalog 22 (test-only role grant adds no permission)');
+  23::bigint, 'permissions catalog 23 (test-only role grant adds no permission)');
 
 select * from finish();
 rollback;

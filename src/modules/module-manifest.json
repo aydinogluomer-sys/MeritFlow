@@ -94,6 +94,12 @@
       "layers": ["application", "domain", "repository"]
     },
     {
+      "name": "policy-change-impact",
+      "status": "implemented",
+      "publicApi": ["diffPolicyVersions", "computePolicyDiff", "createPolicyChangeRequest", "PolicyChangeRequestRepository"],
+      "layers": ["application", "domain", "repository", "schemas"]
+    },
+    {
       "name": "reconciliation",
       "status": "implemented",
       "publicApi": ["runReconciliation", "ReconciliationRepository"],
