@@ -16,10 +16,10 @@
 #
 # grants: authenticated privileges are taken verbatim from the migration GRANTs (0007 + later);
 # service_role is `all` on every table (trusted server). Absence of an authenticated privilege =
-# server-only for that verb. RLS is ENABLE + FORCE on every table (verified: migrations 0007/0043).
+# server-only for that verb. RLS is ENABLE + FORCE on every table (verified: migrations 0007/0044).
 # =============================================================================
 version: "1"
-generated_from: "supabase/migrations/0001..0043"
+generated_from: "supabase/migrations/0001..0044"
 
 tables:
   organizations:
@@ -325,6 +325,14 @@ tables:
     notes: "Policy Change Impact governance (Module 6 / P1, plan §8.7). Mutable state machine (draft->submitted->approved|rejected|changes_requested) proposing a published->draft scoring_policy_version change; dual HR+Finance approval (role-gated, one-time, self-stamped); retroactive effective_date blocked (§8.11); published version never mutated (§8.2). Read policy.impact.read; write policy.manage (create/submit) + HR/Finance (approve/decide); no DELETE; audited."
     grants:
       authenticated: [select, insert, update]
+      service_role: [all]
+  policy_change_impacts:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: operational
+    notes: "Append-only IMMUTABLE Policy Change Impact artifact (Module 6-B / P1, plan §8.8). Records a DETERMINISTIC backtest (re-score a locked reference period under from vs to_draft version, then the pure allocateBonus engine) -> §8.5 financial_impact summary + per-employee employee_distribution (SIMULATED bonus deltas, advisory — NOT a ledger; no ledger write, no run_bonus_calculation, no published-version mutation). health/complexity_delta NULL this slice. Server-only writes (service_role); read policy.impact.read; UPDATE/DELETE blocked (prevent_mutation); audited."
+    grants:
+      authenticated: [select]
       service_role: [all]
 
 views:
