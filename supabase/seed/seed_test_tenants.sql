@@ -1099,3 +1099,30 @@ begin
     on conflict (id) do nothing;
   end if;
 end $$;
+
+-- =============================================================================
+-- Phase P1 / slice 4-A seed — Policy Complexity evaluations (DEV/STAGING ONLY)
+-- Refs: implementation plan §6.9. Deterministic policy_complexity_evaluations fixtures for RLS /
+-- cross-tenant / immutability pgTAP (0044). Normally SERVER-ONLY writes (service_role); here via the
+-- bypassrls migration role. GUARDED (to_regclass): the table is introduced by the LATEST migration
+-- (0045); the N-1 upgrade drill runs this seed against the N-1 schema, so the block must no-op when
+-- absent. One evaluation per org for that org's published scoring version (org A d2 / org B b-d2).
+-- static_score 32 matches the TS engine for the standard d2 config (dimensions 4×2 + buckets 16×1 +
+-- 1 cliff ×5 + penalty ×3 = 32) — the engine's value is unit-tested; here it is a stored fixture.
+-- =============================================================================
+do $$
+begin
+  if to_regclass('public.policy_complexity_evaluations') is not null then
+    insert into public.policy_complexity_evaluations
+      (id, organization_id, policy_version_id, rule_set_version, static_score, runtime_score,
+       total_score, components)
+    values
+      ('a0000000-0000-0000-0000-0000000000ea', 'a0000000-0000-0000-0000-000000000001',
+       'a0000000-0000-0000-0000-0000000000d2', 'static-v1', 32, null, 32,
+       '[{"code":"dimension_count","label":"Boyut sayısı","impact":8,"value":4},{"code":"bucket_count","label":"Kova sayısı","impact":16,"value":16},{"code":"threshold_cliffs","label":"Eşik uçurumları","impact":5,"value":1,"threshold":2},{"code":"revision_penalty","label":"Revizyon cezası","impact":3,"value":1},{"code":"timeliness_threshold_count","label":"Özel zamanındalık eşikleri","impact":0,"value":0}]'::jsonb),
+      ('b0000000-0000-0000-0000-0000000000ea', 'b0000000-0000-0000-0000-000000000002',
+       'b0000000-0000-0000-0000-0000000000d2', 'static-v1', 32, null, 32,
+       '[{"code":"dimension_count","label":"Boyut sayısı","impact":8,"value":4},{"code":"bucket_count","label":"Kova sayısı","impact":16,"value":16},{"code":"threshold_cliffs","label":"Eşik uçurumları","impact":5,"value":1,"threshold":2},{"code":"revision_penalty","label":"Revizyon cezası","impact":3,"value":1},{"code":"timeliness_threshold_count","label":"Özel zamanındalık eşikleri","impact":0,"value":0}]'::jsonb)
+    on conflict (id) do nothing;
+  end if;
+end $$;
