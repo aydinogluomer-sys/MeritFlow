@@ -16,10 +16,10 @@
 #
 # grants: authenticated privileges are taken verbatim from the migration GRANTs (0007 + later);
 # service_role is `all` on every table (trusted server). Absence of an authenticated privilege =
-# server-only for that verb. RLS is ENABLE + FORCE on every table (verified: migrations 0007/0044).
+# server-only for that verb. RLS is ENABLE + FORCE on every table (verified: migrations 0007/0045).
 # =============================================================================
 version: "1"
-generated_from: "supabase/migrations/0001..0044"
+generated_from: "supabase/migrations/0001..0045"
 
 tables:
   organizations:
@@ -331,6 +331,14 @@ tables:
     rls_forced: true
     financial_class: operational
     notes: "Append-only IMMUTABLE Policy Change Impact artifact (Module 6-B / P1, plan §8.8). Records a DETERMINISTIC backtest (re-score a locked reference period under from vs to_draft version, then the pure allocateBonus engine) -> §8.5 financial_impact summary + per-employee employee_distribution (SIMULATED bonus deltas, advisory — NOT a ledger; no ledger write, no run_bonus_calculation, no published-version mutation). health/complexity_delta NULL this slice. Server-only writes (service_role); read policy.impact.read; UPDATE/DELETE blocked (prevent_mutation); audited."
+    grants:
+      authenticated: [select]
+      service_role: [all]
+  policy_complexity_evaluations:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: operational
+    notes: "Append-only Policy Debt / Complexity evaluation (Module 4-A / P1, plan §6.9). Reproducible DETERMINISTIC static-complexity score + transparent per-component drivers (components) for a scoring_policy_version; runtime_score NULL this slice (4-B), total_score = static_score. Keyed by (policy_version_id, rule_set_version). READ-ONLY on the policy (§26 — no mutation). Server-only writes (service_role); read policy.manage; UPDATE/DELETE blocked (prevent_mutation); audited."
     grants:
       authenticated: [select]
       service_role: [all]

@@ -431,6 +431,18 @@ matrix:
     support: {read: false, write: false}
     anon:    {read: false, write: false}
     trusted_server: {read: true, write: true}
+  # Module 4-A: append-only static-complexity evaluations. read = policy.manage (owner/admin/hr);
+  # writes are SERVER-ONLY (service_role) — the engine runs in TS and writes via the admin client.
+  policy_complexity_evaluations:
+    owner:   {read: true,  write: false}
+    hr:      {read: true,  write: false}
+    manager: {read: false, write: false}
+    finance: {read: false, write: false}
+    auditor: {read: false, write: false}
+    employee: {read: false, write: false}
+    support: {read: false, write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
   v_finance_payout:
     owner:   {read: false, write: false}
     hr:      {read: false, write: false}
