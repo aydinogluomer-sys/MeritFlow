@@ -43,12 +43,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const displayName = profile?.display_name ?? user.email ?? 'Kullanıcı';
 
-  // Feature-flag-gated nav items (§21). Resolve the flags used by the nav (currently the Policy
-  // Change Impact surface) so the entry is hidden when the org has it off.
+  // Feature-flag-gated nav items (§21). Resolve the flags used by the nav (Policy Change Impact
+  // and Policy Debt surfaces) so each entry is hidden when the org has that flag off.
   const flagResolver = new FeatureFlagResolver(supabase, org.organization_id);
-  const featureFlags = (await flagResolver.isEnabled('policy_change_impact'))
-    ? ['policy_change_impact']
-    : [];
+  const [impactOn, debtOn] = await Promise.all([
+    flagResolver.isEnabled('policy_change_impact'),
+    flagResolver.isEnabled('policy_debt'),
+  ]);
+  const featureFlags = [
+    ...(impactOn ? ['policy_change_impact'] : []),
+    ...(debtOn ? ['policy_debt'] : []),
+  ];
 
   return (
     <div className="flex min-h-screen">

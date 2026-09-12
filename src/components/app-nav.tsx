@@ -13,6 +13,7 @@ import {
   Download,
   SlidersHorizontal,
   Scale,
+  Gauge,
   ShieldAlert,
   ScrollText,
   Users,
@@ -61,6 +62,7 @@ const SECTIONS: NavItem[] = [
   { label: 'İtirazlar', href: '/disputes', icon: MessageSquareWarning, section: 'management', permission: 'dispute.open' },
   { label: 'Ödeme Export', href: '/payroll/exports', icon: Download, section: 'management', permission: 'payout.export' },
   { label: 'Politika Değişiklik Etkisi', href: '/policy-impact', icon: Scale, section: 'management', permission: 'policy.impact.read', flag: 'policy_change_impact' },
+  { label: 'Politika Borcu', href: '/policy-debt', icon: Gauge, section: 'management', permission: 'policy.manage', flag: 'policy_debt' },
   { label: 'Puan Override', href: '/points/override', icon: SlidersHorizontal, section: 'management', permission: 'point.override' },
   { label: 'Anti-Gaming', href: '/anti-gaming', icon: ShieldAlert, section: 'management', permission: 'period.manage' },
 
