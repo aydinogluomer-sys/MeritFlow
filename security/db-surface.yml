@@ -342,6 +342,14 @@ tables:
     grants:
       authenticated: [select]
       service_role: [all]
+  policy_health_evaluations:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: operational
+    notes: "Append-only Incentive Health evaluation (Module 1-A / P2, §3.6). Reproducible DETERMINISTIC health evaluation of a scoring_policy_version: a transparent weighted overall_score over per-dimension sub-scores + drivers + evidence (dimensions jsonb) — NO opaque score (§26/§3.3). Keyed by (policy_version_id, rule_set_version). READ-ONLY on the policy; drives no financial calc / ledger (§26). Server-only writes (service_role); read policy.manage; UPDATE/DELETE blocked (prevent_mutation); audited."
+    grants:
+      authenticated: [select]
+      service_role: [all]
 
 views:
   v_finance_payout:

@@ -64,6 +64,12 @@
       "layers": ["application", "domain", "repository"]
     },
     {
+      "name": "incentive-health",
+      "status": "implemented",
+      "publicApi": ["evaluateHealth", "evaluatePolicyHealth", "IncentiveHealthRepository", "assertHealthEngineEnabled", "HEALTH_RULE_SET_VERSION", "aggregateOverall"],
+      "layers": ["application", "domain", "repository"]
+    },
+    {
       "name": "intelligence",
       "status": "implemented",
       "publicApi": ["metricRegistry", "validateSemanticQuery", "IntelligenceRepository", "FeatureFlagResolver", "emitIntelligenceEvent", "parseInsight", "assertTransition"],

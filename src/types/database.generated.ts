@@ -1981,6 +1981,54 @@ export type Database = {
           },
         ]
       }
+      policy_health_evaluations: {
+        Row: {
+          created_at: string
+          dimensions: Json
+          evaluated_at: string
+          id: string
+          organization_id: string
+          overall_score: number
+          policy_version_id: string
+          rule_set_version: string
+        }
+        Insert: {
+          created_at?: string
+          dimensions: Json
+          evaluated_at?: string
+          id?: string
+          organization_id: string
+          overall_score: number
+          policy_version_id: string
+          rule_set_version: string
+        }
+        Update: {
+          created_at?: string
+          dimensions?: Json
+          evaluated_at?: string
+          id?: string
+          organization_id?: string
+          overall_score?: number
+          policy_version_id?: string
+          rule_set_version?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "policy_health_evaluations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policy_health_evaluations_version_org_fk"
+            columns: ["policy_version_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "scoring_policy_versions"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           alias: string | null
