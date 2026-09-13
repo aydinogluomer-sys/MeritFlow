@@ -54,10 +54,10 @@ describe('db-surface.yml', () => {
     expect(surface.tables).toBeTypeOf('object');
     expect(surface.views).toBeTypeOf('object');
     expect(surface.security_definer_functions).toBeTypeOf('object');
-    // Sanity on the known surface size (42 tables + 2 views + 54 definer funcs).
-    // 42 = 41 + policy_health_risk_acceptances (0047, Module 1-B). No new definer (reuses
-    // prevent_mutation + log_audit), so the function count is unchanged.
-    expect(Object.keys(surface.tables)).toHaveLength(42);
+    // Sanity on the known surface size (43 tables + 2 views + 54 definer funcs).
+    // 43 = 42 + opportunity_snapshots (0048, Module 2-A). No new definer (reuses prevent_mutation +
+    // log_audit + current_org/has_role/manages_team/team_of/has_support_grant), so the count is unchanged.
+    expect(Object.keys(surface.tables)).toHaveLength(43);
     expect(Object.keys(surface.views)).toHaveLength(2);
     expect(Object.keys(surface.security_definer_functions)).toHaveLength(54);
   });
