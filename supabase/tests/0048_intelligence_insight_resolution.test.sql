@@ -6,9 +6,10 @@
 --   by an intelligence.manage holder (owner/admin) OR the manager of the subject employee's PRIMARY
 --   team (NO cross-team resolution); finance / the subject employee cannot resolve; cross-tenant is
 --   blocked; the resolution UPDATE is AUDITED (audit_logs); permission catalog unchanged (23).
--- Fixtures (seed): a0..f9 (Org A opportunity_flag, subject emp-alpha a7 [PRIMARY team f1 managed by
---   a5], status 'reviewed') + b0..f9 (Org B). Actors: a1 owner, a2 admin (intelligence.manage);
---   a5 manager(f1); a4 finance; a7 emp-alpha (subject); b1 Org B owner.
+-- Fixtures (created in-file below, NOT in the shared seed — see the block after no_plan): a0..f9 (Org A
+--   opportunity_flag, subject emp-alpha a7 [PRIMARY team f1 managed by a5], status 'reviewed') + b0..f9
+--   (Org B) + a0..f8 (Org A policy_health, subject a7). Actors (from the shared seed): a1 owner, a2 admin
+--   (intelligence.manage); a5 manager(f1); a6 manager(f2); a4 finance; a7 emp-alpha (subject); b1 Org B owner.
 -- =============================================================================
 begin;
 select no_plan();
@@ -18,12 +19,41 @@ select ok(
   exists (select 1 from pg_trigger where tgname = 'trg_audit_intelligence_insights_update'
           and tgrelid = 'public.intelligence_insights'::regclass),
   'after-update audit trigger exists on intelligence_insights (§2.7)');
-select ok(has_table_privilege('authenticated', 'public.intelligence_insights', 'UPDATE'),
-  'authenticated has UPDATE privilege (RLS policy scopes it to opportunity_flag resolution)');
+-- 0049 grants a COLUMN-restricted UPDATE (status, resolved_at, resolution_code) — NOT a table-level
+-- UPDATE — so probe the column privilege, and assert a non-granted column stays read-only.
+select ok(
+  has_column_privilege('authenticated', 'public.intelligence_insights', 'status', 'UPDATE'),
+  'authenticated has column-restricted UPDATE on status (RLS scopes it to opportunity_flag resolution)');
+select ok(
+  not has_column_privilege('authenticated', 'public.intelligence_insights', 'organization_id', 'UPDATE'),
+  'authenticated has NO UPDATE on a non-granted column (organization_id) — the column grant is restricted');
 
 -- ---- permission catalog unchanged (23; 2-B adds no permission) ---------------
 select is((select count(*) from public.permissions), 23::bigint,
   'permission catalog unchanged at 23 (2-B adds no permission)');
+
+-- ---- fixtures (inserted as the migration/superuser role, BEFORE any set-role) ----------------
+-- These live HERE, not in the shared seed: pgTAP runs each file in its own transaction (begin/rollback),
+-- so they stay isolated to 0048 and do NOT perturb 0041's EXACT insight counts (HR = 2 Org A, a7 = 1).
+-- f9 (Org A) / b..f9 (Org B): a REVIEWED opportunity_flag on the subject employee (a7 / b2).
+-- f8 (Org A): a REVIEWED NON-opportunity (policy_health) insight on the same subject — proves the 0049
+-- UPDATE policy is scoped to insight_type='opportunity_flag' (it must NOT be resolvable via the flag path).
+insert into public.intelligence_insights
+  (id, organization_id, insight_type, subject_type, subject_id, severity, status,
+   deterministic_payload, evidence_refs)
+values
+  ('a0000000-0000-0000-0000-0000000000f9', 'a0000000-0000-0000-0000-000000000001',
+   'opportunity_flag', 'employee', 'a0000000-0000-0000-0000-0000000000a7', 'warning', 'reviewed',
+   '{"headline":"Fırsat incelemesi (emp-alpha)","facts":{},"suggestedActions":[{"code":"investigate_opportunity","label":"Fırsatı incele"}]}'::jsonb,
+   '[{"sourceType":"snapshot","sourceId":"a0000000-0000-0000-0000-0000000000fc"}]'::jsonb),
+  ('b0000000-0000-0000-0000-0000000000f9', 'b0000000-0000-0000-0000-000000000002',
+   'opportunity_flag', 'employee', 'b0000000-0000-0000-0000-0000000000b2', 'warning', 'reviewed',
+   '{"headline":"Opportunity review (org B)","facts":{},"suggestedActions":[{"code":"investigate_opportunity","label":"Investigate"}]}'::jsonb,
+   '[{"sourceType":"snapshot","sourceId":"b0000000-0000-0000-0000-0000000000fc"}]'::jsonb),
+  ('a0000000-0000-0000-0000-0000000000f8', 'a0000000-0000-0000-0000-000000000001',
+   'policy_health', 'employee', 'a0000000-0000-0000-0000-0000000000a7', 'info', 'reviewed',
+   '{"headline":"Sağlık (kapsam-dışı örnek)","facts":{},"suggestedActions":[{"code":"noop","label":"—"}]}'::jsonb,
+   '[{"sourceType":"policy_version","sourceId":"a0000000-0000-0000-0000-0000000000d2"}]'::jsonb);
 
 set local role authenticated;
 
