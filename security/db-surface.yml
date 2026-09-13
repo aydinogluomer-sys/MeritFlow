@@ -350,6 +350,14 @@ tables:
     grants:
       authenticated: [select]
       service_role: [all]
+  policy_health_risk_acceptances:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: operational
+    notes: "Append-only, AUDITED Incentive Health risk acceptances (Module 1-B / P2, §3.8/§2.7). A policy owner explicitly ACCEPTS a specific health risk driver (dimension + driver_code) of a policy_health_evaluations row, with mandatory reason + actor (accepted_by = auth.uid()) + server accepted_at (+ optional expires_at). A risk is never silently dismissed; accepting mutates NO policy/ledger and NEVER changes the score (§26/AD7). AUTHENTICATED INSERT gated by policy.manage + accepted_by = self; read policy.manage; UPDATE/DELETE blocked (prevent_mutation); audited on INSERT (policy risk waiver)."
+    grants:
+      authenticated: [select, insert]
+      service_role: [all]
 
 views:
   v_finance_payout:

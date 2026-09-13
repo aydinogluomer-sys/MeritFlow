@@ -53,6 +53,56 @@ export interface NewHealthEvaluationRow {
   deferredDimensions: string[];
 }
 
+// ── Module 1-B: risk acceptance (waiver) + version metadata for comparison ────────────────────────
+
+/** A persisted health risk-acceptance (waiver) — Module 1-B (§3.8/§2.7). Append-only, audited. */
+export interface PolicyHealthRiskAcceptance {
+  id: string;
+  organizationId: string;
+  policyVersionId: string;
+  healthEvaluationId: string;
+  dimension: string;
+  driverCode: string;
+  reason: string;
+  acceptedBy: string;
+  acceptedAt: string;
+  expiresAt: string | null;
+  createdAt: string;
+}
+
+/** Insert payload for a waiver. accepted_at is server-stamped (default now()); policy_version_id is
+ * derived by the application from the referenced evaluation (never independently user-supplied). */
+export interface NewRiskAcceptanceRow {
+  organizationId: string;
+  policyVersionId: string;
+  healthEvaluationId: string;
+  dimension: string;
+  driverCode: string;
+  reason: string;
+  acceptedBy: string;
+  expiresAt?: string | null;
+}
+
+interface RiskAcceptanceRow {
+  id: string;
+  organization_id: string;
+  policy_version_id: string;
+  health_evaluation_id: string;
+  dimension: string;
+  driver_code: string;
+  reason: string;
+  accepted_by: string;
+  accepted_at: string;
+  expires_at: string | null;
+  created_at: string;
+}
+
+/** A scoring policy version's identity, for the comparison-to-previous read. */
+export interface VersionMeta {
+  scoringPolicyId: string;
+  versionNo: number;
+}
+
 interface DimensionsPayload {
   items: DimensionScore[];
   weights: HealthWeight[];
@@ -86,6 +136,26 @@ function toDomain(row: EvaluationRow): PolicyHealthEvaluation {
     weights: payload.weights ?? [],
     deferredDimensions: payload.deferred ?? [],
     evaluatedAt: row.evaluated_at,
+    createdAt: row.created_at,
+  };
+}
+
+const ACCEPTANCE_COLUMNS =
+  'id, organization_id, policy_version_id, health_evaluation_id, dimension, driver_code, reason, ' +
+  'accepted_by, accepted_at, expires_at, created_at';
+
+function toAcceptance(row: RiskAcceptanceRow): PolicyHealthRiskAcceptance {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    policyVersionId: row.policy_version_id,
+    healthEvaluationId: row.health_evaluation_id,
+    dimension: row.dimension,
+    driverCode: row.driver_code,
+    reason: row.reason,
+    acceptedBy: row.accepted_by,
+    acceptedAt: row.accepted_at,
+    expiresAt: row.expires_at,
     createdAt: row.created_at,
   };
 }
@@ -428,5 +498,73 @@ export class IncentiveHealthRepository {
       if (OPEN_STATUSES.has(d.status)) open += 1;
     }
     return { attributable, open, disputeIds };
+  }
+
+  // ── Module 1-B: risk acceptance (append-only, authenticated INSERT) + comparison inputs ──────────
+
+  private acceptanceTable() {
+    return (this.supabase as unknown as SupabaseClient).from('policy_health_risk_acceptances');
+  }
+
+  /** Record a risk acceptance (waiver). The write goes through the RLS user client: the INSERT policy
+   * enforces policy.manage + accepted_by = auth.uid() server-side (DB), and prevent_mutation keeps it
+   * append-only. accepted_at is server-stamped (default now()). Never mutates a policy/score/ledger. */
+  async insertRiskAcceptance(row: NewRiskAcceptanceRow): Promise<PolicyHealthRiskAcceptance> {
+    const { data, error } = await this.acceptanceTable()
+      .insert({
+        organization_id: row.organizationId,
+        policy_version_id: row.policyVersionId,
+        health_evaluation_id: row.healthEvaluationId,
+        dimension: row.dimension,
+        driver_code: row.driverCode,
+        reason: row.reason,
+        accepted_by: row.acceptedBy,
+        expires_at: row.expiresAt ?? null,
+      })
+      .select(ACCEPTANCE_COLUMNS)
+      .single();
+    if (error) throw toDomainError(error);
+    return toAcceptance(data as unknown as RiskAcceptanceRow);
+  }
+
+  /** List a version's risk acceptances (RLS: policy.manage, org-scoped), newest first. Active-vs-
+   * expired is derived by the caller against `expires_at` (append-only history is returned in full). */
+  async listRiskAcceptances(versionId: string, organizationId: string): Promise<PolicyHealthRiskAcceptance[]> {
+    const { data, error } = await this.acceptanceTable()
+      .select(ACCEPTANCE_COLUMNS)
+      .eq('organization_id', organizationId)
+      .eq('policy_version_id', versionId)
+      .order('accepted_at', { ascending: false });
+    if (error) throw toDomainError(error);
+    return ((data ?? []) as unknown as RiskAcceptanceRow[]).map(toAcceptance);
+  }
+
+  /** A scoring policy version's identity (scoring_policy_id + version_no) — for the comparison read. */
+  async getVersionMeta(versionId: string, organizationId: string): Promise<VersionMeta | null> {
+    const { data, error } = await this.supabase
+      .from('scoring_policy_versions')
+      .select('scoring_policy_id, version_no')
+      .eq('id', versionId)
+      .eq('organization_id', organizationId)
+      .maybeSingle();
+    if (error) throw toDomainError(error);
+    if (!data) return null;
+    const row = data as { scoring_policy_id: string; version_no: number };
+    return { scoringPolicyId: row.scoring_policy_id, versionNo: row.version_no };
+  }
+
+  /** All versions (id + version_no) of a scoring policy, ascending — for previous-version selection. */
+  async listPolicyVersions(
+    scoringPolicyId: string,
+    organizationId: string,
+  ): Promise<Array<{ id: string; versionNo: number }>> {
+    const { data, error } = await this.supabase
+      .from('scoring_policy_versions')
+      .select('id, version_no')
+      .eq('organization_id', organizationId)
+      .eq('scoring_policy_id', scoringPolicyId)
+      .order('version_no', { ascending: true });
+    if (error) throw toDomainError(error);
+    return ((data ?? []) as Array<{ id: string; version_no: number }>).map((v) => ({ id: v.id, versionNo: v.version_no }));
   }
 }

@@ -66,7 +66,7 @@
     {
       "name": "incentive-health",
       "status": "implemented",
-      "publicApi": ["evaluateHealth", "evaluatePolicyHealth", "IncentiveHealthRepository", "assertHealthEngineEnabled", "HEALTH_RULE_SET_VERSION", "aggregateOverall"],
+      "publicApi": ["evaluateHealth", "evaluatePolicyHealth", "IncentiveHealthRepository", "assertHealthEngineEnabled", "HEALTH_RULE_SET_VERSION", "aggregateOverall", "computeHealthComparison", "getHealthComparison", "acceptHealthRisk", "listHealthRiskAcceptances"],
       "layers": ["application", "domain", "repository"]
     },
     {
