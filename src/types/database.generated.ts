@@ -2029,6 +2029,81 @@ export type Database = {
           },
         ]
       }
+      policy_health_risk_acceptances: {
+        Row: {
+          accepted_at: string
+          accepted_by: string
+          created_at: string
+          dimension: string
+          driver_code: string
+          expires_at: string | null
+          health_evaluation_id: string
+          id: string
+          organization_id: string
+          policy_version_id: string
+          reason: string
+        }
+        Insert: {
+          accepted_at?: string
+          accepted_by: string
+          created_at?: string
+          dimension: string
+          driver_code: string
+          expires_at?: string | null
+          health_evaluation_id: string
+          id?: string
+          organization_id: string
+          policy_version_id: string
+          reason: string
+        }
+        Update: {
+          accepted_at?: string
+          accepted_by?: string
+          created_at?: string
+          dimension?: string
+          driver_code?: string
+          expires_at?: string | null
+          health_evaluation_id?: string
+          id?: string
+          organization_id?: string
+          policy_version_id?: string
+          reason?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "policy_health_risk_acceptances_accepted_by_org_fk"
+            columns: ["organization_id", "accepted_by"]
+            isOneToOne: false
+            referencedRelation: "memberships"
+            referencedColumns: ["organization_id", "profile_id"]
+          },
+          {
+            foreignKeyName: "policy_health_risk_acceptances_evaluation_org_fk"
+            columns: [
+              "health_evaluation_id",
+              "organization_id",
+              "policy_version_id",
+            ]
+            isOneToOne: false
+            referencedRelation: "policy_health_evaluations"
+            referencedColumns: ["id", "organization_id", "policy_version_id"]
+          },
+          {
+            foreignKeyName: "policy_health_risk_acceptances_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "policy_health_risk_acceptances_version_org_fk"
+            columns: ["policy_version_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "scoring_policy_versions"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           alias: string | null
