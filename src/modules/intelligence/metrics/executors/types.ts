@@ -54,8 +54,15 @@ export type MetricExecutor = (client: SupabaseUserClient, plan: ResolvedPlan) =>
 /** Registry entry: the executor, the unit it emits, and the CLOSED set of dimensions it can serve. */
 export interface ExecutorEntry {
   unit: MetricUnit;
-  /** Group-by / filter dimensions this 8-A1 executor can actually serve (⊆ registry allowedDimensions). */
+  /** Group-by / filter dimensions this executor can actually serve (⊆ registry allowedDimensions). */
   servableDimensions: ReadonlySet<DimensionId>;
+  /**
+   * OPTIONAL role gate (SI-12): the primary_role set that can read this metric's source at all. When
+   * set, a caller whose role is not in it is rejected with `metric_not_available_for_role` — so a
+   * source-excluded role (e.g. Finance on bonus_allocations) gets an explicit denial, never a silent
+   * empty/0%. Absent = available to any intelligence.read holder (RLS scopes the visible rows).
+   */
+  availableRoles?: ReadonlySet<string>;
   execute: MetricExecutor;
 }
 

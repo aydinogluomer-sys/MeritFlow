@@ -33,9 +33,21 @@ import {
   gamingFlagRateExecutor,
   GAMING_FLAG_SERVABLE,
 } from './activity';
+import {
+  capHitRateExecutor,
+  CAP_HIT_RATE_SERVABLE,
+  CAP_HIT_ALLOCATION_ROLES,
+  disputeRateExecutor,
+  DISPUTE_RATE_SERVABLE,
+} from './cap-dispute';
 import type { MetricExecutor } from './types';
 
-function entry(id: MetricId, servable: DimensionId[], execute: MetricExecutor): [MetricId, ExecutorEntry] {
+function entry(
+  id: MetricId,
+  servable: DimensionId[],
+  execute: MetricExecutor,
+  availableRoles?: ReadonlySet<string>,
+): [MetricId, ExecutorEntry] {
   const def = metricRegistry.get(id);
   if (!def) throw new Error(`executor references unknown metric: ${id}`);
   // Every servable dimension MUST be catalog-allowed for the metric (defense against author drift).
@@ -44,10 +56,11 @@ function entry(id: MetricId, servable: DimensionId[], execute: MetricExecutor): 
       throw new Error(`executor for ${id} declares servable dimension ${dim} not allowed by the registry`);
     }
   }
-  return [id, { unit: def.unit, servableDimensions: new Set(servable), execute }];
+  const value: ExecutorEntry = { unit: def.unit, servableDimensions: new Set(servable), execute };
+  return [id, availableRoles ? { ...value, availableRoles } : value];
 }
 
-/** The 8-A1 executable metrics (9 of 11; cap_hit_rate + dispute_rate are 8-A2). */
+/** The executable metrics — all 11 as of 8-A2 (cap_hit_rate + dispute_rate complete the layer). */
 export const executorRegistry: ReadonlyMap<MetricId, ExecutorEntry> = new Map<MetricId, ExecutorEntry>([
   entry('opportunity_index', OPPORTUNITY_INDEX_SERVABLE, opportunityIndexExecutor),
   entry('policy_complexity', POLICY_COMPLEXITY_SERVABLE, policyComplexityExecutor),
@@ -58,6 +71,9 @@ export const executorRegistry: ReadonlyMap<MetricId, ExecutorEntry> = new Map<Me
   entry('approval_latency', APPROVAL_LATENCY_SERVABLE, approvalLatencyExecutor),
   entry('manual_override_rate', MANUAL_OVERRIDE_SERVABLE, manualOverrideRateExecutor),
   entry('gaming_flag_rate', GAMING_FLAG_SERVABLE, gamingFlagRateExecutor),
+  // 8-A2: cap_hit_rate is HR/Auditor-only (bonus_allocations RLS, SI-12); other roles → typed reject.
+  entry('cap_hit_rate', CAP_HIT_RATE_SERVABLE, capHitRateExecutor, CAP_HIT_ALLOCATION_ROLES),
+  entry('dispute_rate', DISPUTE_RATE_SERVABLE, disputeRateExecutor),
 ]);
 
 /** True when 8-A1 has a deterministic executor for the metric. */
