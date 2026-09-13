@@ -306,9 +306,9 @@ tables:
     rls_enabled: true
     rls_forced: true
     financial_class: operational
-    notes: "Shared insight store (Phase P0, plan §2.4). deterministic_payload+evidence_refs authoritative; model_payload advisory/nullable (null in P0). Server-only writes; read = intelligence.read OR employee-own (subject). Evidence+action invariants enforced by CHECK."
+    notes: "Shared insight store (Phase P0, plan §2.4). deterministic_payload+evidence_refs authoritative; model_payload advisory/nullable (null in P0). read = intelligence.read OR employee-own (subject). INSERT/detection server-only; opportunity_flag RESOLUTION (a §2.8 status transition) is an authenticated UPDATE gated by intelligence.manage OR the subject's PRIMARY-team manager, AUDITED via an after-update log_audit trigger (Module 2-B / 0049, §2.7). Evidence+action invariants enforced by CHECK."
     grants:
-      authenticated: [select]
+      authenticated: [select, update]
       service_role: [all]
   feature_flags:
     rls_enabled: true

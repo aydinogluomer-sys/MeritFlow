@@ -1220,3 +1220,9 @@ begin
     on conflict (id) do nothing;
   end if;
 end $$;
+
+-- NOTE (Phase P3 / slice 2-B): the audited-resolution pgTAP (0048) needs a few REVIEWED
+-- opportunity_flag / non-opportunity intelligence_insights rows. Those fixtures are created
+-- INSIDE supabase/tests/0048_intelligence_insight_resolution.test.sql as transactional test setup
+-- (pgTAP runs each file in its own transaction), NOT in this shared seed — otherwise the extra
+-- rows perturb the EXACT-count assertions in 0041 (HR = 2 Org A, employee a7 = 1 own insight).
