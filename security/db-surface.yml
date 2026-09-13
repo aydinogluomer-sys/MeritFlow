@@ -358,6 +358,14 @@ tables:
     grants:
       authenticated: [select, insert]
       service_role: [all]
+  opportunity_snapshots:
+    rls_enabled: true
+    rls_forced: true
+    financial_class: operational
+    notes: "Append-only, reproducible, DECOMPOSED Opportunity-to-Perform snapshot (Module 2-A / P3, §4.4). Per (employee, bonus_period) from WORK-CONTEXT signals ONLY (no protected characteristic, no compensation — §4.2/§26); opportunity_index is a transparent weighted aggregate of the component sub-scores in `components` (no opaque ML), NULL when the cohort is suppressed (< min sample / no active window — §4.5/§17). ADVISORY: drives no pay/ledger/policy change; flags say Investigate. RLS: employee-own + manager of the employee's PRIMARY team (no cross-team leakage) + HR/owner/admin/auditor org (clones point_ledger). Server-only writes; UPDATE/DELETE blocked (prevent_mutation); audited on INSERT."
+    grants:
+      authenticated: [select]
+      service_role: [all]
 
 views:
   v_finance_payout:

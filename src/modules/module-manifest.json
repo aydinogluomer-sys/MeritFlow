@@ -82,6 +82,12 @@
       "layers": []
     },
     {
+      "name": "opportunity-intelligence",
+      "status": "implemented",
+      "publicApi": ["computeOpportunity", "computeOpportunitySnapshots", "OpportunityRepository", "assertOpportunityIntelligenceEnabled", "OPPORTUNITY_RULE_SET_VERSION", "MIN_COHORT_SIZE", "deriveFlags"],
+      "layers": ["application", "domain", "repository"]
+    },
+    {
       "name": "organizations",
       "status": "placeholder",
       "publicApi": [],

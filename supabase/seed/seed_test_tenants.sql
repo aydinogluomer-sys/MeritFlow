@@ -1184,3 +1184,39 @@ begin
     on conflict (id) do nothing;
   end if;
 end $$;
+
+-- =============================================================================
+-- Phase P3 / slice 2-A seed — Opportunity snapshots (DEV/STAGING ONLY)
+-- Refs: §4.4. Deterministic opportunity_snapshots fixtures for RLS / cross-tenant / NO-cross-team /
+-- immutability / same-org-FK / unique pgTAP (0047). Normally SERVER-ONLY writes (service_role); here
+-- via the bypassrls migration role. GUARDED (to_regclass): the table is introduced by the LATEST
+-- migration (0048); the N-1 upgrade drill runs this seed against the N-1 schema, so the block must
+-- no-op when absent. Fixtures: os-a7 (Org A, emp-alpha a7 whose PRIMARY team is f1, managed by a5) +
+-- os-a8 (Org A, emp-beta a8 whose PRIMARY team is f2, NOT managed by a5 → no-cross-team test) +
+-- os-b2 (Org B). components is a well-formed object (engine values are unit-tested in TS; here a stored
+-- fixture — the DB tests assert RLS/immutability/FK, not engine-exactness).
+-- =============================================================================
+do $$
+begin
+  if to_regclass('public.opportunity_snapshots') is not null then
+    insert into public.opportunity_snapshots
+      (id, organization_id, employee_id, bonus_period_id, rule_set_version,
+       eligible_work_count, assigned_work_count, completed_work_count,
+       complexity_weighted_available, complexity_weighted_assigned, active_days,
+       review_latency_p50, opportunity_index, components)
+    values
+      ('a0000000-0000-0000-0000-0000000000fc', 'a0000000-0000-0000-0000-000000000001',
+       'a0000000-0000-0000-0000-0000000000a7', 'a0000000-0000-0000-0000-0000000000fa', 'opportunity-v1',
+       40, 10, 8, 90, 22, 20, 2.0, 70,
+       '{"items":[],"weights":[{"code":"assignment_share","weight":3}],"flags":[],"cohortKey":"employee::a0000000-0000-0000-0000-0000000000f1","cohortSize":5,"suppressed":false,"suppressionReason":null}'::jsonb),
+      ('a0000000-0000-0000-0000-0000000000fd', 'a0000000-0000-0000-0000-000000000001',
+       'a0000000-0000-0000-0000-0000000000a8', 'a0000000-0000-0000-0000-0000000000fa', 'opportunity-v1',
+       40, 3, 2, 90, 6, 20, 5.0, 42,
+       '{"items":[],"weights":[{"code":"assignment_share","weight":3}],"flags":["LOW_ASSIGNMENT_OPPORTUNITY"],"cohortKey":"employee::a0000000-0000-0000-0000-0000000000f2","cohortSize":5,"suppressed":false,"suppressionReason":null}'::jsonb),
+      ('b0000000-0000-0000-0000-0000000000fc', 'b0000000-0000-0000-0000-000000000002',
+       'b0000000-0000-0000-0000-0000000000b2', 'b0000000-0000-0000-0000-0000000000fa', 'opportunity-v1',
+       10, 5, 4, 20, 12, 20, 1.0, 65,
+       '{"items":[],"weights":[{"code":"assignment_share","weight":3}],"flags":[],"cohortKey":"employee::b-team","cohortSize":5,"suppressed":false,"suppressionReason":null}'::jsonb)
+    on conflict (id) do nothing;
+  end if;
+end $$;

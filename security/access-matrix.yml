@@ -463,6 +463,16 @@ matrix:
     support: {read: false, write: false}
     anon:    {read: false, write: false}
     trusted_server: {read: true, write: true}
+  opportunity_snapshots:
+    owner:   {read: true,  write: false}
+    hr:      {read: true,  write: false}
+    manager: {read: true,  write: false}
+    finance: {read: false, write: false}
+    auditor: {read: true,  write: false}
+    employee: {read: own,  write: false}
+    support: {read: true,  write: false}
+    anon:    {read: false, write: false}
+    trusted_server: {read: true, write: true}
   v_finance_payout:
     owner:   {read: false, write: false}
     hr:      {read: false, write: false}
