@@ -35,6 +35,7 @@ through its public index.
 | `bonus-periods`     | implemented | createPeriod, createPool, BonusPeriodsRepository                 | application · domain · repository |
 | `disputes`          | implemented | openDispute, assignReviewer, resolveDispute, DisputeRepository, DisputeAdjustmentRepository | application · domain · repository |
 | `exports`           | implemented | exportPayout, markPaid, ExportsRepository                        | application · domain · repository |
+| `incentive-health`  | implemented | evaluateHealth, evaluatePolicyHealth, IncentiveHealthRepository, assertHealthEngineEnabled | application · domain · repository |
 | `intelligence`      | implemented | metricRegistry, validateSemanticQuery, IntelligenceRepository, FeatureFlagResolver, emitIntelligenceEvent | domain · metrics · dimensions · repository · feature-flags · telemetry |
 | `outbox`            | implemented | enqueueOutboxEvent, drainOutbox, OutboxRepository, DEFAULT_OUTBOX_HANDLERS | application · domain · repository |
 | `point-ledger`      | implemented | manualOverride, PointLedgerRepository                            | application · domain · repository |
