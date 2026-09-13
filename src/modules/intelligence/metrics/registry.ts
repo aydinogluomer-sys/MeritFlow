@@ -51,8 +51,11 @@ const DEFINITIONS: readonly MetricDefinition[] = [
     allowedDimensions: ['organization', 'team', 'bonus_period', 'role', 'employee', 'manager'] },
   { id: 'budget_variance', unit: 'percent', requiredPermission: METRIC_READ_PERMISSION,
     allowedDimensions: ['organization', 'team', 'bonus_period'] },
+  // 8-A2 contract correction: the disputes schema has no bonus_period_id / team / policy_version
+  // (target_id is polymorphic, no FK), so those are not backable. Trimmed to the servable set;
+  // period is applied via the query's date-window selector, not as a group-by dimension.
   { id: 'dispute_rate', unit: 'percent', requiredPermission: METRIC_READ_PERMISSION,
-    allowedDimensions: ['organization', 'team', 'bonus_period', 'dispute_type', 'policy_version'] },
+    allowedDimensions: ['organization', 'dispute_type'] },
   { id: 'manual_override_rate', unit: 'percent', requiredPermission: METRIC_READ_PERMISSION,
     allowedDimensions: ['organization', 'team', 'bonus_period', 'policy_version', 'manager'] },
   { id: 'cap_hit_rate', unit: 'percent', requiredPermission: METRIC_READ_PERMISSION,

@@ -38,10 +38,13 @@ function base(over: Tables = {}): Tables {
   };
 }
 
-function run(query: unknown, perms: string[] = READ, over: Tables = {}): Promise<SemanticQueryOutcome> {
-  return executeSemanticQuery(fakeSupabase(base(over)), { organizationId: ORG, permissions: perms }, query, {
-    computedAt: FIXED,
-  });
+function run(query: unknown, perms: string[] = READ, over: Tables = {}, role?: string): Promise<SemanticQueryOutcome> {
+  return executeSemanticQuery(
+    fakeSupabase(base(over)),
+    { organizationId: ORG, permissions: perms, ...(role ? { role } : {}) },
+    query,
+    { computedAt: FIXED },
+  );
 }
 
 /** Narrow to the ok branch or fail loudly (keeps each assertion readable). */
@@ -69,14 +72,6 @@ describe('semantic query service — feature gate + validation + executability (
     const out = await run({ metrics: ['opportunity_index'], dimensions: ['employee'], filters: [], period: PERIOD_P1 }, READ);
     expect(out.ok).toBe(false);
     if (!out.ok) expect(out.validationErrors?.some((e) => e.code === 'sensitive_dimension_permission_denied')).toBe(true);
-  });
-
-  it('rejects a metric with no 8-A1 executor (cap_hit_rate, dispute_rate → 8-A2)', async () => {
-    for (const metric of ['cap_hit_rate', 'dispute_rate']) {
-      const out = await run({ metrics: [metric], dimensions: [], filters: [], period: PERIOD_P1 });
-      expect(out.ok).toBe(false);
-      if (!out.ok) expect(out.executionErrors?.some((e) => e.code === 'metric_not_executable')).toBe(true);
-    }
   });
 
   it('rejects a registry-allowed but non-servable dimension (budget_variance by team)', async () => {
@@ -315,10 +310,10 @@ describe('drill scaffolding (§10.10)', () => {
   it('exposes only servable levels per metric', () => {
     expect(availableDrillLevels('payout_total')).toEqual(['company', 'employee']); // team not in the finance view
     expect(availableDrillLevels('cycle_completion_rate')).toEqual(['company', 'team']);
-    expect(availableDrillLevels('cap_hit_rate')).toEqual([]); // not executable in 8-A1
+    expect(availableDrillLevels('cap_hit_rate')).toEqual(['company', 'team']); // 8-A2: bonus_allocations team
   });
 
-  it('builds a drill query for a servable level and rejects an unservable / non-executable one', () => {
+  it('builds a drill query for a servable level and rejects an unservable one', () => {
     const okDrill = buildDrillQuery({ metric: 'payout_total', level: 'employee', period: PERIOD_P1 });
     expect(okDrill.ok).toBe(true);
     if (okDrill.ok) expect(okDrill.query.dimensions).toEqual(['employee']);
@@ -327,14 +322,99 @@ describe('drill scaffolding (§10.10)', () => {
     expect(badDim.ok).toBe(false);
     if (!badDim.ok) expect(badDim.error.code).toBe('dimension_not_executable');
 
-    const badMetric = buildDrillQuery({ metric: 'cap_hit_rate', level: 'company', period: PERIOD_P1 });
-    expect(badMetric.ok).toBe(false);
-    if (!badMetric.ok) expect(badMetric.error.code).toBe('metric_not_executable');
+    const capEmployee = buildDrillQuery({ metric: 'cap_hit_rate', level: 'employee', period: PERIOD_P1 });
+    expect(capEmployee.ok).toBe(false); // employee not servable for cap_hit_rate
+    if (!capEmployee.ok) expect(capEmployee.error.code).toBe('dimension_not_executable');
   });
 
-  it('isMetricExecutable reflects the 9/11 split', () => {
+  it('isMetricExecutable is now true for all 11 metrics (8-A2 completes the layer)', () => {
     expect(isMetricExecutable('opportunity_index')).toBe(true);
-    expect(isMetricExecutable('cap_hit_rate')).toBe(false);
-    expect(isMetricExecutable('dispute_rate')).toBe(false);
+    expect(isMetricExecutable('cap_hit_rate')).toBe(true);
+    expect(isMetricExecutable('dispute_rate')).toBe(true);
+  });
+});
+
+describe('8-A2 executors — cap_hit_rate (role-gated) + dispute_rate (trimmed dims)', () => {
+  const T = TEAM1;
+  it('cap_hit_rate = count(cap_applied=yes)/count(*) for an allocation-reader (hr)', async () => {
+    const out = ok(
+      await run({ metrics: ['cap_hit_rate'], dimensions: [], filters: [], period: PERIOD_P1 }, READ, {
+        bonus_allocations: [
+          { organization_id: ORG, bonus_period_id: P1, cap_applied: 'yes', primary_team_id: T, employee_id: EMP1 },
+          { organization_id: ORG, bonus_period_id: P1, cap_applied: 'yes', primary_team_id: T, employee_id: EMP2 },
+          { organization_id: ORG, bonus_period_id: P1, cap_applied: 'no', primary_team_id: TEAM2, employee_id: EMP3 },
+        ],
+      }, 'hr'),
+    );
+    expect(out.metrics[0]!.results[0]).toMatchObject({ value: 66.67, unit: 'percent' }); // 2 of 3
+  });
+
+  it('cap_hit_rate REJECTS a source-excluded role (finance) with metric_not_available_for_role', async () => {
+    const out = await run({ metrics: ['cap_hit_rate'], dimensions: [], filters: [], period: PERIOD_P1 }, READ, {}, 'finance');
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.executionErrors?.some((e) => e.code === 'metric_not_available_for_role')).toBe(true);
+  });
+
+  it('cap_hit_rate REJECTS a missing role (fail-closed)', async () => {
+    const out = await run({ metrics: ['cap_hit_rate'], dimensions: [], filters: [], period: PERIOD_P1 }, READ, {});
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.executionErrors?.some((e) => e.code === 'metric_not_available_for_role')).toBe(true);
+  });
+
+  it('cap_hit_rate groups by role via a memberships join (hr/auditor can read the roster)', async () => {
+    const out = ok(
+      await run({ metrics: ['cap_hit_rate'], dimensions: ['role'], filters: [], period: PERIOD_P1 }, READ, {
+        bonus_allocations: [
+          { organization_id: ORG, bonus_period_id: P1, cap_applied: 'yes', primary_team_id: T, employee_id: EMP1 },
+          { organization_id: ORG, bonus_period_id: P1, cap_applied: 'no', primary_team_id: T, employee_id: EMP2 },
+        ],
+        memberships: [
+          { organization_id: ORG, profile_id: EMP1, primary_role: 'employee' },
+          { organization_id: ORG, profile_id: EMP2, primary_role: 'manager' },
+        ],
+      }, 'auditor'),
+    );
+    const byRole = Object.fromEntries(out.metrics[0]!.results.map((r) => [r.dimensions.role, r.value]));
+    expect(byRole).toEqual({ employee: 100, manager: 0 });
+  });
+
+  it('dispute_rate = disputes-in-window / scored population; groups by dispute_type', async () => {
+    const tables = {
+      disputes: [
+        { organization_id: ORG, dispute_type: 'unfair_rejection', opened_at: '2026-01-10T00:00:00.000Z' },
+        { organization_id: ORG, dispute_type: 'system_error', opened_at: '2026-01-12T00:00:00.000Z' },
+        { organization_id: ORG, dispute_type: 'unfair_rejection', opened_at: '2026-03-10T00:00:00.000Z' }, // OUT of window
+      ],
+      point_ledger: [EMP1, EMP2, EMP3, EMP4].map((e) => ({
+        organization_id: ORG,
+        employee_id: e,
+        event_type: 'task_approved',
+        created_at: '2026-01-15T00:00:00.000Z',
+      })),
+    };
+    const org = ok(await run({ metrics: ['dispute_rate'], dimensions: [], filters: [], period: PERIOD_P1 }, READ, tables));
+    expect(org.metrics[0]!.results[0]).toMatchObject({ value: 50, unit: 'percent' }); // 2 in-window / 4
+
+    const byType = ok(await run({ metrics: ['dispute_rate'], dimensions: ['dispute_type'], filters: [], period: PERIOD_P1 }, READ, tables));
+    const rates = Object.fromEntries(byType.metrics[0]!.results.map((r) => [r.dimensions.dispute_type, r.value]));
+    expect(rates).toEqual({ unfair_rejection: 25, system_error: 25 }); // 1 each of 4
+  });
+
+  it('dispute_rate omits when the scored population is 0 (no fabricated value)', async () => {
+    const out = ok(
+      await run({ metrics: ['dispute_rate'], dimensions: [], filters: [], period: PERIOD_P1 }, READ, {
+        disputes: [{ organization_id: ORG, dispute_type: 'system_error', opened_at: '2026-01-10T00:00:00.000Z' }],
+        point_ledger: [], // no scored population
+      }),
+    );
+    expect(out.metrics[0]!.results).toHaveLength(0);
+  });
+
+  it('dispute_rate now rejects the trimmed dims (bonus_period/team/policy_version) via the P0 validator', async () => {
+    for (const dim of ['bonus_period', 'team', 'policy_version']) {
+      const out = await run({ metrics: ['dispute_rate'], dimensions: [dim], filters: [], period: PERIOD_P1 });
+      expect(out.ok).toBe(false);
+      if (!out.ok) expect(out.validationErrors?.some((e) => e.code === 'dimension_not_allowed_for_metric')).toBe(true);
+    }
   });
 });

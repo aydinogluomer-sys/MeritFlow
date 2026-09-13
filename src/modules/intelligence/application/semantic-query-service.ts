@@ -21,6 +21,12 @@ export interface SemanticQueryContext {
   organizationId: string;
   /** The caller's DB-sourced permissions (AD1 — resolved via getPermissions(), never a JWT claim). */
   permissions: Iterable<string>;
+  /**
+   * The caller's active-org primary_role (from getActiveOrg()). Used only for the source-readability
+   * gate on role-restricted metrics (cap_hit_rate → hr/auditor, SI-12). Absent ⇒ such a metric is
+   * rejected (fail-closed) with metric_not_available_for_role; role-unrestricted metrics ignore it.
+   */
+  role?: string;
 }
 
 export interface MetricComparison {
@@ -59,36 +65,45 @@ function dimKey(dimensions: Record<string, string>): string {
 }
 
 /** Execution-feasibility checks beyond the P0 validator (returns [] when the query is executable). */
-function checkExecutable(query: SemanticQuery): ExecutionError[] {
+function checkExecutable(query: SemanticQuery, role: string | undefined): ExecutionError[] {
   const errors: ExecutionError[] = [];
   const grouping = effectiveGroupBy(query.dimensions);
   if (grouping.length > 1) {
     errors.push(
       executionError(
         'dimension_not_executable',
-        `8-A1 serves at most one group-by dimension per query (got ${grouping.join(', ')})`,
+        `serves at most one group-by dimension per query (got ${grouping.join(', ')})`,
       ),
     );
   }
   for (const f of query.filters) {
     if (!SUPPORTED_OPERATORS.has(f.operator)) {
       errors.push(
-        executionError('filter_not_executable', `filter operator ${f.operator} is not executable in 8-A1 (use eq/in)`),
+        executionError('filter_not_executable', `filter operator ${f.operator} is not executable (use eq/in)`),
       );
     }
   }
   const usedDimensions = [...query.dimensions, ...query.filters.map((f) => f.dimension)];
   for (const id of query.metrics) {
     if (!isMetricExecutable(id)) {
-      errors.push(executionError('metric_not_executable', `metric ${id} has no 8-A1 executor (deferred to 8-A2)`));
+      errors.push(executionError('metric_not_executable', `metric ${id} has no executor`));
       continue;
+    }
+    // SI-12 source-readability gate: a role-restricted metric (e.g. cap_hit_rate → hr/auditor) is
+    // rejected for a source-excluded role BEFORE any query — an explicit denial, never a silent 0%.
+    const roles = executorRegistry.get(id)?.availableRoles;
+    if (roles && (role === undefined || !roles.has(role))) {
+      errors.push(
+        executionError(
+          'metric_not_available_for_role',
+          `metric ${id} is not readable by role ${role ?? '(none)'} — its source is role-restricted (SI-12)`,
+        ),
+      );
     }
     const servable = servableDimensions(id);
     for (const dim of usedDimensions) {
       if (!servable.has(dim)) {
-        errors.push(
-          executionError('dimension_not_executable', `metric ${id} cannot serve dimension ${dim} in 8-A1`),
-        );
+        errors.push(executionError('dimension_not_executable', `metric ${id} cannot serve dimension ${dim}`));
       }
     }
   }
@@ -152,8 +167,8 @@ export async function executeSemanticQuery(
   if (!validation.valid) return { ok: false, validationErrors: validation.errors };
   const query = validation.query;
 
-  // 2) Executability (metric has an executor; dimensions servable; operators supported).
-  const execErrors = checkExecutable(query);
+  // 2) Executability (metric has an executor; role can read its source; dimensions servable; operators).
+  const execErrors = checkExecutable(query, ctx.role);
   if (execErrors.length > 0) return { ok: false, executionErrors: execErrors };
 
   // 3) Resolve the bounded period (+ optional comparison window).
