@@ -33,6 +33,26 @@ export { FINANCIAL_INTEGRITY_RULES } from './domain/rules/financial-integrity.ru
 export { COMPLEXITY_RULES } from './domain/rules/complexity.rules';
 
 // Repository (RLS reads / admin writes) + application (feature-flag gated evaluate-and-persist).
-export { IncentiveHealthRepository, type PolicyHealthEvaluation } from './repository/incentive-health-repository';
+export {
+  IncentiveHealthRepository,
+  type PolicyHealthEvaluation,
+  type PolicyHealthRiskAcceptance,
+} from './repository/incentive-health-repository';
 export { assertHealthEngineEnabled, type HealthContext } from './application/feature-gate';
 export { evaluatePolicyHealth, type PolicyHealthResult } from './application/evaluate-and-persist';
+
+// Module 1-B — comparison-to-previous health delta (deterministic) + risk-acceptance (waiver) workflow.
+export {
+  computeHealthComparison,
+  pickPreviousVersion,
+  type ComparableEvaluation,
+  type HealthComparison,
+  type DimensionDelta,
+  type ScoreDelta,
+} from './domain/compare-health';
+export { getHealthComparison } from './application/health-comparison';
+export {
+  acceptHealthRisk,
+  listHealthRiskAcceptances,
+  type AcceptHealthRiskInput,
+} from './application/risk-acceptance';

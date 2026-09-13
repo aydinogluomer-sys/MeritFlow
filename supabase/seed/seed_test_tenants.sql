@@ -1154,3 +1154,33 @@ begin
     on conflict (id) do nothing;
   end if;
 end $$;
+
+-- =============================================================================
+-- Phase P2 / slice 1-B seed — Policy Health risk acceptances (DEV/STAGING ONLY)
+-- Refs: §3.8/§2.7. Deterministic policy_health_risk_acceptances fixtures for RLS / cross-tenant /
+-- immutability / audit / same-org-FK pgTAP (0046). Normally an AUTHENTICATED insert (policy.manage +
+-- accepted_by = auth.uid()); here via the bypassrls migration role (RLS WITH CHECK skipped). GUARDED
+-- (to_regclass): the table is introduced by the LATEST migration (0047); the N-1 upgrade drill runs
+-- this seed against the N-1 schema, so the block must no-op when absent. One waiver per org, over that
+-- org's health evaluation (a0..eb / b0..eb), waiving the gaming_resistance THRESHOLD_CLIFF driver;
+-- accepted_by = the org owner (a1 / b1). accepted_at server-stamped; no expiry.
+-- =============================================================================
+do $$
+begin
+  if to_regclass('public.policy_health_risk_acceptances') is not null then
+    insert into public.policy_health_risk_acceptances
+      (id, organization_id, policy_version_id, health_evaluation_id, dimension, driver_code, reason, accepted_by)
+    values
+      ('a0000000-0000-0000-0000-0000000000fa', 'a0000000-0000-0000-0000-000000000001',
+       'a0000000-0000-0000-0000-0000000000d2', 'a0000000-0000-0000-0000-0000000000eb',
+       'gaming_resistance', 'THRESHOLD_CLIFF',
+       'Eşik uçurumu bilinçli bir tasarım tercihi; bu dönem için kabul edildi.',
+       'a0000000-0000-0000-0000-0000000000a1'),
+      ('b0000000-0000-0000-0000-0000000000fa', 'b0000000-0000-0000-0000-000000000002',
+       'b0000000-0000-0000-0000-0000000000d2', 'b0000000-0000-0000-0000-0000000000eb',
+       'gaming_resistance', 'THRESHOLD_CLIFF',
+       'Cliff accepted for this period (org B).',
+       'b0000000-0000-0000-0000-0000000000b1')
+    on conflict (id) do nothing;
+  end if;
+end $$;
