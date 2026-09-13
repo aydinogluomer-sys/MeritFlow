@@ -72,8 +72,8 @@
     {
       "name": "intelligence",
       "status": "implemented",
-      "publicApi": ["metricRegistry", "validateSemanticQuery", "IntelligenceRepository", "FeatureFlagResolver", "emitIntelligenceEvent", "parseInsight", "assertTransition"],
-      "layers": ["domain", "metrics", "dimensions", "repository", "feature-flags", "telemetry"]
+      "publicApi": ["metricRegistry", "validateSemanticQuery", "IntelligenceRepository", "FeatureFlagResolver", "emitIntelligenceEvent", "parseInsight", "assertTransition", "executeSemanticQuery", "buildDrillQuery", "availableDrillLevels", "isMetricExecutable", "servableDimensions", "METRICS_RULESET_VERSION"],
+      "layers": ["application", "domain", "metrics", "dimensions", "repository", "feature-flags", "telemetry"]
     },
     {
       "name": "notifications",
