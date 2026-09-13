@@ -384,11 +384,15 @@ matrix:
     anon:    {read: false, write: false}
     trusted_server: {read: true, write: true}
   # Phase P0: read = intelligence.read holders OR the subject employee (own explainable data);
-  # writes are server-only (no client INSERT/UPDATE policy). support has no membership → no read.
+  # support has no membership → no read. INSERT is server-only (service role, no client policy).
+  # Phase P3 (2-B): a column-restricted UPDATE resolves an opportunity_flag through the §2.8 status
+  # lifecycle (status/resolved_at/resolution_code only), permitted for intelligence.manage (owner/admin)
+  # OR the manager of the subject employee's PRIMARY team; the resolution is AUDITED (§2.7). Hence
+  # manager write:true here. hr/finance/auditor keep read-only (no resolution grant).
   intelligence_insights:
-    owner:   {read: true,  write: false}
+    owner:   {read: true,  write: true}
     hr:      {read: true,  write: false}
-    manager: {read: true,  write: false}
+    manager: {read: true,  write: true}
     finance: {read: true,  write: false}
     auditor: {read: true,  write: false}
     employee: {read: own,  write: false}

@@ -192,8 +192,11 @@ export class IntelligenceRepository {
     if (!current) throw new Error(`insight not found: ${id}`);
     assertTransition(current.status, to);
 
+    // Resolution outcomes stamp resolved_at + persist the reason so §2.7-audited resolution captures
+    // WHY. 'accepted' is a resolution outcome too (§2.8 reviewed → accepted|dismissed) — its reason
+    // must NOT be silently dropped. 'retrospective' is the terminal of the observe phase.
     const patch: Record<string, unknown> = { status: to };
-    if (to === 'dismissed' || to === 'retrospective') {
+    if (to === 'accepted' || to === 'dismissed' || to === 'retrospective') {
       patch.resolved_at = new Date().toISOString();
       if (resolutionCode) patch.resolution_code = resolutionCode;
     }

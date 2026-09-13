@@ -1220,3 +1220,35 @@ begin
     on conflict (id) do nothing;
   end if;
 end $$;
+
+-- =============================================================================
+-- Phase P3 / slice 2-B seed — opportunity_flag insights (DEV/STAGING ONLY)
+-- Refs: §2.7/§2.8/§4.9. A REVIEWED opportunity_flag insight per org for the audited-resolution pgTAP
+-- (0048): manager a5 (manages a7 PRIMARY team f1) or an intelligence.manage holder can transition
+-- reviewed -> dismissed; finance a4 / employee a7 cannot (RLS UPDATE gate). GUARDED (to_regclass):
+-- intelligence_insights predates this slice but the block is defensive for the N-1 drill.
+-- =============================================================================
+do $$
+begin
+  if to_regclass('public.intelligence_insights') is not null then
+    insert into public.intelligence_insights
+      (id, organization_id, insight_type, subject_type, subject_id, severity, status,
+       deterministic_payload, evidence_refs)
+    values
+      ('a0000000-0000-0000-0000-0000000000f9', 'a0000000-0000-0000-0000-000000000001',
+       'opportunity_flag', 'employee', 'a0000000-0000-0000-0000-0000000000a7', 'warning', 'reviewed',
+       '{"headline":"Fırsat incelemesi (emp-alpha)","facts":{},"suggestedActions":[{"code":"investigate_opportunity","label":"Fırsatı incele"}]}'::jsonb,
+       '[{"sourceType":"snapshot","sourceId":"a0000000-0000-0000-0000-0000000000fc"}]'::jsonb),
+      ('b0000000-0000-0000-0000-0000000000f9', 'b0000000-0000-0000-0000-000000000002',
+       'opportunity_flag', 'employee', 'b0000000-0000-0000-0000-0000000000b2', 'warning', 'reviewed',
+       '{"headline":"Opportunity review (org B)","facts":{},"suggestedActions":[{"code":"investigate_opportunity","label":"Investigate"}]}'::jsonb,
+       '[{"sourceType":"snapshot","sourceId":"b0000000-0000-0000-0000-0000000000fc"}]'::jsonb),
+      -- A NON-opportunity insight (same org/subject) to prove the 0049 UPDATE policy is scoped to
+      -- insight_type='opportunity_flag' (a5/owner must NOT be able to resolve this via the flag path).
+      ('a0000000-0000-0000-0000-0000000000f8', 'a0000000-0000-0000-0000-000000000001',
+       'policy_health', 'employee', 'a0000000-0000-0000-0000-0000000000a7', 'info', 'reviewed',
+       '{"headline":"Sağlık (kapsam-dışı örnek)","facts":{},"suggestedActions":[{"code":"noop","label":"—"}]}'::jsonb,
+       '[{"sourceType":"policy_version","sourceId":"a0000000-0000-0000-0000-0000000000d2"}]'::jsonb)
+    on conflict (id) do nothing;
+  end if;
+end $$;

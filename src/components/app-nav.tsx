@@ -15,6 +15,7 @@ import {
   Scale,
   Gauge,
   HeartPulse,
+  TrendingUp,
   ShieldAlert,
   ScrollText,
   Users,
@@ -65,6 +66,7 @@ const SECTIONS: NavItem[] = [
   { label: 'Politika Değişiklik Etkisi', href: '/policy-impact', icon: Scale, section: 'management', permission: 'policy.impact.read', flag: 'policy_change_impact' },
   { label: 'Politika Borcu', href: '/policy-debt', icon: Gauge, section: 'management', permission: 'policy.manage', flag: 'policy_debt' },
   { label: 'Politika Sağlığı', href: '/policy-health', icon: HeartPulse, section: 'management', permission: 'policy.manage', flag: 'health_engine' },
+  { label: 'Fırsat Zekası', href: '/opportunity', icon: TrendingUp, section: 'management', permission: 'intelligence.read', flag: 'opportunity_intelligence' },
   { label: 'Puan Override', href: '/points/override', icon: SlidersHorizontal, section: 'management', permission: 'point.override' },
   { label: 'Anti-Gaming', href: '/anti-gaming', icon: ShieldAlert, section: 'management', permission: 'period.manage' },
 
