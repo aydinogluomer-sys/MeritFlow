@@ -12,6 +12,29 @@ export * from './metrics/semantic-query';
 export * from './metrics/registry';
 export * from './metrics/validator';
 
+// --- Deterministic metric execution (P4 / Module 8-A1) ---
+// The semantic query service + drill scaffolding + executor capability introspection. Individual
+// executors stay internal; consumers reach the layer only through the service / drill / capability API.
+export {
+  executeSemanticQuery,
+  type SemanticQueryContext,
+  type SemanticQueryOutcome,
+  type MetricQueryResult,
+  type MetricComparison,
+  type ExecuteOptions,
+} from './application/semantic-query-service';
+export {
+  buildDrillQuery,
+  availableDrillLevels,
+  DRILL_LEVELS,
+  type DrillLevel,
+  type DrillRequest,
+  type BuildDrillResult,
+} from './application/drill-service';
+export { isMetricExecutable, servableDimensions } from './metrics/executors/registry';
+export { METRICS_RULESET_VERSION } from './metrics/executors/types';
+export { type ExecutionError, type ExecutionErrorCode } from './metrics/executors/errors';
+
 // --- Approved dimension catalog ---
 export * from './dimensions/dimension-catalog';
 

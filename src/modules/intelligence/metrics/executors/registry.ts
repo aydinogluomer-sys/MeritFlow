@@ -1,0 +1,71 @@
+// Phase P4 — Module 8-A1 · executor registry. Maps each EXECUTABLE MetricId to its deterministic
+// executor + the closed set of group-by/filter dimensions it can serve. Metrics with NO 8-A1 executor
+// (cap_hit_rate, dispute_rate — see the pre-flight audit) are DELIBERATELY ABSENT so the service
+// rejects them with metric_not_executable until 8-A2. Units are sourced from the P0 registry (SSOT)
+// so an executor can never emit a unit that disagrees with the metric contract.
+import type { MetricId } from '../metric-id';
+import type { DimensionId } from '../../dimensions/dimension-catalog';
+import { metricRegistry } from '../registry';
+import type { ExecutorEntry } from './types';
+import {
+  opportunityIndexExecutor,
+  OPPORTUNITY_INDEX_SERVABLE,
+  policyComplexityExecutor,
+  POLICY_COMPLEXITY_SERVABLE,
+} from './precomputed';
+import {
+  payoutTotalExecutor,
+  PAYOUT_TOTAL_SERVABLE,
+  payoutConcentrationExecutor,
+  PAYOUT_CONCENTRATION_SERVABLE,
+  budgetVarianceExecutor,
+  BUDGET_VARIANCE_SERVABLE,
+} from './finance';
+import {
+  cycleCompletionRateExecutor,
+  CYCLE_COMPLETION_SERVABLE,
+  approvalLatencyExecutor,
+  APPROVAL_LATENCY_SERVABLE,
+} from './tasks';
+import {
+  manualOverrideRateExecutor,
+  MANUAL_OVERRIDE_SERVABLE,
+  gamingFlagRateExecutor,
+  GAMING_FLAG_SERVABLE,
+} from './activity';
+import type { MetricExecutor } from './types';
+
+function entry(id: MetricId, servable: DimensionId[], execute: MetricExecutor): [MetricId, ExecutorEntry] {
+  const def = metricRegistry.get(id);
+  if (!def) throw new Error(`executor references unknown metric: ${id}`);
+  // Every servable dimension MUST be catalog-allowed for the metric (defense against author drift).
+  for (const dim of servable) {
+    if (dim !== 'organization' && !def.allowedDimensions.includes(dim)) {
+      throw new Error(`executor for ${id} declares servable dimension ${dim} not allowed by the registry`);
+    }
+  }
+  return [id, { unit: def.unit, servableDimensions: new Set(servable), execute }];
+}
+
+/** The 8-A1 executable metrics (9 of 11; cap_hit_rate + dispute_rate are 8-A2). */
+export const executorRegistry: ReadonlyMap<MetricId, ExecutorEntry> = new Map<MetricId, ExecutorEntry>([
+  entry('opportunity_index', OPPORTUNITY_INDEX_SERVABLE, opportunityIndexExecutor),
+  entry('policy_complexity', POLICY_COMPLEXITY_SERVABLE, policyComplexityExecutor),
+  entry('payout_total', PAYOUT_TOTAL_SERVABLE, payoutTotalExecutor),
+  entry('payout_concentration', PAYOUT_CONCENTRATION_SERVABLE, payoutConcentrationExecutor),
+  entry('budget_variance', BUDGET_VARIANCE_SERVABLE, budgetVarianceExecutor),
+  entry('cycle_completion_rate', CYCLE_COMPLETION_SERVABLE, cycleCompletionRateExecutor),
+  entry('approval_latency', APPROVAL_LATENCY_SERVABLE, approvalLatencyExecutor),
+  entry('manual_override_rate', MANUAL_OVERRIDE_SERVABLE, manualOverrideRateExecutor),
+  entry('gaming_flag_rate', GAMING_FLAG_SERVABLE, gamingFlagRateExecutor),
+]);
+
+/** True when 8-A1 has a deterministic executor for the metric. */
+export function isMetricExecutable(id: MetricId): boolean {
+  return executorRegistry.has(id);
+}
+
+/** The dimensions an executable metric can serve as group-by/filter (empty set if not executable). */
+export function servableDimensions(id: MetricId): ReadonlySet<DimensionId> {
+  return executorRegistry.get(id)?.servableDimensions ?? new Set<DimensionId>();
+}
