@@ -1453,6 +1453,85 @@ export type Database = {
           },
         ]
       }
+      opportunity_snapshots: {
+        Row: {
+          active_days: number
+          assigned_work_count: number
+          bonus_period_id: string
+          completed_work_count: number
+          complexity_weighted_assigned: number
+          complexity_weighted_available: number
+          components: Json
+          computed_at: string
+          created_at: string
+          eligible_work_count: number
+          employee_id: string
+          id: string
+          opportunity_index: number | null
+          organization_id: string
+          review_latency_p50: number | null
+          rule_set_version: string
+        }
+        Insert: {
+          active_days: number
+          assigned_work_count: number
+          bonus_period_id: string
+          completed_work_count: number
+          complexity_weighted_assigned: number
+          complexity_weighted_available: number
+          components: Json
+          computed_at?: string
+          created_at?: string
+          eligible_work_count: number
+          employee_id: string
+          id?: string
+          opportunity_index?: number | null
+          organization_id: string
+          review_latency_p50?: number | null
+          rule_set_version: string
+        }
+        Update: {
+          active_days?: number
+          assigned_work_count?: number
+          bonus_period_id?: string
+          completed_work_count?: number
+          complexity_weighted_assigned?: number
+          complexity_weighted_available?: number
+          components?: Json
+          computed_at?: string
+          created_at?: string
+          eligible_work_count?: number
+          employee_id?: string
+          id?: string
+          opportunity_index?: number | null
+          organization_id?: string
+          review_latency_p50?: number | null
+          rule_set_version?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "opportunity_snapshots_employee_org_fk"
+            columns: ["organization_id", "employee_id"]
+            isOneToOne: false
+            referencedRelation: "memberships"
+            referencedColumns: ["organization_id", "profile_id"]
+          },
+          {
+            foreignKeyName: "opportunity_snapshots_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "opportunity_snapshots_period_org_fk"
+            columns: ["bonus_period_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "bonus_periods"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
       organization_settings: {
         Row: {
           anti_gaming_thresholds: Json
