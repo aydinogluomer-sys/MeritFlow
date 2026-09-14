@@ -380,6 +380,24 @@ views:
       authenticated: [select]
       service_role: [select]
     notes: "security_invoker period roll-up; RLS-gated to Finance/Auditor; NO raw allocation/point/comp detail (SI-12)."
+  v_finance_cap_impact:
+    financial_class: financial
+    grants:
+      authenticated: [select]
+      service_role: [select]
+    notes: "8-B3 DEFINER-RIGHTS view (security_invoker OMITTED → runs as owner, bypasses bonus_allocations RLS which excludes Finance) with a self-enforced WHERE gate org=current_org() AND hr/finance/auditor. Aggregate money ONLY: per (period, primary team) Σ(raw_share_minor−final_amount_minor) for cap_applied=yes. NO raw_share/final/cap_minor/cap_basis/adjusted_score/points/comp/per-employee row (SI-12)."
+  v_finance_team_cost:
+    financial_class: financial
+    grants:
+      authenticated: [select]
+      service_role: [select]
+    notes: "8-B3 DEFINER-RIGHTS view (bypasses bonus_allocations RLS which excludes Finance) self-gated org+hr/finance/auditor. Aggregate money ONLY: per (period, SNAPSHOT primary team = bonus_allocations.primary_team_id AD9, SAME attribution as v_finance_cap_impact, frozen for a closed period) Σ net accrual (IDENTICAL formula to v_finance_payout → reconciles to payout_total). team_memberships (live roster) NOT read. NO per-employee row/points/comp/cap_basis (SI-12)."
+  v_finance_cost_per_employee:
+    financial_class: financial
+    grants:
+      authenticated: [select]
+      service_role: [select]
+    notes: "8-B3 DEFINER-RIGHTS view (bypasses memberships RLS which excludes Finance) self-gated org+hr/finance/auditor. Aggregate money + headcount COUNT scalar ONLY: per period net accrual / active headcount. NO membership row/points/comp (SI-12)."
 
 security_definer_functions:
   # rls_helper — read-only helpers consumed by RLS policies (fixed search_path; no recursion).
