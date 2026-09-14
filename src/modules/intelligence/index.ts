@@ -35,6 +35,19 @@ export { isMetricExecutable, servableDimensions } from './metrics/executors/regi
 export { METRICS_RULESET_VERSION } from './metrics/executors/types';
 export { type ExecutionError, type ExecutionErrorCode } from './metrics/executors/errors';
 
+// --- Deterministic insight engine (P4 / Module 8-C3) ---
+// The versioned rule catalog (PURE) + the server-only engine that reads metrics via executeSemanticQuery
+// and emits insights idempotently into the shared store. NO statistical anomaly (P8), NO LLM (§26).
+export { runInsightEngine, snapshotFrom, type InsightEngineResult } from './application/insight-engine';
+export {
+  runRules,
+  RULE_METRICS,
+  INSIGHT_RULE_SET_VERSION,
+  type MetricSnapshot,
+  type MetricReading,
+  type CandidateInsight,
+} from './domain/insight-rules';
+
 // --- Approved dimension catalog ---
 export * from './dimensions/dimension-catalog';
 
