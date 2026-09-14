@@ -5,7 +5,7 @@ import { toDomainError } from '@/lib/errors';
 import { type EvidenceRef } from '../domain/evidence';
 import { type SuggestedAction } from '../domain/evidence';
 import { InsightSchema, type Insight, type InsightSeverity } from '../domain/insight';
-import { assertTransition, type InsightStatus } from '../domain/insight-status';
+import { assertTransition, isTerminalStatus, INSIGHT_STATUSES, type InsightStatus } from '../domain/insight-status';
 
 // Phase P0 — Insight store repository (plan §2.4/§2.8). READS run through the RLS-scoped user client
 // (tenant + intelligence.read/employee-own enforced by policy); WRITES are SERVER-ONLY and expect the
@@ -176,6 +176,69 @@ export class IntelligenceRepository {
       .single();
     if (error) throw toDomainError(error);
     return toStored(data as unknown as InsightRow);
+  }
+
+  /**
+   * IDEMPOTENT emit (SERVER-ONLY). Finds an existing NON-TERMINAL insight of the same identity
+   * {organization_id, insight_type, subject_type, subject_id, bonus_period_id}; if found, TOUCHES it
+   * (last_detected_at = now() + refreshes severity/payload/evidence, keeping its status) and returns
+   * {recurred:true}; otherwise INSERTS a fresh 'calculated' insight and returns {recurred:false}. This
+   * makes a re-run over the same inputs create NO duplicate row (the property a naive insert() violates).
+   * Not fully race-safe (two concurrent runs could both insert) — acceptable for on-demand V1 triggering.
+   */
+  async recordRecurring(input: NewInsightInput): Promise<{ insight: StoredInsight; recurred: boolean }> {
+    // Enforce the evidence+action invariant BEFORE any write (covers both the touch + insert paths).
+    InsightSchema.parse({
+      id: '00000000-0000-0000-0000-000000000000',
+      type: input.insightType,
+      severity: input.severity,
+      headline: input.headline,
+      deterministicFacts: input.deterministicFacts,
+      evidence: input.evidence,
+      suggestedActions: input.suggestedActions,
+      generatedAt: new Date().toISOString(),
+    } satisfies Insight);
+
+    const nonTerminal = INSIGHT_STATUSES.filter((s) => !isTerminalStatus(s));
+    let q = this.supabase
+      .from('intelligence_insights')
+      .select(SELECT_COLUMNS)
+      .eq('organization_id', input.organizationId)
+      .eq('insight_type', input.insightType)
+      .eq('subject_type', input.subjectType)
+      .in('status', nonTerminal);
+    // Null-safe identity match on the nullable subject_id / bonus_period_id columns.
+    q = input.subjectId == null ? q.is('subject_id', null) : q.eq('subject_id', input.subjectId);
+    q = input.bonusPeriodId == null ? q.is('bonus_period_id', null) : q.eq('bonus_period_id', input.bonusPeriodId);
+
+    const { data: rows, error: findError } = await q.order('created_at', { ascending: false }).limit(1);
+    if (findError) throw toDomainError(findError);
+    const existing = ((rows ?? []) as unknown as InsightRow[])[0];
+
+    if (existing) {
+      const deterministicPayload: DeterministicPayload = {
+        headline: input.headline,
+        facts: input.deterministicFacts,
+        suggestedActions: input.suggestedActions,
+      };
+      const { data, error } = await this.supabase
+        .from('intelligence_insights')
+        .update({
+          last_detected_at: new Date().toISOString(),
+          severity: input.severity,
+          deterministic_payload: deterministicPayload as unknown as Database['public']['Tables']['intelligence_insights']['Update']['deterministic_payload'],
+          evidence_refs: input.evidence as unknown as Database['public']['Tables']['intelligence_insights']['Update']['evidence_refs'],
+        } as Database['public']['Tables']['intelligence_insights']['Update'])
+        .eq('id', existing.id)
+        .eq('organization_id', input.organizationId)
+        .select(SELECT_COLUMNS)
+        .single();
+      if (error) throw toDomainError(error);
+      return { insight: toStored(data as unknown as InsightRow), recurred: true };
+    }
+
+    const insight = await this.insert({ ...input, status: input.status ?? 'calculated' });
+    return { insight, recurred: false };
   }
 
   /**
