@@ -547,3 +547,36 @@ describe('8-B3 executors — finance money-delta views (role-gated, SI-12 honest
     expect(reads).not.toContain('point_ledger');
   });
 });
+
+describe('comparison anchoring (regression — the shipped executive/financial dashboard defect)', () => {
+  // A RELATIVE selector + comparison is rejected by resolveComparisonPeriod (comparison_not_executable)
+  // and the service turns that into a WHOLE-query ok:false — so a primary bundle built that way makes
+  // every card render UnavailableCard. The dashboards must anchor to a bonus_period (anchoredMetricPeriod).
+  // The mocked-OUTCOME view-model tests could not catch this; this exercises the real service path.
+  it('a RELATIVE selector + comparison → ok:false comparison_not_executable (the OLD construction)', async () => {
+    const out = await run(
+      { metrics: ['payout_total'], dimensions: [], filters: [], period: { kind: 'relative', trailing: 'current' }, comparison: { basis: 'previous_period' } },
+      READ,
+      { v_finance_payout: [{ bonus_period_id: P1, employee_id: EMP1, final_amount_minor: 1000 }] },
+    );
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.executionErrors?.some((e) => e.code === 'comparison_not_executable')).toBe(true);
+  });
+
+  it('an ANCHORED bonus_period selector + comparison → ok:true with a previous-period delta (the FIX)', async () => {
+    const out = ok(
+      await run(
+        { metrics: ['payout_total'], dimensions: [], filters: [], period: { kind: 'bonus_period', bonusPeriodId: P2 }, comparison: { basis: 'previous_period' } },
+        READ,
+        {
+          v_finance_payout: [
+            { bonus_period_id: P2, employee_id: EMP1, final_amount_minor: 2000 },
+            { bonus_period_id: P1, employee_id: EMP1, final_amount_minor: 1000 },
+          ],
+        },
+      ),
+    );
+    expect(out.metrics[0]!.results[0]!.value).toBe(2000);
+    expect(out.metrics[0]!.comparison?.deltas[0]!.delta).toBe(1000);
+  });
+});

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   readOrgMetric,
@@ -5,6 +7,7 @@ import {
   changesFrom,
   attentionInsights,
   criticalExceptionCount,
+  anchoredMetricPeriod,
 } from '@/components/features/executive/model';
 import type { SemanticQueryOutcome, StoredInsight } from '@/modules/intelligence';
 
@@ -109,5 +112,35 @@ describe('attentionInsights / criticalExceptionCount', () => {
   });
   it('counts only non-terminal CRITICAL insights (the Critical Exceptions card)', () => {
     expect(criticalExceptionCount(insights)).toBe(1);
+  });
+});
+
+// Regression for the confirmed shipped defect: the primary metric bundle used a RELATIVE selector + a
+// comparison, which the semantic service rejects (comparison_not_executable) → whole-query ok:false →
+// every primary card rendered UnavailableCard and "Ne değişti?" was always empty. The mocked-OUTCOME
+// tests above could not catch it; this locks the query CONSTRUCTION (present → anchored bonus_period WITH
+// comparison; absent → relative WITHOUT comparison). See semantic-query-service.test.ts for the matching
+// service-level proof that relative+comparison → ok:false and bonus_period+comparison → ok:true.
+describe('anchoredMetricPeriod (comparison must anchor to a bonus_period)', () => {
+  it('a current period → anchored bonus_period selector WITH previous_period comparison', () => {
+    const { period, comparison } = anchoredMetricPeriod('11111111-1111-4111-8111-111111111111');
+    expect(period).toEqual({ kind: 'bonus_period', bonusPeriodId: '11111111-1111-4111-8111-111111111111' });
+    expect(comparison).toEqual({ basis: 'previous_period' });
+  });
+  it('no period → relative-current selector WITHOUT comparison (cards still render, no delta)', () => {
+    const result = anchoredMetricPeriod(null);
+    expect(result.period).toEqual({ kind: 'relative', trailing: 'current' });
+    expect(result.comparison).toBeUndefined();
+    // A relative selector must NEVER be paired with a comparison — that is the exact defect being fixed.
+    expect('comparison' in result).toBe(false);
+  });
+});
+
+describe('executive page — anchors the primary bundle (no relative+comparison)', () => {
+  const src = readFileSync(join(process.cwd(), 'app/(app)/executive/page.tsx'), 'utf8');
+  it('uses anchoredMetricPeriod(periodId) and never inlines a comparison', () => {
+    expect(src).toContain('currentPeriodId(');
+    expect(src).toContain('anchoredMetricPeriod(periodId)');
+    expect(src).not.toContain("comparison: { basis: 'previous_period' }");
   });
 });

@@ -16,6 +16,7 @@ import {
   deriveRollup,
   financialWaterfall,
   binPayouts,
+  anchoredMetricPeriod,
   DEFERRED_MONEY_CARDS,
   type PeriodTotals,
   type FinancialRollup,
@@ -127,8 +128,9 @@ export default async function FinancialIntelligencePage() {
         metrics: ['payout_total', 'budget_variance', 'payout_concentration'],
         dimensions: [],
         filters: [],
-        period: { kind: 'relative', trailing: 'current' },
-        comparison: { basis: 'previous_period' },
+        // Anchor to the current bonus_period so previous-period comparison is executable (the service
+        // rejects comparison on a relative selector → whole-query ok:false). No period → no comparison.
+        ...anchoredMetricPeriod(periodId),
       }),
     ),
     // cap_hit_rate is role-gated (HR/Auditor) — query it SEPARATELY so its reject doesn't poison the bundle.

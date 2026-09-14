@@ -26,6 +26,7 @@ import {
   changesFrom,
   attentionInsights,
   criticalExceptionCount,
+  anchoredMetricPeriod,
 } from '@/components/features/executive/model';
 
 type Client = SupabaseClient<Database>;
@@ -42,6 +43,19 @@ async function safe<T>(p: PromiseLike<T>): Promise<T | null> {
     logError('[executive] dashboard source read failed', { details: { err: String(err) } });
     return null;
   }
+}
+
+// The newest bonus_period id (the "current" period) — used to anchor the primary metric bundle so a
+// previous-period comparison is executable (the service rejects comparison on a relative selector).
+async function currentPeriodId(supabase: Client, orgId: string): Promise<string | null> {
+  const { data } = await supabase
+    .from('bonus_periods')
+    .select('id')
+    .eq('organization_id', orgId)
+    .order('starts_on', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (data as { id: string } | null)?.id ?? null;
 }
 
 // Deterministic Level-1 payout forecast (§10.13): Known = net accrued this period; Projected = the
@@ -126,6 +140,7 @@ export default async function ExecutiveOverviewPage() {
   const user = await getUser();
   const ctx: SemanticQueryContext = { organizationId: org.organization_id, permissions: perms, role: org.primary_role };
   const canReadLedger = org.primary_role === 'finance' || org.primary_role === 'auditor';
+  const periodId = await currentPeriodId(supabase, org.organization_id);
 
   const [main, insights, disputeRes, forecast, health, recon, payoutTrend] = await Promise.all([
     safe(
@@ -133,8 +148,9 @@ export default async function ExecutiveOverviewPage() {
         metrics: ['cycle_completion_rate', 'budget_variance', 'payout_total'],
         dimensions: [],
         filters: [],
-        period: { kind: 'relative', trailing: 'current' },
-        comparison: { basis: 'previous_period' },
+        // Anchor to the current bonus_period so previous-period comparison is executable (the service
+        // rejects comparison on a relative selector → whole-query ok:false). No period → no comparison.
+        ...anchoredMetricPeriod(periodId),
       }),
     ),
     safe(new IntelligenceRepository(supabase).list(org.organization_id, {})),

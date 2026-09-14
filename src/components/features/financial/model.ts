@@ -5,7 +5,7 @@
 // (pool-utilization, outstanding, the reconciling waterfall) and NEVER fabricates a number.
 import type { WaterfallStep, DistributionBin } from '@/components/intelligence';
 
-export { readOrgMetric, formatMetric, changesFrom, type MetricReading } from '@/components/features/executive/model';
+export { readOrgMetric, formatMetric, changesFrom, anchoredMetricPeriod, type MetricReading } from '@/components/features/executive/model';
 
 function num(v: unknown): number {
   const n = typeof v === 'number' ? v : Number(v);

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   readOrgMetric,
@@ -130,5 +132,17 @@ describe('readOrgMetric (SI-12 honesty on the metric layer)', () => {
     expect(readOrgMetric(denied, 'cap_hit_rate')).toBeNull();
     const empty: SemanticQueryOutcome = { ok: true, metrics: [{ metricId: 'payout_total' as never, results: [] }] };
     expect(readOrgMetric(empty, 'payout_total')).toBeNull();
+  });
+});
+
+describe('financial page — anchors the primary bundle (no relative+comparison)', () => {
+  // Regression for the shipped defect: the financeMetrics bundle used a relative selector + comparison,
+  // which the service rejects (comparison_not_executable) → whole-query ok:false → every finance card
+  // rendered UnavailableCard. It now anchors via anchoredMetricPeriod(periodId).
+  const src = readFileSync(join(process.cwd(), 'app/(app)/financial/page.tsx'), 'utf8');
+  it('uses anchoredMetricPeriod(periodId) and never inlines a comparison', () => {
+    expect(src).toContain('currentPeriodId(');
+    expect(src).toContain('anchoredMetricPeriod(periodId)');
+    expect(src).not.toContain("comparison: { basis: 'previous_period' }");
   });
 });

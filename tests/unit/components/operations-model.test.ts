@@ -135,11 +135,11 @@ describe('operations page — server-side gating + privacy (AD1 / SI-12 / CLAUDE
   it('is aggregate-only — no employee-level drill affordance (no per-employee surveillance)', () => {
     expect(src).not.toMatch(/level=['"]employee['"]/);
   });
-  it('anchors previous-period comparison to a bonus_period (comparison is NOT executable on a relative selector)', () => {
+  it('anchors the primary bundle via the shared anchoredMetricPeriod helper (never inline relative+comparison)', () => {
     expect(src).toContain('currentPeriodId(');
-    expect(src).toMatch(/kind: 'bonus_period'/);
-    // comparison is applied ONLY when a bonus_period is anchored — never with the relative selector.
-    expect(src).toMatch(/periodId \? \{ comparison/);
+    expect(src).toContain('anchoredMetricPeriod(periodId)');
+    // The primary bundle must NOT inline a comparison (the helper decides it, only when anchored).
+    expect(src).not.toContain("comparison: { basis: 'previous_period' as const }");
   });
   it('converts approval_latency delta ms→sn on BOTH the card and the "Ne değişti?" paths (no 1000× overstate)', () => {
     const occurrences = src.match(/Math\.round\(latency\.delta \/ 1000\)/g) ?? [];
