@@ -89,18 +89,16 @@ export function binPayouts(amountsMinor: number[], bins = 5): DistributionBin[] 
 }
 
 /**
- * The §10.4 money-delta ENRICHMENT cards that require a NEW finance-safe view (out of 8-B2 scope) —
- * rendered as an honest "not yet available" state, NEVER a fabricated number (§23). The 8-B3 finance-
- * metric DB slice will add the backing views.
+ * The §10.4 money-delta cards that STAY deferred after 8-B4 — rendered as an honest "not yet available"
+ * state, NEVER a fabricated number (§23). 8-B3 landed the views for Cap Para Etkisi / Takım Maliyeti /
+ * Çalışan Başına Maliyet (now live via the metric layer). These two remain because there is NO SI-12-safe
+ * money source: bonus_ledger has no dispute_id, and point_ledger adjustments are POINTS, not money.
  */
 export interface DeferredCard {
   label: string;
   reason: string;
 }
 export const DEFERRED_MONEY_CARDS: DeferredCard[] = [
-  { label: 'Cap Para Etkisi', reason: 'Σ(cap sonrası − cap öncesi) — SI-12-güvenli bir v_finance görünümü gerekir (8-B3).' },
-  { label: 'Düzeltme Para Etkisi', reason: 'Σ manuel/politika düzeltme (₺) — yeni bir v_finance görünümü gerekir (8-B3).' },
-  { label: 'İtiraz Finansal Etkisi', reason: 'Duruma göre Σ itiraz tutarı — 7-D + yeni görünüm gerekir (8-B3).' },
-  { label: 'Takım Maliyeti', reason: 'payout_total takım boyutunu sunmuyor — v_finance görünümüne takım kolonu gerekir (8-B3).' },
-  { label: 'Çalışan Başına Maliyet', reason: 'Kişi başı gider — v_finance dışında bir başlık (headcount) gerekir (8-B3).' },
+  { label: 'Düzeltme Para Etkisi', reason: 'Σ manuel/politika düzeltme (₺) — point_ledger düzeltmeleri PARA değil PUAN; SI-12-güvenli para kaynağı yok.' },
+  { label: 'İtiraz Finansal Etkisi', reason: 'Duruma göre Σ itiraz tutarı — bonus_ledger dispute_id taşımıyor; SI-12-güvenli para kaynağı yok.' },
 ];

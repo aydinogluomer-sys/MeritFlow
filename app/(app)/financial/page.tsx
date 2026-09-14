@@ -120,7 +120,7 @@ export default async function FinancialIntelligencePage() {
   const ctx: SemanticQueryContext = { organizationId: org.organization_id, permissions: perms, role: org.primary_role };
   const periodId = await currentPeriodId(supabase, org.organization_id);
 
-  const [financeMetrics, capMetric, totals, accrualTrend, concentration] = await Promise.all([
+  const [financeMetrics, capMetric, moneyMetrics, totals, accrualTrend, concentration] = await Promise.all([
     // Finance metrics bundle (NOT role-gated — RLS scopes v_finance; a non-finance role gets empty).
     safe(
       executeSemanticQuery(supabase, ctx, {
@@ -140,6 +140,17 @@ export default async function FinancialIntelligencePage() {
         period: { kind: 'relative', trailing: 'current' },
       }),
     ),
+    // Money-delta metrics (8-B3 views) are role-gated {hr,finance,auditor} — query them in an ISOLATED
+    // bundle so a non-authorized role's reject (metric_not_available_for_role) → null → honest
+    // UnavailableCard, never a fabricated ₺0 (SI-12/§23). All three share the same gate (all-or-nothing).
+    safe(
+      executeSemanticQuery(supabase, ctx, {
+        metrics: ['cap_money_impact', 'team_cost', 'cost_per_employee'],
+        dimensions: [],
+        filters: [],
+        period: { kind: 'relative', trailing: 'current' },
+      }),
+    ),
     periodId ? safe(loadPeriodTotals(supabase, periodId)) : Promise.resolve(null),
     safe(loadAccrualTrend(supabase, org.organization_id)),
     periodId ? safe(loadConcentration(supabase, periodId)) : Promise.resolve<DistributionBin[]>([]),
@@ -149,9 +160,13 @@ export default async function FinancialIntelligencePage() {
   const budget = financeMetrics ? readOrgMetric(financeMetrics, 'budget_variance') : null;
   const concentrationScore = financeMetrics ? readOrgMetric(financeMetrics, 'payout_concentration') : null;
   const capHit = capMetric ? readOrgMetric(capMetric, 'cap_hit_rate') : null;
+  const capMoneyImpact = moneyMetrics ? readOrgMetric(moneyMetrics, 'cap_money_impact') : null;
+  const teamCost = moneyMetrics ? readOrgMetric(moneyMetrics, 'team_cost') : null;
+  const costPerEmployee = moneyMetrics ? readOrgMetric(moneyMetrics, 'cost_per_employee') : null;
   const rollup: FinancialRollup | null = deriveRollup(totals);
   const waterfall = financialWaterfall(rollup);
   const payoutDrillLevels = availableDrillLevels('payout_total');
+  const teamCostDrillLevels = availableDrillLevels('team_cost');
 
   return (
     <div className="flex flex-col gap-6">
@@ -226,6 +241,38 @@ export default async function FinancialIntelligencePage() {
         )}
       </section>
 
+      {/* Money-delta cards (§10.4 iii) — LIVE via the 0050 finance views (8-B3). Role-gated
+          {hr,finance,auditor}; a non-authorized role → honest UnavailableCard, never a fake 0 (SI-12/§23). */}
+      <section aria-label="Para etkisi" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {capMoneyImpact ? (
+          <MoneyCard
+            label="Cap Para Etkisi"
+            minor={capMoneyImpact.value}
+            definition="Σ(cap öncesi pay − cap sonrası tutar) — cap ile kesilen para (snapshot takımı, AD9)."
+          />
+        ) : (
+          <UnavailableCard label="Cap Para Etkisi" note={UNAVAILABLE} />
+        )}
+        {teamCost ? (
+          <MoneyCard
+            label="Takım Maliyeti"
+            minor={teamCost.value}
+            definition="Takım başına net tahakkuk (snapshot takımı, AD9) — Σ takım maliyeti payout_total ile mutabık."
+          />
+        ) : (
+          <UnavailableCard label="Takım Maliyeti" note={UNAVAILABLE} />
+        )}
+        {costPerEmployee ? (
+          <MoneyCard
+            label="Çalışan Başına Maliyet"
+            minor={costPerEmployee.value}
+            definition="Net tahakkuk / aktif çalışan sayısı (dönem). Kişi başı ortalama gider."
+          />
+        ) : (
+          <UnavailableCard label="Çalışan Başına Maliyet" note={UNAVAILABLE} />
+        )}
+      </section>
+
       {/* Money-flow waterfall (§10.16) — reconciles by construction: havuz → tahakkuk → ödenen */}
       <ChartFrame
         question="Havuz nasıl dağıldı (havuz → tahakkuk → ödenen)?"
@@ -266,13 +313,33 @@ export default async function FinancialIntelligencePage() {
         )}
       </ChartFrame>
 
-      {/* Deferred money-delta enrichment cards (§10.4 iii) — honest, NOT fabricated (§23) */}
+      {/* Per-team cost drill (§10.10) — permission-aware: drillMetricAction re-validates the
+          {hr,finance,auditor} gate + RLS server-side; team = the FROZEN AD9 snapshot team. Shown only
+          when the org-level team_cost is itself readable (else the drill would have nothing to offer). */}
+      {teamCost ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Takım maliyeti kırılımı</CardTitle>
+            <CardDescription>
+              Maliyet hangi takımlarda yoğunlaşıyor? v_finance_team_cost: takım (snapshot, AD9) başına net
+              tahakkuk (₺). İncele → takım kırılımı (yetki server-side + RLS ile doğrulanır; kapsam dışı rol
+              için detay gelmez — SI-12).
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <DrillPanel metric="team_cost" metricLabel="Takım maliyeti" levels={teamCostDrillLevels} />
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {/* Still-deferred money-delta cards (§10.4 iii) — honest, NOT fabricated (§23) */}
       <Card>
         <CardHeader>
-          <CardTitle>Para etkisi zenginleştirmeleri (henüz mevcut değil)</CardTitle>
+          <CardTitle>Ertelenen para etkisi kartları (henüz mevcut değil)</CardTitle>
           <CardDescription>
-            Bu kartlar SI-12-güvenli yeni finans görünümleri gerektirir ve bir sonraki finans-metrik DB
-            dilimine (8-B3) ertelenmiştir. Uydurma sayı gösterilmez (§23).
+            Cap Para Etkisi / Takım Maliyeti / Çalışan Başına Maliyet 8-B3 ile canlıya alındı (yukarıda).
+            Kalan bu iki kart için SI-12-güvenli bir para kaynağı yoktur (bonus_ledger itiraz kimliği
+            taşımaz; point_ledger düzeltmeleri paradan çok puandır) — ertelenmiştir. Uydurma sayı yok (§23).
           </CardDescription>
         </CardHeader>
         <CardContent>
