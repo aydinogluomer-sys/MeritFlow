@@ -70,6 +70,15 @@ const DEFINITIONS: readonly MetricDefinition[] = [
     allowedDimensions: ['organization', 'policy_version'] },
   { id: 'payout_concentration', unit: 'score', requiredPermission: METRIC_READ_PERMISSION,
     allowedDimensions: ['organization', 'team', 'bonus_period'] },
+  // P4 / Module 8-B3 — finance money-delta metrics (minor_currency; intelligence.read). Backed by the
+  // 0050 SI-12-safe definer-rights views; the executor entry adds an availableRoles={hr,finance,auditor}
+  // gate so a source-excluded role is rejected (metric_not_available_for_role), never a silent 0.
+  { id: 'cap_money_impact', unit: 'minor_currency', requiredPermission: METRIC_READ_PERMISSION,
+    allowedDimensions: ['organization', 'team', 'bonus_period'] },
+  { id: 'team_cost', unit: 'minor_currency', requiredPermission: METRIC_READ_PERMISSION,
+    allowedDimensions: ['organization', 'team', 'bonus_period'] },
+  { id: 'cost_per_employee', unit: 'minor_currency', requiredPermission: METRIC_READ_PERMISSION,
+    allowedDimensions: ['organization', 'bonus_period'] },
 ];
 
 /** The default P0 metric registry (all 11 approved metrics, contract-only). */

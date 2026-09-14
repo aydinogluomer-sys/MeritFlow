@@ -17,6 +17,10 @@ export const METRIC_IDS = [
   'opportunity_index',
   'policy_complexity',
   'payout_concentration',
+  // P4 / Module 8-B3 — finance money-delta metrics (aggregate money via the 0050 SI-12-safe views).
+  'cap_money_impact',
+  'team_cost',
+  'cost_per_employee',
 ] as const;
 
 export type MetricId = (typeof METRIC_IDS)[number];

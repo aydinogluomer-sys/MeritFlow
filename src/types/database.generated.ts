@@ -215,6 +215,13 @@ export type Database = {
             referencedColumns: ["id", "organization_id"]
           },
           {
+            foreignKeyName: "bonus_allocation_snapshots_period_org_fk"
+            columns: ["bonus_period_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "v_finance_cost_per_employee"
+            referencedColumns: ["bonus_period_id", "organization_id"]
+          },
+          {
             foreignKeyName: "bonus_allocation_snapshots_policy_org_fk"
             columns: ["policy_version_id", "organization_id"]
             isOneToOne: false
@@ -318,6 +325,13 @@ export type Database = {
             referencedColumns: ["id", "organization_id"]
           },
           {
+            foreignKeyName: "bonus_allocations_period_org_fk"
+            columns: ["bonus_period_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "v_finance_cost_per_employee"
+            referencedColumns: ["bonus_period_id", "organization_id"]
+          },
+          {
             foreignKeyName: "bonus_allocations_run_org_fk"
             columns: ["calculation_run_id", "organization_id"]
             isOneToOne: false
@@ -399,6 +413,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "bonus_periods"
             referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "bonus_calculation_runs_period_org_fk"
+            columns: ["bonus_period_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "v_finance_cost_per_employee"
+            referencedColumns: ["bonus_period_id", "organization_id"]
           },
           {
             foreignKeyName: "bonus_calculation_runs_policy_org_fk"
@@ -838,6 +859,13 @@ export type Database = {
             referencedRelation: "bonus_periods"
             referencedColumns: ["id", "organization_id"]
           },
+          {
+            foreignKeyName: "bonus_pools_period_org_fk"
+            columns: ["bonus_period_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "v_finance_cost_per_employee"
+            referencedColumns: ["bonus_period_id", "organization_id"]
+          },
         ]
       }
       command_log: {
@@ -1155,6 +1183,13 @@ export type Database = {
             referencedColumns: ["organization_id", "id"]
           },
           {
+            foreignKeyName: "exports_period_org_fk"
+            columns: ["organization_id", "bonus_period_id"]
+            isOneToOne: false
+            referencedRelation: "v_finance_cost_per_employee"
+            referencedColumns: ["organization_id", "bonus_period_id"]
+          },
+          {
             foreignKeyName: "exports_snapshot_org_fk"
             columns: ["organization_id", "snapshot_id"]
             isOneToOne: false
@@ -1270,6 +1305,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "bonus_periods"
             referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "intelligence_insights_period_org_fk"
+            columns: ["bonus_period_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "v_finance_cost_per_employee"
+            referencedColumns: ["bonus_period_id", "organization_id"]
           },
         ]
       }
@@ -1530,6 +1572,13 @@ export type Database = {
             referencedRelation: "bonus_periods"
             referencedColumns: ["id", "organization_id"]
           },
+          {
+            foreignKeyName: "opportunity_snapshots_period_org_fk"
+            columns: ["bonus_period_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "v_finance_cost_per_employee"
+            referencedColumns: ["bonus_period_id", "organization_id"]
+          },
         ]
       }
       organization_settings: {
@@ -1759,6 +1808,13 @@ export type Database = {
             referencedColumns: ["id", "organization_id"]
           },
           {
+            foreignKeyName: "point_ledger_bonus_period_org_fk"
+            columns: ["bonus_period_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "v_finance_cost_per_employee"
+            referencedColumns: ["bonus_period_id", "organization_id"]
+          },
+          {
             foreignKeyName: "point_ledger_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
@@ -1876,6 +1932,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "bonus_periods"
             referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "policy_change_impacts_period_org_fk"
+            columns: ["reference_period_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "v_finance_cost_per_employee"
+            referencedColumns: ["bonus_period_id", "organization_id"]
           },
           {
             foreignKeyName: "policy_change_impacts_request_org_fk"
@@ -2868,6 +2931,61 @@ export type Database = {
       }
     }
     Views: {
+      v_finance_cap_impact: {
+        Row: {
+          bonus_period_id: string | null
+          cap_impact_minor: number | null
+          organization_id: string | null
+          team_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bonus_allocations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bonus_allocations_period_org_fk"
+            columns: ["bonus_period_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "bonus_periods"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "bonus_allocations_period_org_fk"
+            columns: ["bonus_period_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "v_finance_cost_per_employee"
+            referencedColumns: ["bonus_period_id", "organization_id"]
+          },
+          {
+            foreignKeyName: "bonus_allocations_team_org_fk"
+            columns: ["team_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
+      v_finance_cost_per_employee: {
+        Row: {
+          active_headcount: number | null
+          bonus_period_id: string | null
+          cost_per_employee_minor: number | null
+          organization_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bonus_periods_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       v_finance_payout: {
         Row: {
           bonus_period_id: string | null
@@ -2891,6 +3009,23 @@ export type Database = {
           undistributed_remainder: number | null
         }
         Relationships: []
+      }
+      v_finance_team_cost: {
+        Row: {
+          bonus_period_id: string | null
+          organization_id: string | null
+          team_cost_minor: number | null
+          team_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bonus_ledger_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Functions: {

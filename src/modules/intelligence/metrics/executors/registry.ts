@@ -40,7 +40,19 @@ import {
   disputeRateExecutor,
   DISPUTE_RATE_SERVABLE,
 } from './cap-dispute';
+import {
+  capMoneyImpactExecutor,
+  CAP_MONEY_IMPACT_SERVABLE,
+  teamCostExecutor,
+  TEAM_COST_SERVABLE,
+  costPerEmployeeExecutor,
+  COST_PER_EMPLOYEE_SERVABLE,
+} from './money-delta';
 import type { MetricExecutor } from './types';
+
+// 8-B3: the finance money-delta views (0050) are self-gated to these roles; a source-excluded role must
+// get metric_not_available_for_role (never a silent 0). Mirrors CAP_HIT_ALLOCATION_ROLES.
+const FINANCE_MONEY_ROLES: ReadonlySet<string> = new Set(['hr', 'finance', 'auditor']);
 
 function entry(
   id: MetricId,
@@ -74,6 +86,10 @@ export const executorRegistry: ReadonlyMap<MetricId, ExecutorEntry> = new Map<Me
   // 8-A2: cap_hit_rate is HR/Auditor-only (bonus_allocations RLS, SI-12); other roles → typed reject.
   entry('cap_hit_rate', CAP_HIT_RATE_SERVABLE, capHitRateExecutor, CAP_HIT_ALLOCATION_ROLES),
   entry('dispute_rate', DISPUTE_RATE_SERVABLE, disputeRateExecutor),
+  // 8-B3: finance money-delta metrics via the 0050 SI-12-safe definer-rights views (hr/finance/auditor).
+  entry('cap_money_impact', CAP_MONEY_IMPACT_SERVABLE, capMoneyImpactExecutor, FINANCE_MONEY_ROLES),
+  entry('team_cost', TEAM_COST_SERVABLE, teamCostExecutor, FINANCE_MONEY_ROLES),
+  entry('cost_per_employee', COST_PER_EMPLOYEE_SERVABLE, costPerEmployeeExecutor, FINANCE_MONEY_ROLES),
 ]);
 
 /** True when 8-A1 has a deterministic executor for the metric. */

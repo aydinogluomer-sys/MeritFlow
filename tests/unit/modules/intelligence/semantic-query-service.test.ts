@@ -329,10 +329,13 @@ describe('drill scaffolding (§10.10)', () => {
     if (!capEmployee.ok) expect(capEmployee.error.code).toBe('dimension_not_executable');
   });
 
-  it('isMetricExecutable is now true for all 11 metrics (8-A2 completes the layer)', () => {
+  it('isMetricExecutable is true across the layer (8-A2 core + 8-B3 finance money-delta)', () => {
     expect(isMetricExecutable('opportunity_index')).toBe(true);
     expect(isMetricExecutable('cap_hit_rate')).toBe(true);
     expect(isMetricExecutable('dispute_rate')).toBe(true);
+    expect(isMetricExecutable('cap_money_impact')).toBe(true);
+    expect(isMetricExecutable('team_cost')).toBe(true);
+    expect(isMetricExecutable('cost_per_employee')).toBe(true);
   });
 });
 
@@ -418,5 +421,129 @@ describe('8-A2 executors — cap_hit_rate (role-gated) + dispute_rate (trimmed d
       expect(out.ok).toBe(false);
       if (!out.ok) expect(out.validationErrors?.some((e) => e.code === 'dimension_not_allowed_for_metric')).toBe(true);
     }
+  });
+});
+
+describe('8-B3 executors — finance money-delta views (role-gated, SI-12 honest empty)', () => {
+  // The 0050 views already aggregate money; the executor SUMS/passes-through what the view returns —
+  // it never touches raw allocations/points (proven by the routing spy below).
+  const capRows = {
+    v_finance_cap_impact: [
+      { organization_id: ORG, bonus_period_id: P1, team_id: TEAM1, cap_impact_minor: 1000 },
+      { organization_id: ORG, bonus_period_id: P1, team_id: TEAM2, cap_impact_minor: 500 },
+    ],
+  };
+
+  it('cap_money_impact org-level = Σ cap_impact_minor (finance authorized)', async () => {
+    const out = ok(await run({ metrics: ['cap_money_impact'], dimensions: [], filters: [], period: PERIOD_P1 }, READ, capRows, 'finance'));
+    expect(out.metrics[0]!.results[0]).toMatchObject({ value: 1500, unit: 'minor_currency', dimensions: {} });
+  });
+
+  it('cap_money_impact groups by team', async () => {
+    const out = ok(await run({ metrics: ['cap_money_impact'], dimensions: ['team'], filters: [], period: PERIOD_P1 }, READ, capRows, 'hr'));
+    const byTeam = Object.fromEntries(out.metrics[0]!.results.map((r) => [r.dimensions.team, r.value]));
+    expect(byTeam).toEqual({ [TEAM1]: 1000, [TEAM2]: 500 });
+  });
+
+  it('team_cost groups by team (net-accrual aggregate; Σ reconciles to payout_total)', async () => {
+    const out = ok(
+      await run({ metrics: ['team_cost'], dimensions: ['team'], filters: [], period: PERIOD_P1 }, READ, {
+        v_finance_team_cost: [
+          { organization_id: ORG, bonus_period_id: P1, team_id: TEAM1, team_cost_minor: 6000000 },
+          { organization_id: ORG, bonus_period_id: P1, team_id: TEAM2, team_cost_minor: 4000000 },
+        ],
+      }, 'auditor'),
+    );
+    const byTeam = Object.fromEntries(out.metrics[0]!.results.map((r) => [r.dimensions.team, r.value]));
+    expect(byTeam).toEqual({ [TEAM1]: 6000000, [TEAM2]: 4000000 });
+    const orgTotal = ok(
+      await run({ metrics: ['team_cost'], dimensions: [], filters: [], period: PERIOD_P1 }, READ, {
+        v_finance_team_cost: [
+          { organization_id: ORG, bonus_period_id: P1, team_id: TEAM1, team_cost_minor: 6000000 },
+          { organization_id: ORG, bonus_period_id: P1, team_id: TEAM2, team_cost_minor: 4000000 },
+        ],
+      }, 'finance'),
+    );
+    expect(orgTotal.metrics[0]!.results[0]!.value).toBe(10000000); // Σ team_cost = payout_total
+  });
+
+  it('cost_per_employee by period passes the view value through verbatim (view already divides)', async () => {
+    const out = ok(
+      await run({ metrics: ['cost_per_employee'], dimensions: ['bonus_period'], filters: [], period: PERIOD_P1 }, READ, {
+        v_finance_cost_per_employee: [
+          { organization_id: ORG, bonus_period_id: P1, active_headcount: 6, cost_per_employee_minor: 1666666 },
+        ],
+      }, 'finance'),
+    );
+    expect(out.metrics[0]!.results[0]).toMatchObject({ value: 1666666, unit: 'minor_currency', dimensions: { bonus_period: P1 } });
+  });
+
+  it('cost_per_employee org-level = CUMULATIVE Σ of per-period floored per-head costs (NOT floor(Σ/h))', async () => {
+    // The view floors per period; the org-level branch SUMS those floors over the window. Pinning the
+    // multi-period path documents that Σₚ floor(aₚ/h) is a cumulative per-head total — deliberately NOT
+    // floor(Σaₚ/h) (here 1,666,666+1,666,666 = 3,333,332, not floor(20,000,000/6) = 3,333,333).
+    const out = ok(
+      await run(
+        { metrics: ['cost_per_employee'], dimensions: [], filters: [], period: { kind: 'range', start: '2026-01-01', end: '2026-02-28' } },
+        READ,
+        {
+          v_finance_cost_per_employee: [
+            { organization_id: ORG, bonus_period_id: P1, active_headcount: 6, cost_per_employee_minor: 1666666 },
+            { organization_id: ORG, bonus_period_id: P2, active_headcount: 6, cost_per_employee_minor: 1666666 },
+          ],
+        },
+        'finance',
+      ),
+    );
+    expect(out.metrics[0]!.results[0]).toMatchObject({ value: 3333332, unit: 'minor_currency', dimensions: {} });
+  });
+
+  it('empty read (RLS-denied) is OMITTED — honest unavailable, never a fabricated ₺0 (SI-12/§23)', async () => {
+    const views: Record<string, string> = {
+      cap_money_impact: 'v_finance_cap_impact',
+      team_cost: 'v_finance_team_cost',
+      cost_per_employee: 'v_finance_cost_per_employee',
+    };
+    for (const metric of ['cap_money_impact', 'team_cost', 'cost_per_employee'] as const) {
+      const out = ok(await run({ metrics: [metric], dimensions: [], filters: [], period: PERIOD_P1 }, READ, { [views[metric]!]: [] }, 'finance'));
+      expect(out.metrics[0]!.results, metric).toHaveLength(0);
+    }
+  });
+
+  it('REJECTS a source-excluded role (manager) with metric_not_available_for_role (no silent 0)', async () => {
+    for (const metric of ['cap_money_impact', 'team_cost', 'cost_per_employee'] as const) {
+      const out = await run({ metrics: [metric], dimensions: [], filters: [], period: PERIOD_P1 }, READ, {}, 'manager');
+      expect(out.ok, metric).toBe(false);
+      if (!out.ok) expect(out.executionErrors?.some((e) => e.code === 'metric_not_available_for_role')).toBe(true);
+    }
+  });
+
+  it('REJECTS a missing role (fail-closed)', async () => {
+    const out = await run({ metrics: ['team_cost'], dimensions: [], filters: [], period: PERIOD_P1 }, READ, {});
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.executionErrors?.some((e) => e.code === 'metric_not_available_for_role')).toBe(true);
+  });
+
+  it('cost_per_employee rejects a non-allowed dimension (team) via the P0 validator', async () => {
+    const out = await run({ metrics: ['cost_per_employee'], dimensions: ['team'], filters: [], period: PERIOD_P1 }, READ, {}, 'finance');
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.validationErrors?.some((e) => e.code === 'dimension_not_allowed_for_metric')).toBe(true);
+  });
+
+  it('cap_money_impact reads ONLY v_finance_cap_impact (never raw bonus_allocations / team_memberships)', async () => {
+    const reads: string[] = [];
+    const inner = fakeSupabase(base({ v_finance_cap_impact: [{ organization_id: ORG, bonus_period_id: P1, team_id: TEAM1, cap_impact_minor: 100 }] }));
+    const spy = { from: (t: string) => (reads.push(t), (inner as { from: (x: string) => unknown }).from(t)) } as never;
+    const out = await executeSemanticQuery(
+      spy,
+      { organizationId: ORG, permissions: READ, role: 'finance' },
+      { metrics: ['cap_money_impact'], dimensions: [], filters: [], period: PERIOD_P1 },
+      { computedAt: FIXED },
+    );
+    expect(out.ok).toBe(true);
+    expect(reads).toContain('v_finance_cap_impact');
+    expect(reads).not.toContain('bonus_allocations');
+    expect(reads).not.toContain('team_memberships');
+    expect(reads).not.toContain('point_ledger');
   });
 });
