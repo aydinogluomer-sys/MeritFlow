@@ -24,6 +24,7 @@ import {
   BarChart3,
   Coins,
   Activity,
+  GitCompare,
   type LucideIcon,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -73,6 +74,7 @@ const SECTIONS: NavItem[] = [
   { label: 'Yönetici Bakışı', href: '/executive', icon: BarChart3, section: 'management', permission: 'intelligence.read', flag: 'intelligence' },
   { label: 'Finansal Zeka', href: '/financial', icon: Coins, section: 'management', permission: 'intelligence.read', flag: 'intelligence' },
   { label: 'Operasyon Zekası', href: '/operations', icon: Activity, section: 'management', permission: 'intelligence.read', flag: 'intelligence' },
+  { label: 'Politika Zekası', href: '/policy-intelligence', icon: GitCompare, section: 'management', permission: 'intelligence.read', flag: 'intelligence' },
   { label: 'Puan Override', href: '/points/override', icon: SlidersHorizontal, section: 'management', permission: 'point.override' },
   { label: 'Anti-Gaming', href: '/anti-gaming', icon: ShieldAlert, section: 'management', permission: 'period.manage' },
 
