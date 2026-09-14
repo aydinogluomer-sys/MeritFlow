@@ -68,14 +68,59 @@ describe('formatMetric (reused) + deferred cards', () => {
   it('formats minor_currency as ₺ from kuruş', () => {
     expect(formatMetric(10_000_000, 'minor_currency')).toEqual({ display: '100.000', suffix: '₺' });
   });
-  it('lists the 5 deferred money-delta enrichment cards (honest, no fake data)', () => {
+  it('lists ONLY the 2 still-deferred money cards (Cap/Takım/Kişi-başı went live in 8-B4)', () => {
     expect(DEFERRED_MONEY_CARDS.map((c) => c.label)).toEqual([
-      'Cap Para Etkisi',
       'Düzeltme Para Etkisi',
       'İtiraz Finansal Etkisi',
-      'Takım Maliyeti',
-      'Çalışan Başına Maliyet',
     ]);
+  });
+});
+
+describe('8-B4 finance money-delta wiring (readOrgMetric → value/unit; role-denied → null, never a fake 0)', () => {
+  // The 3 money-delta metrics are queried in an ISOLATED {hr,finance,auditor} bundle on the page. An
+  // authorized read yields org-level minor_currency values → MoneyCard; a role-denied bundle → null for
+  // every card → honest UnavailableCard (SI-12/§23), never a fabricated ₺0.
+  function moneyOutcome(pairs: Array<[string, number]>): SemanticQueryOutcome {
+    return {
+      ok: true,
+      metrics: pairs.map(([metricId, value]) => ({
+        metricId: metricId as never,
+        results: [
+          {
+            metricId: metricId as never,
+            value,
+            unit: 'minor_currency',
+            period: { start: '2026-01-01', end: '2026-01-31' },
+            organizationId: 'org',
+            dimensions: {},
+            computedAt: '2026-02-01T00:00:00.000Z',
+            sourceVersion: 'metrics-v1',
+          },
+        ],
+      })),
+    };
+  }
+
+  it('reads each money-delta metric as an org-level minor_currency value', () => {
+    const outcome = moneyOutcome([
+      ['cap_money_impact', 1_000_000],
+      ['team_cost', 10_000_000],
+      ['cost_per_employee', 1_666_666],
+    ]);
+    expect(readOrgMetric(outcome, 'cap_money_impact')).toMatchObject({ value: 1_000_000, unit: 'minor_currency' });
+    expect(readOrgMetric(outcome, 'team_cost')).toMatchObject({ value: 10_000_000, unit: 'minor_currency' });
+    expect(readOrgMetric(outcome, 'cost_per_employee')).toMatchObject({ value: 1_666_666, unit: 'minor_currency' });
+    expect(formatMetric(10_000_000, 'minor_currency')).toEqual({ display: '100.000', suffix: '₺' }); // kuruş → ₺
+  });
+
+  it('SI-12: a role-denied isolated bundle → null for EVERY money card (→ UnavailableCard, never ₺0)', () => {
+    const denied: SemanticQueryOutcome = {
+      ok: false,
+      executionErrors: [{ code: 'metric_not_available_for_role', message: 'x' }],
+    };
+    for (const m of ['cap_money_impact', 'team_cost', 'cost_per_employee']) {
+      expect(readOrgMetric(denied, m)).toBeNull();
+    }
   });
 });
 
