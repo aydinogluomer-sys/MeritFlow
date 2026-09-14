@@ -3,11 +3,13 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { DeltaBadge } from './DeltaBadge';
+import { Sparkline } from './charts/sparkline';
 
-// Phase P0 — shared visualization primitive (plan §19 / metric card contract §10.3: value, delta,
-// baseline, status, definition). Presentational only (no data fetching, no hooks → Server-Component
-// safe). Accessibility: the value carries its label via aria-label; status is conveyed by TEXT, not
-// color alone; the definition is a visible caption.
+// Phase P0 (extended P4/8-B1) — shared visualization primitive (plan §19 / metric card contract §10.3:
+// value, delta, baseline, status, definition, sparkline trend, drill action). Presentational only (no
+// data fetching, no hooks → Server-Component safe; the Sparkline child is a client component). Access-
+// ibility: the value carries its label via aria-label; status is conveyed by TEXT, not color alone; the
+// definition is a visible caption; the trend sparkline carries a text aria-label (not color).
 
 export type MetricStatus = 'ok' | 'warning' | 'critical';
 
@@ -29,6 +31,10 @@ export interface MetricCardProps {
   /** Short "what does this measure?" definition (accessible caption). */
   definition?: string;
   status?: MetricStatus;
+  /** Optional trailing trend (§10.3 sparkline) — rendered as an accessible Sparkline. */
+  trend?: number[];
+  /** Optional drill/detail affordance slot (§10.10) — e.g. a Link or a drill control. */
+  action?: React.ReactNode;
   className?: string;
 }
 
@@ -42,6 +48,8 @@ export function MetricCard({
   baseline,
   definition,
   status,
+  trend,
+  action,
   className,
 }: MetricCardProps) {
   return (
@@ -70,6 +78,12 @@ export function MetricCard({
             <span className="text-xs text-muted-foreground">Baz: {baseline}</span>
           ) : null}
         </div>
+        {trend && trend.length >= 2 ? (
+          <div className="mt-3 text-muted-foreground">
+            <Sparkline data={trend} />
+          </div>
+        ) : null}
+        {action ? <div className="mt-3">{action}</div> : null}
       </CardContent>
     </Card>
   );
