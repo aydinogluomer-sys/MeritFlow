@@ -147,7 +147,7 @@ describe('metric executors — exact deterministic formulas', () => {
     expect(org.metrics[0]!.results[0]!.value).toBe(21); // mean(32,10)
   });
 
-  it('payout_total = Σ final_amount_minor (via v_finance_payout); empty org-level = 0', async () => {
+  it('payout_total = Σ final_amount_minor (via v_finance_payout); empty read is OMITTED (SI-12 honesty)', async () => {
     const summed = ok(
       await run({ metrics: ['payout_total'], dimensions: [], filters: [], period: PERIOD_P1 }, READ, {
         v_finance_payout: [
@@ -158,8 +158,10 @@ describe('metric executors — exact deterministic formulas', () => {
     );
     expect(summed.metrics[0]!.results[0]).toMatchObject({ value: 3500, unit: 'minor_currency' });
 
+    // An empty read (RLS-denied for a non-finance role) is OMITTED — the caller renders an honest
+    // "unavailable", NOT a fabricated ₺0 (§23 / SI-12).
     const empty = ok(await run({ metrics: ['payout_total'], dimensions: [], filters: [], period: PERIOD_P1 }, READ, { v_finance_payout: [] }));
-    expect(empty.metrics[0]!.results[0]!.value).toBe(0); // a sum of nothing is 0 (legitimate)
+    expect(empty.metrics[0]!.results).toHaveLength(0);
   });
 
   it('payout_concentration = HHI over the payout distribution', async () => {

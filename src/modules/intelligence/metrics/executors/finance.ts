@@ -15,8 +15,9 @@ import {
 
 // ---------------------------------------------------------------------------
 // payout_total (minor_currency) ← Σ v_finance_payout.final_amount_minor (net accrual per employee/period).
-// A SUM: an empty slice legitimately sums to 0, so org-level always emits (0 when no payouts). Servable:
-// org, bonus_period, employee. role/team/manager are NOT columns of the finance view → 8-A2.
+// A SUM over the finance view (SI-12). An EMPTY read is OMITTED at every level (incl. org-level) — an
+// empty slice signals an RLS-denied (non-finance) read, so returning [] lets the caller render an honest
+// "unavailable" rather than a fabricated ₺0 (§23). Servable: org, bonus_period, employee.
 // ---------------------------------------------------------------------------
 export const PAYOUT_TOTAL_SERVABLE: DimensionId[] = ['organization', 'bonus_period', 'employee'];
 
@@ -55,7 +56,10 @@ export const payoutTotalExecutor: MetricExecutor = async (client, plan) => {
       makeResult(plan, 'minor_currency', Math.round(sum), { bonus_period: id }),
     );
   }
-  // org-level total (emits 0 when there are no payouts — a legitimate sum).
+  // org-level total. An empty read signals an RLS-denied (non-finance) slice → return [] so the caller
+  // shows an honest "unavailable", NOT a fabricated ₺0 (§23; matches budget_variance/payout_concentration
+  // + the employee/bonus_period branches above, which already omit on empty).
+  if (rows.length === 0) return [];
   const total = rows.reduce((a, r) => a + num(r.final_amount_minor), 0);
   return [makeResult(plan, 'minor_currency', Math.round(total), {})];
 };
