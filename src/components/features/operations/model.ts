@@ -13,6 +13,7 @@ export {
   changesFrom,
   attentionInsights,
   criticalExceptionCount,
+  anchoredMetricPeriod,
   type MetricReading,
 } from '@/components/features/executive/model';
 

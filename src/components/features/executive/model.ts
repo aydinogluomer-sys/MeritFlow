@@ -3,7 +3,25 @@
 // the org-level reading (+ comparison delta) for a metric, derives the "What changed?" and "Requires
 // attention" sections, and NEVER fabricates a number: a metric the caller's RLS scoped out yields no
 // org-level result → the card renders unavailable, not a fake 0.
-import type { SemanticQueryOutcome, StoredInsight } from '@/modules/intelligence';
+import type { SemanticQueryOutcome, StoredInsight, PeriodSelector, Comparison } from '@/modules/intelligence';
+
+/**
+ * Build the primary-bundle period (+ optional comparison) for a dashboard, given the current
+ * bonus_period id. A previous-period COMPARISON is only executable against an ANCHORED bonus_period
+ * selector — resolveComparisonPeriod rejects a relative/range selector (comparison_not_executable) and
+ * the service fails the WHOLE query. So: anchor to the current period + compare to the previous one when
+ * a period exists; otherwise fall back to relative-current WITHOUT comparison (metrics still resolve
+ * org-level; there is simply no delta). Spread the result into the SemanticQuery. PURE (no IO).
+ */
+export function anchoredMetricPeriod(currentPeriodId: string | null): { period: PeriodSelector; comparison?: Comparison } {
+  if (currentPeriodId) {
+    return {
+      period: { kind: 'bonus_period', bonusPeriodId: currentPeriodId },
+      comparison: { basis: 'previous_period' },
+    };
+  }
+  return { period: { kind: 'relative', trailing: 'current' } };
+}
 
 export interface MetricReading {
   value: number;

@@ -33,6 +33,7 @@ import {
   attentionInsights,
   criticalExceptionCount,
   insightBreakdown,
+  anchoredMetricPeriod,
   DEFERRED_OPS_CARDS,
 } from '@/components/features/operations/model';
 
@@ -126,9 +127,6 @@ export default async function OperationsIntelligencePage() {
   // makes "previous" ambiguous → the service rejects the whole query). No period yet → run WITHOUT
   // comparison (the metrics still resolve org-level; "Ne değişti?" simply shows no deltas).
   const periodId = await currentPeriodId(supabase, org.organization_id);
-  const period = periodId
-    ? ({ kind: 'bonus_period', bonusPeriodId: periodId } as const)
-    : ({ kind: 'relative', trailing: 'current' } as const);
 
   const [main, insights, latencyTrend] = await Promise.all([
     // Operations process signals — none are role-gated (RLS scopes the rows); one bundle. A role scoped
@@ -138,8 +136,7 @@ export default async function OperationsIntelligencePage() {
         metrics: ['cycle_completion_rate', 'approval_latency', 'manual_override_rate', 'gaming_flag_rate', 'dispute_rate'],
         dimensions: [],
         filters: [],
-        period,
-        ...(periodId ? { comparison: { basis: 'previous_period' as const } } : {}),
+        ...anchoredMetricPeriod(periodId),
       }),
     ),
     safe(new IntelligenceRepository(supabase).list(org.organization_id, {})),
