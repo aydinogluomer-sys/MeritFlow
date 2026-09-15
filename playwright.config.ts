@@ -67,6 +67,14 @@ export default defineConfig({
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], trace: 'retain-on-failure' },
     },
+    // Intelligence dashboards real-DB regression guard (comparison-anchor class). Multi-role: opens its
+    // own contexts per role (hr/finance/mgr/emp), so no default storageState — like the golden project.
+    {
+      name: 'intelligence-dashboards',
+      testMatch: /intelligence-dashboards\.spec\.ts/,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], trace: 'retain-on-failure' },
+    },
   ],
   // CI runs the PRODUCTION server (routes pre-compiled by an earlier `next build` step) so
   // navigations are fast and deterministic — `next dev` cold-compiles each route on first hit,
