@@ -196,6 +196,64 @@ values
    null, 'd0000000-0000-0000-0000-0000000000fd', 'd0000000-0000-0000-0000-0000000000ee',
    'debit', 'pool', 'bonus_accrual', 10000000, 'TRY', 'd0000000-0000-0000-0000-0000000000d3');
 
+-- ---- dispute-recalc fixture (SEPARATE period 'ba') for dispute_financial_impact (0051) --------------
+-- Stages the real 0029 write path so v_finance_dispute_recalc_money can be pinned to the NET (not gross):
+--   original accrual on S1b (bd) = 5,000,000  →  dispute reversal of S1b (dispute_recalc=true) = 5,000,000
+--   →  re-run (run be, idempotency_key 'disp-recalc-snap-'||<S1b>)  →  re-accrual on S2b (bf) = 7,000,000.
+-- NET = re-run accrual (7M) − dispute reversal (5M) = 2,000,000 (= S_final 7M − S_original 5M). Kept on a
+-- DISTINCT period so every period-'fa' assertion above is untouched (this org's fa figures are unchanged).
+insert into public.bonus_periods (id, organization_id, period_type, starts_on, ends_on, status, created_by, locked_at, locked_by)
+values ('d0000000-0000-0000-0000-0000000000ba', 'd0000000-0000-0000-0000-000000000004', 'monthly', '2026-07-01', '2026-07-31',
+        'calculated', 'd0000000-0000-0000-0000-0000000000d1', now(), 'd0000000-0000-0000-0000-0000000000d1');
+insert into public.bonus_pools (id, organization_id, bonus_period_id, amount_minor, currency, status, created_by, t_org, locked_at, locked_by)
+values ('d0000000-0000-0000-0000-0000000000bb', 'd0000000-0000-0000-0000-000000000004', 'd0000000-0000-0000-0000-0000000000ba',
+        8000000, 'TRY', 'locked', 'd0000000-0000-0000-0000-0000000000d3', 1, now(), 'd0000000-0000-0000-0000-0000000000d3');
+-- original run R1b (SUPERSEDED by the dispute recalc) — a NORMAL idempotency_key (NOT disp-recalc).
+insert into public.bonus_calculation_runs
+  (id, organization_id, bonus_period_id, bonus_pool_id, status, idempotency_key, triggered_by, t_org, completed_at)
+values ('d0000000-0000-0000-0000-0000000000bc', 'd0000000-0000-0000-0000-000000000004', 'd0000000-0000-0000-0000-0000000000ba',
+        'd0000000-0000-0000-0000-0000000000bb', 'superseded', 'golden-run-b-orig', 'd0000000-0000-0000-0000-0000000000d1', 1, now());
+insert into public.bonus_allocation_snapshots
+  (id, organization_id, calculation_run_id, bonus_period_id, bonus_pool_id, undistributed_remainder_minor, calculation_metadata)
+values ('d0000000-0000-0000-0000-0000000000bd', 'd0000000-0000-0000-0000-000000000004', 'd0000000-0000-0000-0000-0000000000bc',
+        'd0000000-0000-0000-0000-0000000000ba', 'd0000000-0000-0000-0000-0000000000bb', 0, '{}'::jsonb);
+-- re-run R2b (the dispute recalc) — idempotency_key = 'disp-recalc-snap-' || <reversed snapshot S1b> (0029).
+insert into public.bonus_calculation_runs
+  (id, organization_id, bonus_period_id, bonus_pool_id, status, idempotency_key, triggered_by, t_org, completed_at)
+values ('d0000000-0000-0000-0000-0000000000be', 'd0000000-0000-0000-0000-000000000004', 'd0000000-0000-0000-0000-0000000000ba',
+        'd0000000-0000-0000-0000-0000000000bb', 'completed', 'disp-recalc-snap-d0000000-0000-0000-0000-0000000000bd',
+        'd0000000-0000-0000-0000-0000000000d1', 1, now());
+insert into public.bonus_allocation_snapshots
+  (id, organization_id, calculation_run_id, bonus_period_id, bonus_pool_id, undistributed_remainder_minor, calculation_metadata)
+values ('d0000000-0000-0000-0000-0000000000bf', 'd0000000-0000-0000-0000-000000000004', 'd0000000-0000-0000-0000-0000000000be',
+        'd0000000-0000-0000-0000-0000000000ba', 'd0000000-0000-0000-0000-0000000000bb', 0, '{}'::jsonb);
+insert into public.bonus_ledger
+  (id, organization_id, bonus_pool_id, employee_id, snapshot_id, transaction_id, entry_type, account, event_type, amount_minor, currency, created_by, metadata)
+values
+  -- (1) original accrual on S1b (credit accrual d5 5M + debit pool 5M) — transaction b1.
+  ('d0000000-0000-0000-0000-000000000071', 'd0000000-0000-0000-0000-000000000004', 'd0000000-0000-0000-0000-0000000000bb',
+   'd0000000-0000-0000-0000-0000000000d5', 'd0000000-0000-0000-0000-0000000000bd', 'd0000000-0000-0000-0000-0000000000b1',
+   'credit', 'accrual', 'bonus_accrual', 5000000, 'TRY', 'd0000000-0000-0000-0000-0000000000d3', '{}'::jsonb),
+  ('d0000000-0000-0000-0000-000000000072', 'd0000000-0000-0000-0000-000000000004', 'd0000000-0000-0000-0000-0000000000bb',
+   null, 'd0000000-0000-0000-0000-0000000000bd', 'd0000000-0000-0000-0000-0000000000b1',
+   'debit', 'pool', 'bonus_accrual', 5000000, 'TRY', 'd0000000-0000-0000-0000-0000000000d3', '{}'::jsonb),
+  -- (2) dispute reversal of S1b (mirror: debit accrual d5 + credit pool), tagged dispute_recalc — transaction b2.
+  ('d0000000-0000-0000-0000-000000000073', 'd0000000-0000-0000-0000-000000000004', 'd0000000-0000-0000-0000-0000000000bb',
+   'd0000000-0000-0000-0000-0000000000d5', 'd0000000-0000-0000-0000-0000000000bd', 'd0000000-0000-0000-0000-0000000000b2',
+   'debit', 'accrual', 'reversal', 5000000, 'TRY', 'd0000000-0000-0000-0000-0000000000d3',
+   '{"dispute_recalc": true, "reverses_snapshot": "d0000000-0000-0000-0000-0000000000bd"}'::jsonb),
+  ('d0000000-0000-0000-0000-000000000074', 'd0000000-0000-0000-0000-000000000004', 'd0000000-0000-0000-0000-0000000000bb',
+   null, 'd0000000-0000-0000-0000-0000000000bd', 'd0000000-0000-0000-0000-0000000000b2',
+   'credit', 'pool', 'reversal', 5000000, 'TRY', 'd0000000-0000-0000-0000-0000000000d3',
+   '{"dispute_recalc": true, "reverses_snapshot": "d0000000-0000-0000-0000-0000000000bd"}'::jsonb),
+  -- (3) re-accrual on S2b (the re-run's fresh accrual, posted on re-approval) = 7M — transaction b3.
+  ('d0000000-0000-0000-0000-000000000075', 'd0000000-0000-0000-0000-000000000004', 'd0000000-0000-0000-0000-0000000000bb',
+   'd0000000-0000-0000-0000-0000000000d5', 'd0000000-0000-0000-0000-0000000000bf', 'd0000000-0000-0000-0000-0000000000b3',
+   'credit', 'accrual', 'bonus_accrual', 7000000, 'TRY', 'd0000000-0000-0000-0000-0000000000d3', '{}'::jsonb),
+  ('d0000000-0000-0000-0000-000000000076', 'd0000000-0000-0000-0000-000000000004', 'd0000000-0000-0000-0000-0000000000bb',
+   null, 'd0000000-0000-0000-0000-0000000000bf', 'd0000000-0000-0000-0000-0000000000b3',
+   'debit', 'pool', 'bonus_accrual', 7000000, 'TRY', 'd0000000-0000-0000-0000-0000000000d3', '{}'::jsonb);
+
 set local session_replication_role = 'origin';
 
 -- policy_complexity (audience = policy.manage; asserted RLS-agnostic here) = total_score 40.
@@ -329,6 +387,32 @@ select is((select active_headcount from public.v_finance_cost_per_employee
            where bonus_period_id = 'd0000000-0000-0000-0000-0000000000fa'),
           6::bigint, 'cost_per_employee active_headcount = 6 (org d active memberships)');
 
+-- dispute_financial_impact (0051): period-level NET dispute-recalc money = Σ(re-run accrual, run
+-- .idempotency_key like 'disp-recalc-snap-%') − Σ(dispute_recalc-tagged reversal). For period 'ba':
+-- re-accrual 7M − reversed 5M = 2,000,000 (NET; NOT the gross 5M reversal). Finance is AUTHORIZED here
+-- (the "no under-expose" direction) though it is EXCLUDED from the raw bonus_ledger/snapshots the view reads.
+select is((select dispute_recalc_net_minor from public.v_finance_dispute_recalc_money
+           where bonus_period_id = 'd0000000-0000-0000-0000-0000000000ba'),
+          2000000::bigint, 'dispute_financial_impact[ba] = 2,000,000 NET (re-accrual 7M − reversed 5M; NOT gross)');
+-- Formula cross-check replicated directly from bonus_ledger (documents the LOCKED net formula).
+select is(
+  (select coalesce(sum(bl.amount_minor) filter (
+            where bl.event_type = 'bonus_accrual' and bl.account = 'accrual' and bl.entry_type = 'credit'
+              and r.idempotency_key like 'disp-recalc-snap-%'), 0)
+        - coalesce(sum(bl.amount_minor) filter (
+            where bl.event_type = 'reversal' and bl.account = 'accrual' and bl.entry_type = 'debit'
+              and (bl.metadata ->> 'dispute_recalc') = 'true'), 0)
+   from public.bonus_ledger bl
+   join public.bonus_allocation_snapshots s on s.id = bl.snapshot_id
+   join public.bonus_calculation_runs r on r.id = s.calculation_run_id
+   where s.bonus_period_id = 'd0000000-0000-0000-0000-0000000000ba'),
+  2000000::numeric, 'dispute_financial_impact NET formula cross-check (re-run accrual − dispute reversal) = 2,000,000');
+-- the ORIGINAL period 'fa' had NO dispute recalc → NET 0 (no re-run accrual, no dispute reversal) — the
+-- view reports a true 0, not a fabricated value and not the period's 10M accrual.
+select is((select dispute_recalc_net_minor from public.v_finance_dispute_recalc_money
+           where bonus_period_id = 'd0000000-0000-0000-0000-0000000000fa'),
+          0::bigint, 'dispute_financial_impact[fa] = 0 (no dispute recalc → no dispute financial impact)');
+
 -- SI-12: Finance is EXCLUDED from raw allocations + points (this is why cap_hit_rate rejects Finance).
 select is((select count(*) from public.bonus_allocations
            where organization_id = 'd0000000-0000-0000-0000-000000000004'),
@@ -371,6 +455,8 @@ select is((select count(*) from public.v_finance_team_cost), 0::bigint,
           'no over-expose: a manager reads 0 rows from v_finance_team_cost');
 select is((select count(*) from public.v_finance_cost_per_employee), 0::bigint,
           'no over-expose: a manager reads 0 rows from v_finance_cost_per_employee');
+select is((select count(*) from public.v_finance_dispute_recalc_money), 0::bigint,
+          'no over-expose: a manager reads 0 rows from v_finance_dispute_recalc_money');
 reset role;
 
 -- =============================================================================
@@ -398,6 +484,9 @@ select is((select count(*) from public.v_finance_team_cost
 select is((select count(*) from public.v_finance_cost_per_employee
            where organization_id = 'd0000000-0000-0000-0000-000000000004'), 0::bigint,
           'cross-tenant: Org A HR sees 0 golden-org rows from v_finance_cost_per_employee');
+select is((select count(*) from public.v_finance_dispute_recalc_money
+           where organization_id = 'd0000000-0000-0000-0000-000000000004'), 0::bigint,
+          'cross-tenant: Org A HR sees 0 golden-org rows from v_finance_dispute_recalc_money');
 reset role;
 
 select * from finish();

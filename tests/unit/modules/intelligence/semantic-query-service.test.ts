@@ -548,6 +548,44 @@ describe('8-B3 executors — finance money-delta views (role-gated, SI-12 honest
   });
 });
 
+describe('dispute_financial_impact executor (0051 view — role-gated, SI-12 honest empty)', () => {
+  // v_finance_dispute_recalc_money already nets per period (re-run accrual − dispute_recalc reversal); the
+  // executor sums/passes it through. An empty read = role/RLS-denied → [] (honest unavailable, never ₺0).
+  const netRows = {
+    v_finance_dispute_recalc_money: [
+      { organization_id: ORG, bonus_period_id: P1, dispute_recalc_net_minor: 2000000 },
+    ],
+  };
+
+  it('org-level = Σ NET dispute-recalc money (finance authorized) — passes the view NET through', async () => {
+    const out = ok(await run({ metrics: ['dispute_financial_impact'], dimensions: [], filters: [], period: PERIOD_P1 }, READ, netRows, 'finance'));
+    expect(out.metrics[0]!.results[0]).toMatchObject({ value: 2000000, unit: 'minor_currency', dimensions: {} });
+  });
+
+  it('groups by bonus_period (the view already nets per period)', async () => {
+    const out = ok(await run({ metrics: ['dispute_financial_impact'], dimensions: ['bonus_period'], filters: [], period: PERIOD_P1 }, READ, netRows, 'hr'));
+    const byPeriod = Object.fromEntries(out.metrics[0]!.results.map((r) => [r.dimensions.bonus_period, r.value]));
+    expect(byPeriod).toEqual({ [P1]: 2000000 });
+  });
+
+  it('empty read (RLS-denied) is OMITTED — honest unavailable, never a fabricated ₺0 (SI-12/§23)', async () => {
+    const out = ok(await run({ metrics: ['dispute_financial_impact'], dimensions: [], filters: [], period: PERIOD_P1 }, READ, { v_finance_dispute_recalc_money: [] }, 'finance'));
+    expect(out.metrics[0]!.results).toHaveLength(0);
+  });
+
+  it('REJECTS a source-excluded role (manager) with metric_not_available_for_role (no silent 0)', async () => {
+    const out = await run({ metrics: ['dispute_financial_impact'], dimensions: [], filters: [], period: PERIOD_P1 }, READ, {}, 'manager');
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.executionErrors?.some((e) => e.code === 'metric_not_available_for_role')).toBe(true);
+  });
+
+  it('REJECTS a missing role (fail-closed)', async () => {
+    const out = await run({ metrics: ['dispute_financial_impact'], dimensions: [], filters: [], period: PERIOD_P1 }, READ, {});
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.executionErrors?.some((e) => e.code === 'metric_not_available_for_role')).toBe(true);
+  });
+});
+
 describe('graceful comparison degradation (ITEM 1 — comparison_not_executable is non-fatal)', () => {
   // Previously a RELATIVE/range selector + comparison was rejected by resolveComparisonPeriod
   // (comparison_not_executable) and the service turned that into a WHOLE-query ok:false — so a primary

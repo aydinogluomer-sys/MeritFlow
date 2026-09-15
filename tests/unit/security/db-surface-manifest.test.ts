@@ -54,13 +54,15 @@ describe('db-surface.yml', () => {
     expect(surface.tables).toBeTypeOf('object');
     expect(surface.views).toBeTypeOf('object');
     expect(surface.security_definer_functions).toBeTypeOf('object');
-    // Sanity on the known surface size (43 tables + 5 views + 54 definer funcs).
-    // 43 = 42 + opportunity_snapshots (0048, Module 2-A). 5 views = v_finance_payout +
+    // Sanity on the known surface size (43 tables + 6 views + 54 definer funcs).
+    // 43 = 42 + opportunity_snapshots (0048, Module 2-A). 6 views = v_finance_payout +
     // v_finance_period_totals + the 3 money-delta views added by 0050 (Module 8-B3:
     // v_finance_cap_impact / v_finance_team_cost / v_finance_cost_per_employee — definer-rights,
-    // self-gated, aggregate-only). No new definer FUNCTION (0050 adds views only), so 54 is unchanged.
+    // self-gated, aggregate-only) + v_finance_dispute_recalc_money (0051, dispute financial impact —
+    // definer-rights, self-gated, period-level NET dispute-recalc money). No new definer FUNCTION
+    // (0050/0051 add views only), so 54 is unchanged.
     expect(Object.keys(surface.tables)).toHaveLength(43);
-    expect(Object.keys(surface.views)).toHaveLength(5);
+    expect(Object.keys(surface.views)).toHaveLength(6);
     expect(Object.keys(surface.security_definer_functions)).toHaveLength(54);
   });
 

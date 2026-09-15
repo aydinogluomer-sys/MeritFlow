@@ -21,6 +21,8 @@ export const METRIC_IDS = [
   'cap_money_impact',
   'team_cost',
   'cost_per_employee',
+  // P4 — dispute financial impact (period-level NET dispute-recalc money via the 0051 SI-12-safe view).
+  'dispute_financial_impact',
 ] as const;
 
 export type MetricId = (typeof METRIC_IDS)[number];

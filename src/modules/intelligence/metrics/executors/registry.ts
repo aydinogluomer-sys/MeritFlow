@@ -47,6 +47,8 @@ import {
   TEAM_COST_SERVABLE,
   costPerEmployeeExecutor,
   COST_PER_EMPLOYEE_SERVABLE,
+  disputeFinancialImpactExecutor,
+  DISPUTE_FINANCIAL_IMPACT_SERVABLE,
 } from './money-delta';
 import type { MetricExecutor } from './types';
 
@@ -90,6 +92,8 @@ export const executorRegistry: ReadonlyMap<MetricId, ExecutorEntry> = new Map<Me
   entry('cap_money_impact', CAP_MONEY_IMPACT_SERVABLE, capMoneyImpactExecutor, FINANCE_MONEY_ROLES),
   entry('team_cost', TEAM_COST_SERVABLE, teamCostExecutor, FINANCE_MONEY_ROLES),
   entry('cost_per_employee', COST_PER_EMPLOYEE_SERVABLE, costPerEmployeeExecutor, FINANCE_MONEY_ROLES),
+  // P4: dispute financial impact via the 0051 SI-12-safe definer-rights view (hr/finance/auditor).
+  entry('dispute_financial_impact', DISPUTE_FINANCIAL_IMPACT_SERVABLE, disputeFinancialImpactExecutor, FINANCE_MONEY_ROLES),
 ]);
 
 /** True when 8-A1 has a deterministic executor for the metric. */
