@@ -70,11 +70,8 @@ describe('formatMetric (reused) + deferred cards', () => {
   it('formats minor_currency as ₺ from kuruş', () => {
     expect(formatMetric(10_000_000, 'minor_currency')).toEqual({ display: '100.000', suffix: '₺' });
   });
-  it('lists ONLY the 2 still-deferred money cards (Cap/Takım/Kişi-başı went live in 8-B4)', () => {
-    expect(DEFERRED_MONEY_CARDS.map((c) => c.label)).toEqual([
-      'Düzeltme Para Etkisi',
-      'İtiraz Finansal Etkisi',
-    ]);
+  it('lists ONLY the 1 still-deferred money card (İtiraz Finansal Etkisi went live via 0051; only Düzeltme remains)', () => {
+    expect(DEFERRED_MONEY_CARDS.map((c) => c.label)).toEqual(['Düzeltme Para Etkisi']);
   });
 });
 
@@ -108,10 +105,13 @@ describe('8-B4 finance money-delta wiring (readOrgMetric → value/unit; role-de
       ['cap_money_impact', 1_000_000],
       ['team_cost', 10_000_000],
       ['cost_per_employee', 1_666_666],
+      ['dispute_financial_impact', 2_000_000],
     ]);
     expect(readOrgMetric(outcome, 'cap_money_impact')).toMatchObject({ value: 1_000_000, unit: 'minor_currency' });
     expect(readOrgMetric(outcome, 'team_cost')).toMatchObject({ value: 10_000_000, unit: 'minor_currency' });
     expect(readOrgMetric(outcome, 'cost_per_employee')).toMatchObject({ value: 1_666_666, unit: 'minor_currency' });
+    // İtiraz Finansal Etkisi (0051) — period-level NET dispute-recalc money, read the same way.
+    expect(readOrgMetric(outcome, 'dispute_financial_impact')).toMatchObject({ value: 2_000_000, unit: 'minor_currency' });
     expect(formatMetric(10_000_000, 'minor_currency')).toEqual({ display: '100.000', suffix: '₺' }); // kuruş → ₺
   });
 
@@ -120,7 +120,7 @@ describe('8-B4 finance money-delta wiring (readOrgMetric → value/unit; role-de
       ok: false,
       executionErrors: [{ code: 'metric_not_available_for_role', message: 'x' }],
     };
-    for (const m of ['cap_money_impact', 'team_cost', 'cost_per_employee']) {
+    for (const m of ['cap_money_impact', 'team_cost', 'cost_per_employee', 'dispute_financial_impact']) {
       expect(readOrgMetric(denied, m)).toBeNull();
     }
   });
@@ -144,5 +144,13 @@ describe('financial page — anchors the primary bundle (no relative+comparison)
     expect(src).toContain('currentPeriodId(');
     expect(src).toContain('anchoredMetricPeriod(periodId)');
     expect(src).not.toContain("comparison: { basis: 'previous_period' }");
+  });
+
+  it('wires dispute_financial_impact into the role-isolated money bundle + renders the İtiraz card', () => {
+    // Joins the SAME {hr,finance,auditor} isolated bundle as the other money-delta metrics (a reject →
+    // null → honest UnavailableCard, never a fake ₺0), and the card is rendered from readOrgMetric.
+    expect(src).toContain("'cap_money_impact', 'team_cost', 'cost_per_employee', 'dispute_financial_impact'");
+    expect(src).toContain("readOrgMetric(moneyMetrics, 'dispute_financial_impact')");
+    expect(src).toContain('İtiraz Finansal Etkisi');
   });
 });
