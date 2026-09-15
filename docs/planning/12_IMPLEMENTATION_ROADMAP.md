@@ -413,6 +413,45 @@ change; 54 files. Known limit: leaderboard employee view own-standing only (RLS)
 
 **Onboarding-C — Self-service profile DONE** (`60358f2`, 2026-08-12): **migration yok** (profiles UPDATE policy `id=auth.uid()` zaten mevcut). `settings/profile` sayfası + `update-profile` action RLS `createClient` üzerinden (`requireUser` — self-service, permission gate yok); security-boundary test `settings/` `requireUser` allowlist ile genişletildi (**option ii**); nav "Ayarlar" item. Vitest 99 → 100.
 
+### Program GMA — Governed Monetary Adjustments (Item 1; Decision Lock D13 / ADR-021)
+
+- Goal: insanın **doğrudan prim parası yaratmasına** izin vermeyen, yaptırımlı bir parasal-düzeltme
+  primitifi eklemek — para hâlâ yalnız deterministik engine + immutable snapshot üzerinden. İkinci bir para
+  otoritesi **yaratmadan** deferred "Adjustment Money Impact" yeteneğini dürüstçe kapatmak.
+- Non-negotiable: tek para yolu (Governed Inputs → Deterministic Engine → Immutable Snapshot → Approved
+  Posting → Append-only Ledger); D2/AD6/AD8/AD9/AD10/ADR-006/ADR-017 korunur; puan ≠ para (point-ledger
+  `manual_adjustment` yeniden tanımlanmaz).
+- Slice-per-branch, fresh `origin/main`'den; her slice coordinator verify + merge ile geçer (bundle yok).
+
+  - **Slice 1 — docs (`product/gma-docs`) [BU SLICE]:** D13 (`00`), `ADR-021`, ledger konumu (`06`), dispute
+    attribution ayrımı (`07`), state machine 10/11 + SI-17..SI-23 (`16`), bu roadmap + `IMPLEMENTATION`.
+    Migration/kod yok. Acceptance: Decision Lock ihlali yok; PRE-FLIGHT PASS; coordinator review.
+  - **Slice 2 — foundation (`product/gma-foundation`):** `bonus_monetary_adjustment_requests` + immutable
+    `bonus_monetary_adjustments` (+ gerekirse `funding_authorization`/pool-version) migration; RLS ENABLE+FORCE;
+    permission'lar `bonus.adjustment.request|approve_hr|approve_finance`; audit; idempotency; actor = `auth.uid()`;
+    pgTAP (cross-tenant + four-eyes negatifleri). Hesaplama mutasyonu yok.
+  - **Slice 3 — calculation integration (`product/gma-calc`):** `run_bonus_calculation` CREATE OR REPLACE
+    (approved adjustment = deterministik girdi; cap/eligibility/proration/funding/SI-13 korunur) +
+    `calculation_run_adjustments` (`unique(run,adjustment)`, SI-22) + input manifest + SHA-256 input hash (SI-23) +
+    snapshot money-decomposition (base/dispute/adjustment/cap/final); DB types (CI artifact); determinizm testleri.
+  - **Slice 4 — open-period posting (`product/gma-openposting`):** rerun → reversal → re-accrual entegrasyonu
+    (mevcut dispute-rerun yolu genelleştirilir); idempotency; Golden C/D/E E2E.
+  - **Slice 5 — closed-period correction (`product/gma-correction`):** additive `bonus_correction_settlements`
+    (pozitif → correction ödemesi; negatif → governed recovery-pending, **otomatik clawback yok — D2**); tarihsel
+    dönem yeniden açılmaz (SI-21); pgTAP + Golden F/G.
+  - **Slice 6 — attribution / intelligence (`product/gma-intel`):** SI-12-safe definer-rights
+    `v_finance_adjustment_impact` + `adjustment_financial_impact` metric (minor_currency, {hr,finance,auditor}) +
+    Financial kart (deferred "Düzeltme Para Etkisi" kaldırılır — gerçekleşen etki, requested değil); Golden H.
+  - **Slice 7 — hardening (`product/gma-hardening`):** adversarial review (fraud/accounting/replay/leakage/
+    concurrency), reconciliation entegrasyonu (ENGINEERING-05 verifier), docs sync, tüm gate'ler.
+
+- Acceptance: `45` DoD maddelerinin tamamı yeşil; SI-17..SI-23 kanıtlı; hiçbir ikinci para yolu yok.
+- Test: pgTAP negatifleri + deterministik replay + Golden C–H E2E + reconciliation. Risk: finansal doğruluk,
+  concurrency. Dep: Phase 6/7 (bonus engine + accrual + dispute rerun) tamam. Difficulty: **XL**.
+- **Not (opsiyonel, ayrı):** `apply_manual_point_adjustment` audit-actor provenance nüansı (caller-supplied
+  `p_actor`; authz spoof değil ama audit-actor provenance yüzeyi) bu programın parçası **değildir**; forward-only
+  bir micro-hardening olarak gelecekte ele alınabilir (point-adjustment iş anlamı değişmeden actor = `auth.uid()`).
+
 ## Edge cases
 
 - Phase atlanması: güvenlik temeli (Phase 3) atlanamaz.
