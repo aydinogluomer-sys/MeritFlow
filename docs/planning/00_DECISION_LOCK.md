@@ -120,6 +120,62 @@ Z-score, graph collusion, GNN ve gelişmiş anomaly sistemi V1/V2'ye ertelenir.
 - Global public leaderboard yok.
 - Advanced leaderboard türleri V1+.
 
+### D13 — Governed Monetary Adjustments (Yönetilen Parasal Düzeltmeler)
+
+> Kanonik kural: **Tüm yetkili prim parası — onaylı parasal düzeltmeler dâhil — yalnızca deterministik bir
+> hesaplama koşusundan ve immutable snapshot'tan doğar. İnsan kullanıcılar parasal düzeltme talep edip
+> onaylayabilir ama `bonus_ledger` / payout bakiyelerini asla doğrudan mutasyona uğratamaz. Ek parasal
+> düzeltmeler taban fonlamayı yalnızca açık Finance-onaylı fonlama yetkilendirmesiyle aşabilir. Ödenmiş
+> veya kapanmış tarihsel settlement durumu asla yeniden açılmaz; sonraki düzeltmeler immutable correction
+> settlement'larla ve gerektiğinde mevcut yönetilen clawback süreciyle temsil edilir.**
+
+Bağlayıcı hükümler:
+
+1. Yetkili prim parası yalnız deterministik `calculation run` + immutable snapshot'tan çıkar.
+2. İnsan kullanıcılar `bonus_ledger` bakiyelerini **doğrudan değiştiremez**.
+3. Parasal düzeltmeler **yönetilen hesaplama girdileridir** (calculation input), ledger mutation değildir.
+4. Parasal düzeltme talebi şunları ister: target organization, target employee, target bonus period,
+   signed economic intent (yön + `amount_minor`), reason code, human-readable justification, audit identity,
+   gereken yerde evidence/reference.
+5. Nihai onay **ayrı HR ve Finance yetkisi** ister (four-eyes).
+6. Talep sahibi kendi parasal düzeltmesini tek başına onaylayamaz.
+7. HR ve Finance onayları **tek bir onay olayına indirgenemez** (ayrı kimlik + ayrı zaman kaydı).
+8. Ek fonlama **açık Finance yetkilendirmesi** ister; AD8 ile sınırlıdır (≤ 1.2×; 1.2× ötesi **ayrı, gelecek
+   bir kilitli ürün kararı** olup bu kapsamda değildir).
+9. Mevcut cap / eligibility / proration kontrolleri, **ayrı bir kilitli ürün kararı açıkça override
+   yaratmadıkça**, atlanmaz.
+10. Onaylanmış parasal düzeltme **immutable financial-basis artifact**'tır.
+11. Düzeltme = compensating/reversal artifact; **yıkıcı mutasyon (UPDATE/DELETE) yoktur**.
+12. Ödenmiş/kapanmış finansal tarih **asla yeniden açılmaz veya sessizce yeniden yazılmaz**.
+13. Finansal kapanış sonrası **pozitif** düzeltme bir **correction settlement** kullanır.
+14. Ödeme sonrası **negatif** düzeltme **asla otomatik clawback yapmaz**; **D2 bağlayıcı kalır**
+    (governed recovery-pending → HR/Finance/Legal approval + dispute hakkı).
+15. Point-ledger `manual_adjustment` **puan-domain primitifidir** ve yeniden tanımlanmaz (puan ≠ para).
+16. Düzeltme attribution'ı **açıklayıcı/provenance** verisidir; bağımsız bir para otoritesi **değildir**.
+
+Fonlama (coordinator-confirmed):
+
+- **REALLOCATION:** yalnız hâlihazırda yetkilendirilmiş fonlama içinde (undistributed / headroom) çalışır;
+  ek fonlama gerektirmez.
+- **SUPPLEMENTAL:** yalnız Finance-onaylı **pool re-version** ile (mevcut pool mekanizması yeniden
+  kullanılır), AD8 ile sınırlı (≤ 1.2×). Pool-versioning temiz temsil edemezse ayrı bir
+  `funding_authorization` kaydı eklenir; başka türlü ek para **açık Finance yetkilendirmesi olmadan asla**
+  ortaya çıkmaz.
+
+Actor integrity: yeni parasal RPC'ler her four-eyes adımında actor = `auth.uid()` bağlar (caller-supplied
+actor spoofing yoktur). Mevcut `apply_manual_point_adjustment` audit-actor provenance nüansı **ayrı** bir
+bulgudur; bu programın temeline bir point-RPC değişikliği **paketlenmez** (`12` roadmap'te opsiyonel gelecek
+micro-hardening olarak işlenir).
+
+Invariant tutarlılığı (SI-13 / BL-2): yetkili etkin fonlama (`pool_ref`), **onaylı düzeltmeler dâhil**,
+Σfinal'i karşılamak zorundadır. REALLOCATION headroom'u tüketir; SUPPLEMENTAL fonlama yetkilendirmesi ister.
+SI-13 (Σfinal + undistributed = `pool_ref`) ve BL-2 (Σaccrual ≤ `pool_ref`) bu **additive** düzeltme terimiyle
+**korunur** (düzeltme `pool_ref`'i aşamaz; aşarsa SUPPLEMENTAL fonlama şarttır). Hesap matematiği bir Slice 3
+çıktısıdır; bu karar yalnız invariant'ların tutarlı kalmasını sabitler.
+
+Korunan kararlar (bu karar hiçbirini geçersiz kılmaz): **D2, AD6, AD8, AD9, AD10, ADR-006, ADR-017**.
+Uygulama: `ADR-021`; spec'ler `06`/`07`/`16`; program `12` (GMA Slice 1–7).
+
 ## Additional Decision Lock — Phase-Gate OQ Resolution
 
 > Phase-gate open question'ları aşağıdaki kararlarla kapatılmıştır. Bunlar da bağlayıcıdır (AD1–AD10).
@@ -196,7 +252,7 @@ Z-score, graph collusion, GNN ve gelişmiş anomaly sistemi V1/V2'ye ertelenir.
 
 ## Acceptance criteria
 
-- 12 (D1–D12) + 10 (AD1–AD10) kararın tamamı ilgili spec dokümanlarında uygulanmış olmalı.
+- 13 (D1–D13) + 10 (AD1–AD10) kararın tamamı ilgili spec dokümanlarında uygulanmış olmalı.
 - Hiçbir spec dokümanı kilitli bir kararla çelişmemeli.
 - Çelişki bulunursa spec değil, bu dosya referans alınır.
 
@@ -204,7 +260,9 @@ Z-score, graph collusion, GNN ve gelişmiş anomaly sistemi V1/V2'ye ertelenir.
 
 - Test stratejisi (`10_TEST_STRATEGY.md`) her kilitli kararı (D + AD) en az bir test senaryosuna bağlamalı
   (örn. D3 → "quality=poor approve edilemez"; AD4 → "geç onay çalışanı cezalandırmaz";
-  AD6 → "cap basis yoksa export bloklanır"; AD8 → "T_org=1.2 top-up'sız pool'u aşamaz").
+  AD6 → "cap basis yoksa export bloklanır"; AD8 → "T_org=1.2 top-up'sız pool'u aşamaz";
+  D13 → "insan doğrudan bonus_ledger'a para yazamaz; onaylı parasal düzeltme yalnız engine+snapshot
+  üzerinden; kapanmış dönem yeniden açılmaz; negatif düzeltme otomatik clawback yapmaz").
 
 ## Open questions
 

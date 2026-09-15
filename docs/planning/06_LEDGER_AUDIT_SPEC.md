@@ -109,6 +109,28 @@ Invariants:
 - BL-3: payout yalnız accrual'ı olan çalışana; payout ≤ accrual.
 - BL-4: her money mutation bir audit_log üretir.
 
+### 2.1 Governed monetary adjustment — hesaplama girdisi, ledger olayı DEĞİL (D13)
+
+Onaylı **parasal düzeltme** (governed monetary adjustment) bir `bonus_ledger` olayı **değildir**; deterministik
+motora bir **girdidir** (calculation input). Bu yüzden bu düzeltme için **yeni bir `bonus_ledger` event_type
+eklenmez**: para yine yalnız motorun immutable snapshot'ından `bonus_accrual` (ve gerektiğinde `reversal`) ile
+akar. Talep + HR/Finance onayı ayrı bir yönetişim artifact'ıdır (bkz. `16` §10/§11, `ADR-021`); yalnız onaylı
+düzeltme bir sonraki calculation run'a girer ve etkisi snapshot decomposition'da (base / dispute / adjustment /
+cap / final) + financial attribution'da açıklanır.
+
+- Puan-domain `manual_adjustment` (point_ledger) **puandır**, para değildir ve yeniden tanımlanmaz (D13 §15).
+- Kapanmış/ödenmiş dönem yeniden açılmaz; kapanış sonrası düzeltme **correction settlement** (additive) ile
+  temsil edilir — pozitif → correction ödemesi; negatif → governed recovery-pending (**otomatik clawback yok —
+  D2**).
+
+Ek invariant'lar:
+
+- BL-5: İnsan hiçbir yolla `bonus_ledger` bakiyesini doğrudan yaratmaz/değiştirmez; her para satırı yaptırımlı
+  bir engine RPC'sinden (accrual/reversal/payout) çıkar (D13 §1/§2).
+- BL-6: Yetkili etkin fonlama (`pool_ref`), **onaylı parasal düzeltmeler dâhil** Σfinal'i karşılar; REALLOCATION
+  headroom (undistributed) içinde kalır, SUPPLEMENTAL yalnız Finance-onaylı fonlama yetkilendirmesiyle
+  (`pool` re-version, AD8 ≤ 1.2×) `pool_ref`'i büyütür. BL-2 (Σaccrual ≤ `pool_ref`) bu terimle korunur.
+
 ### 3. Audit Log (append-only)
 
 Alanlar (kavramsal):

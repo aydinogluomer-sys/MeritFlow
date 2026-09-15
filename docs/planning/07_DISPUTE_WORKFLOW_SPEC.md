@@ -65,6 +65,32 @@ open
 - **rejected:** değişiklik yok; gerekçeli decision note + audit.
 - Her iki sonuçta employee'ye açıklanabilir bildirim.
 
+### Attribution ayrımı — dispute vs monetary adjustment (D13)
+
+Dispute kaynaklı finansal etki ile **governed monetary adjustment** (D13 / `ADR-021`) kaynaklı finansal etki
+**ayrı provenance kaynaklarıdır**; "manual change" adı altında birleştirilmez. İki neden zinciri paraleldir:
+
+```txt
+Dispute → underlying basis correction → recalculation → dispute-attributed effect
+Monetary Adjustment Request → HR+Finance approval → approved monetary basis → recalculation → adjustment-attributed effect
+```
+
+- Dispute attribution mevcut Phase 7-D yolundan gelir (dönem düzeyi `v_finance_dispute_recalc_money`, 0051);
+  monetary-adjustment attribution ayrı bir `source_type` ile temsil edilir (`16` invariant'ları + Slice 6).
+- Financial explainability her kaynağı ayrı satırda gösterebilmelidir; örn.:
+
+  ```txt
+  Base entitlement            ₺20.000
+  Dispute D-192              +  ₺1.200
+  Monetary Adjustment A-83   + ₺2.500
+  -----------------------------------
+  Final entitlement           ₺23.700
+  ```
+
+- Bir dispute'un para etkisi **her zaman** mevcut dispute→recalculation→snapshot yolundan geçer; bir monetary
+  adjustment onayı **asla** doğrudan `bonus_ledger`'a yazmaz — ikisi de yalnız engine + snapshot üzerinden para
+  üretir (tek para otoritesi korunur).
+
 ### Reopen
 
 - `Assumption:` MVP'de resolved bir dispute aynı gerekçeyle yeniden açılamaz; yeni kanıtla HR onayıyla

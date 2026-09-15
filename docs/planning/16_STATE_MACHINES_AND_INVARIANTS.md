@@ -160,6 +160,59 @@ ledger etkisi, notification etkisi, edge case ve test boyutlarıyla tanımlamak.
 - **edge cases:** süre dolmuş ama oturum açık → bir sonraki erişim kontrolünde reddedilir (grant DB'den okunur); scope dışı erişim reddi.
 - **tests:** grant'sız erişim reddi; grant ile erişim audit üretir; süresi dolan grant erişim vermez.
 
+## 10. Monetary adjustment request machine (D13 / ADR-021)
+
+> Governed monetary adjustment = yönetilen **hesaplama girdisi**, ledger mutation değil. Bu makine yalnız
+> talep/onay yönetişimidir; nihai onay immutable bir financial-basis artifact üretir (para hâlâ yalnız
+> deterministik engine ve immutable snapshot üzerinden akar).
+
+- **states:** `draft, submitted, pending_hr, pending_finance, approved, rejected, cancelled`.
+- **allowed transitions:**
+  - `draft → submitted` (requester; org/employee/period aynı tenant; signed economic intent + reason + justification)
+  - `submitted → pending_hr → pending_finance → approved` (ayrı HR sonra Finance onayı — four-eyes)
+  - `submitted|pending_hr|pending_finance → rejected` (gerekçe + audit)
+  - `draft → cancelled`
+- **forbidden transitions:** requester = onaylayan (**self-approval yasak**); HR approver = Finance approver
+  (**tek onaya indirgenemez**); onay olayında actor ≠ `auth.uid()` (spoofing); `approved → *` iş-anlamı mutasyonu
+  (immutable); skip (örn. `submitted → approved`); cross-tenant employee/period; SUPPLEMENTAL onayı fonlama
+  yetkilendirmesi yokken; sıfır/negatif `amount_minor` (yön ayrı alanda).
+- **required actor:** create/submit = `bonus.adjustment.request`; HR onayı = `bonus.adjustment.approve_hr`;
+  Finance onayı = `bonus.adjustment.approve_finance` (hepsi DB-sourced RBAC; actor = `auth.uid()`).
+- **audit:** created/submitted/hr_approved/finance_approved/rejected/effective/reversed → **evet**.
+- **ledger impact:** **doğrudan yok** — onaylı düzeltme yalnız bir sonraki calculation run'a **girdi** olur;
+  para yine `bonus_accrual`/`reversal` ile engine snapshot'ından çıkar (SI-17).
+- **notification:** submit → HR; hr_approved → Finance; approved/rejected → requester.
+- **edge cases:** onaylı düzeltme meşru bir sonraki rerun'da (dispute vb.) hâlâ etkilidir ve **kaybolmaz**,
+  reversed/superseded olmadıkça; bir run bir düzeltmeyi **en çok bir kez** içerir (SI-22); yanlış onaylanmış
+  düzeltme yıkıcı biçimde silinmez → compensating/replacement artifact (SI-20).
+- **tests:** self-approval reddi; HR=Finance reddi; actor-spoof reddi; approved-artifact UPDATE/DELETE reddi;
+  fonlamasız SUPPLEMENTAL reddi; cross-tenant reddi; onaylı düzeltme sonraki rerun'da korunur + çift sayılmaz.
+
+## 11. Correction settlement machine (kapanmış dönem — D13)
+
+> Ödenmiş/kapanmış dönem **yeniden açılmaz** (SI-21). Kapanış sonrası düzeltme **additive** bir correction
+> settlement ile temsil edilir; orijinal regular settlement değişmez.
+
+- **states:** `draft, calculated, approved, settled` (+ negatif fark için `recovery_pending`).
+- **allowed transitions:**
+  - `draft → calculated` (deterministik correction run → immutable correction snapshot)
+  - `calculated → approved` (HR/Finance; fonlama gerekiyorsa Finance authorization)
+  - pozitif fark: `approved → settled` (governed supplemental correction ödemesi — balanced ledger)
+  - negatif fark: `approved → recovery_pending` (**otomatik kesinti YOK** — D2; HR/Finance/Legal + dispute hakkı)
+- **forbidden transitions:** kapanmış dönemi `closed → calculated` geri açma (**yasak**); orijinal payout/allocation
+  mutasyonu; negatif farkta otomatik clawback/payroll kesintisi; snapshot'sız settlement; duplicate correction
+  settlement (idempotent).
+- **required actor:** approve = HR + Finance; recovery = mevcut governed clawback süreci (D2).
+- **audit:** correction_settlement created/approved + (varsa) recovery_pending/clawback → **evet**.
+- **ledger impact:** pozitif → yeni balanced accrual/payout (correction snapshot referanslı); negatif → yalnız
+  onaylı governed reversal (append-only), asla otomatik.
+- **notification:** approved/settled → employee (correction breakdown); recovery_pending → HR/Finance.
+- **edge cases:** çoklu correction (birden çok düzeltme) → her biri ayrı immutable correction snapshot; correction
+  sonrası dispute → kendi yolundan (yeni correction run), tarihsel gerçek korunur.
+- **tests:** kapalı dönem yeniden açma reddi; pozitif correction settlement + balanced ledger; negatif →
+  recovery_pending (otomatik kesinti yok); duplicate correction reddi; correction reconciliation'da açıklanamayan
+  kuruş bırakmaz.
+
 ---
 
 ## Sistem invariant'ları (bağlayıcı)
@@ -182,6 +235,13 @@ ledger etkisi, notification etkisi, edge case ve test boyutlarıyla tanımlamak.
 | SI-14 | Calculation snapshot tüm faktörleri kaydeder ve immutable'dır | AD7, INV-6 | snapshot UPDATE/DELETE yasak |
 | SI-15 | `pending_missing_cap_basis` çözülmeden export yok; unlimited cap yok | AD6 | allocation/export guard |
 | SI-16 | Authorization server-side + RLS; client/JWT claim source of truth değil | AD1 | DB-driven helper + server check |
+| SI-17 | Yetkili prim parası yalnız deterministik run + immutable snapshot'tan; insan `bonus_ledger`'a doğrudan yazamaz | D13, BL-5 | server-only engine RPC + RLS force + append-only |
+| SI-18 | Yetkili etkin fonlama (`pool_ref`) onaylı düzeltmeler dâhil Σfinal'i karşılar; SUPPLEMENTAL yalnız Finance authorization ile | D13, AD8, BL-2/BL-6 | engine funding gate + pool re-version |
+| SI-19 | Parasal düzeltme onayı four-eyes: ayrı HR ≠ Finance kimliği; self-approval yasak; actor = `auth.uid()` | D13 | request state machine + RPC actor binding |
+| SI-20 | Onaylı parasal düzeltme immutable; düzeltme = compensating/reversal artifact (yıkıcı mutasyon yok) | D13 | artifact UPDATE/DELETE yasak + reverses/supersedes link |
+| SI-21 | Ödenmiş/kapanmış dönem yeniden açılmaz; sonraki düzeltme = additive correction settlement | D13 | `closed → *` yasak + correction snapshot |
+| SI-22 | Bir calculation run bir onaylı düzeltmeyi en çok bir kez içerir | D13 | `unique(calculation_run_id, adjustment_id)` |
+| SI-23 | Deterministik replay: input manifest + input hash aynı etkin girdi seti → aynı sonuç | D13, AD7 | run input manifest + SHA-256 hash (immutable) |
 
 ## Edge cases (çapraz)
 
@@ -192,14 +252,16 @@ ledger etkisi, notification etkisi, edge case ve test boyutlarıyla tanımlamak.
 
 ## Acceptance criteria
 
-- 9 state machine için allowed/forbidden geçiş + aktör + audit + ledger + notification tanımlı.
-- SI-1..SI-16 invariant'ları bir state machine veya RLS/guard'a bağlı.
+- 11 state machine (9 MVP + 10 monetary-adjustment-request + 11 correction-settlement, D13) için
+  allowed/forbidden geçiş + aktör + audit + ledger + notification tanımlı.
+- SI-1..SI-23 invariant'ları bir state machine veya RLS/guard'a bağlı (SI-17..SI-23 = D13 GMA).
 - Her forbidden geçiş için en az bir negatif test öngörülmüş.
 
 ## Test implications
 
 - Her state machine: pozitif geçiş + en az bir forbidden geçiş reddi testi.
-- SI-1..SI-16 her biri ≥1 business-logic/RLS testine bağlanır (`10_TEST_STRATEGY`).
+- SI-1..SI-23 her biri ≥1 business-logic/RLS testine bağlanır (`10_TEST_STRATEGY`); SI-17..SI-23 (D13 GMA)
+  ayrıca pgTAP negatifleri + deterministik-replay + reconciliation testleriyle kanıtlanır.
 - Bloklayıcı: self-approval (SI-1/review), cross-tenant (SI-7), append-only (SI-2), export-without-snapshot (SI-3),
   comp visibility (SI-5), cap basis export bloğu (SI-15).
 
