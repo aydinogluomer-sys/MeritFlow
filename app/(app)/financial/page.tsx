@@ -142,12 +142,12 @@ export default async function FinancialIntelligencePage() {
         period: { kind: 'relative', trailing: 'current' },
       }),
     ),
-    // Money-delta metrics (8-B3 views) are role-gated {hr,finance,auditor} — query them in an ISOLATED
-    // bundle so a non-authorized role's reject (metric_not_available_for_role) → null → honest
-    // UnavailableCard, never a fabricated ₺0 (SI-12/§23). All three share the same gate (all-or-nothing).
+    // Money-delta metrics (0050/0051 views) are role-gated {hr,finance,auditor} — query them in an
+    // ISOLATED bundle so a non-authorized role's reject (metric_not_available_for_role) → null → honest
+    // UnavailableCard, never a fabricated ₺0 (SI-12/§23). All four share the same gate (all-or-nothing).
     safe(
       executeSemanticQuery(supabase, ctx, {
-        metrics: ['cap_money_impact', 'team_cost', 'cost_per_employee'],
+        metrics: ['cap_money_impact', 'team_cost', 'cost_per_employee', 'dispute_financial_impact'],
         dimensions: [],
         filters: [],
         period: { kind: 'relative', trailing: 'current' },
@@ -165,6 +165,7 @@ export default async function FinancialIntelligencePage() {
   const capMoneyImpact = moneyMetrics ? readOrgMetric(moneyMetrics, 'cap_money_impact') : null;
   const teamCost = moneyMetrics ? readOrgMetric(moneyMetrics, 'team_cost') : null;
   const costPerEmployee = moneyMetrics ? readOrgMetric(moneyMetrics, 'cost_per_employee') : null;
+  const disputeFinancialImpact = moneyMetrics ? readOrgMetric(moneyMetrics, 'dispute_financial_impact') : null;
   const rollup: FinancialRollup | null = deriveRollup(totals);
   const waterfall = financialWaterfall(rollup);
   const payoutDrillLevels = availableDrillLevels('payout_total');
@@ -243,7 +244,7 @@ export default async function FinancialIntelligencePage() {
         )}
       </section>
 
-      {/* Money-delta cards (§10.4 iii) — LIVE via the 0050 finance views (8-B3). Role-gated
+      {/* Money-delta cards (§10.4 iii) — LIVE via the 0050 (8-B3) + 0051 (dispute) finance views. Role-gated
           {hr,finance,auditor}; a non-authorized role → honest UnavailableCard, never a fake 0 (SI-12/§23). */}
       <section aria-label="Para etkisi" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {capMoneyImpact ? (
@@ -272,6 +273,15 @@ export default async function FinancialIntelligencePage() {
           />
         ) : (
           <UnavailableCard label="Çalışan Başına Maliyet" note={UNAVAILABLE} />
+        )}
+        {disputeFinancialImpact ? (
+          <MoneyCard
+            label="İtiraz Finansal Etkisi"
+            minor={disputeFinancialImpact.value}
+            definition="İtiraz yeniden hesaplamalarının döneme NET para etkisi (yeniden tahakkuk − geri alınan tahakkuk). DÖNEM düzeyinde (itiraz başına değil); NET (brüt geri alma değil)."
+          />
+        ) : (
+          <UnavailableCard label="İtiraz Finansal Etkisi" note={UNAVAILABLE} />
         )}
       </section>
 
@@ -334,14 +344,16 @@ export default async function FinancialIntelligencePage() {
         </Card>
       ) : null}
 
-      {/* Still-deferred money-delta cards (§10.4 iii) — honest, NOT fabricated (§23) */}
+      {/* Still-deferred money-delta card (§10.4 iii) — honest, NOT fabricated (§23) */}
       <Card>
         <CardHeader>
-          <CardTitle>Ertelenen para etkisi kartları (henüz mevcut değil)</CardTitle>
+          <CardTitle>Ertelenen para etkisi kartı (henüz mevcut değil)</CardTitle>
           <CardDescription>
-            Cap Para Etkisi / Takım Maliyeti / Çalışan Başına Maliyet 8-B3 ile canlıya alındı (yukarıda).
-            Kalan bu iki kart için SI-12-güvenli bir para kaynağı yoktur (bonus_ledger itiraz kimliği
-            taşımaz; point_ledger düzeltmeleri paradan çok puandır) — ertelenmiştir. Uydurma sayı yok (§23).
+            Cap Para Etkisi / Takım Maliyeti / Çalışan Başına Maliyet 8-B3 ile, İtiraz Finansal Etkisi ise
+            0051 ile canlıya alındı (yukarıda). Kalan tek kart — Düzeltme Para Etkisi — için SI-12-güvenli bir
+            para kaynağı yoktur: point_ledger düzeltmeleri paradan çok PUAN’dır ve tek bir düzeltmenin para
+            etkisi ancak tam bir yeniden hesaplamayla ortaya çıkar (izole edilemez) — ertelenmiştir. Uydurma
+            sayı yok (§23).
           </CardDescription>
         </CardHeader>
         <CardContent>

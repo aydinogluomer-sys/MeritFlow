@@ -89,10 +89,12 @@ export function binPayouts(amountsMinor: number[], bins = 5): DistributionBin[] 
 }
 
 /**
- * The §10.4 money-delta cards that STAY deferred after 8-B4 — rendered as an honest "not yet available"
- * state, NEVER a fabricated number (§23). 8-B3 landed the views for Cap Para Etkisi / Takım Maliyeti /
- * Çalışan Başına Maliyet (now live via the metric layer). These two remain because there is NO SI-12-safe
- * money source: bonus_ledger has no dispute_id, and point_ledger adjustments are POINTS, not money.
+ * The §10.4 money-delta card that STAYS deferred — rendered as an honest "not yet available" state, NEVER
+ * a fabricated number (§23). The finance money-delta views are now live: Cap Para Etkisi / Takım Maliyeti /
+ * Çalışan Başına Maliyet (0050, 8-B3) + İtiraz Finansal Etkisi (0051, period-level NET dispute-recalc money).
+ * Only "Düzeltme Para Etkisi" remains deferred: manual/policy adjustments are POINTS in point_ledger, not
+ * money, and there is no SI-12-safe money source for them (a single adjustment's money impact is not
+ * isolatable — it only materializes through a full pro-rata re-run).
  */
 export interface DeferredCard {
   label: string;
@@ -100,5 +102,4 @@ export interface DeferredCard {
 }
 export const DEFERRED_MONEY_CARDS: DeferredCard[] = [
   { label: 'Düzeltme Para Etkisi', reason: 'Σ manuel/politika düzeltme (₺) — point_ledger düzeltmeleri PARA değil PUAN; SI-12-güvenli para kaynağı yok.' },
-  { label: 'İtiraz Finansal Etkisi', reason: 'Duruma göre Σ itiraz tutarı — bonus_ledger dispute_id taşımıyor; SI-12-güvenli para kaynağı yok.' },
 ];
