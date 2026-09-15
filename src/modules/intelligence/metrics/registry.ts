@@ -79,6 +79,10 @@ const DEFINITIONS: readonly MetricDefinition[] = [
     allowedDimensions: ['organization', 'team', 'bonus_period'] },
   { id: 'cost_per_employee', unit: 'minor_currency', requiredPermission: METRIC_READ_PERMISSION,
     allowedDimensions: ['organization', 'bonus_period'] },
+  // P4 — dispute financial impact: period-level NET dispute-recalc money via the 0051 SI-12-safe view.
+  // Role-gated {hr,finance,auditor} at the executor (like the other money-delta metrics).
+  { id: 'dispute_financial_impact', unit: 'minor_currency', requiredPermission: METRIC_READ_PERMISSION,
+    allowedDimensions: ['organization', 'bonus_period'] },
 ];
 
 /** The default P0 metric registry (all 11 approved metrics, contract-only). */

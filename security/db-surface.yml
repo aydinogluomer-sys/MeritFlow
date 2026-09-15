@@ -398,6 +398,12 @@ views:
       authenticated: [select]
       service_role: [select]
     notes: "8-B3 DEFINER-RIGHTS view (bypasses memberships RLS which excludes Finance) self-gated org+hr/finance/auditor. Aggregate money + headcount COUNT scalar ONLY: per period net accrual / active headcount. NO membership row/points/comp (SI-12)."
+  v_finance_dispute_recalc_money:
+    financial_class: financial
+    grants:
+      authenticated: [select]
+      service_role: [select]
+    notes: "0051 DEFINER-RIGHTS view (bypasses bonus_ledger/snapshot RLS which excludes Finance) self-gated org+hr/finance/auditor. Aggregate money ONLY: per period NET dispute-recalc money = Σ(re-run bonus_accrual credit, run.idempotency_key like 'disp-recalc-snap-%') − Σ(dispute_recalc-tagged reversal debit) = S_final−S_original (NOT the gross reversal). PERIOD-LEVEL not per-dispute (no dispute_id on money rows). NO per-employee row/points/comp/dispute detail (SI-12)."
 
 security_definer_functions:
   # rls_helper — read-only helpers consumed by RLS policies (fixed search_path; no recursion).

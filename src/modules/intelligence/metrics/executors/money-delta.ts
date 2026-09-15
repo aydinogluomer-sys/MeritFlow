@@ -135,3 +135,48 @@ export const costPerEmployeeExecutor: MetricExecutor = async (client, plan) => {
   const total = rows.reduce((a, r) => a + num(r.cost_per_employee_minor), 0);
   return [makeResult(plan, 'minor_currency', Math.round(total), {})];
 };
+
+// ---------------------------------------------------------------------------
+// dispute_financial_impact ← v_finance_dispute_recalc_money (0051): per period the NET money change caused
+// by dispute recalculations = Σ(re-run accrual) − Σ(dispute_recalc reversal) — NOT the gross reversal. The
+// view already nets; the executor sums/passes-through per period (empty → [] honest unavailable, SI-12).
+// TYPE-DRIFT: this view is added by THIS slice's migration and lands in database.generated.ts via the CI
+// `database-generated-types` artifact (db:types is NOT run locally). Until then the typed client does not
+// know the view, so this ONE read is typed through a local row shape (cast through unknown — the same
+// bridge 8-B3 used before the 0050 views were regenerated). The card-wiring slice drops the cast once the
+// artifact lands (the query is otherwise identical to the other money-delta executors above).
+// ---------------------------------------------------------------------------
+interface DisputeRecalcMoneyRow {
+  bonus_period_id: string | null;
+  dispute_recalc_net_minor: number | null;
+}
+export const DISPUTE_FINANCIAL_IMPACT_SERVABLE: DimensionId[] = ['organization', 'bonus_period'];
+export const disputeFinancialImpactExecutor: MetricExecutor = async (client, plan) => {
+  const periodIds = narrowedPeriodIds(plan);
+  if (periodIds.length === 0) return [];
+
+  const view = client as unknown as {
+    from(v: string): {
+      select(cols: string): {
+        in(col: string, vals: string[]): PromiseLike<{ data: DisputeRecalcMoneyRow[] | null; error: unknown }>;
+      };
+    };
+  };
+  const { data, error } = await view
+    .from('v_finance_dispute_recalc_money')
+    .select('bonus_period_id, dispute_recalc_net_minor')
+    .in('bonus_period_id', periodIds);
+  if (error) throw error;
+  const rows = data ?? [];
+  if (rows.length === 0) return []; // role/RLS-denied → honest unavailable (never a fabricated ₺0)
+
+  if (singleGroupDim(plan) === 'bonus_period') {
+    return rows
+      .filter((r) => r.bonus_period_id)
+      .map((r) =>
+        makeResult(plan, 'minor_currency', Math.round(num(r.dispute_recalc_net_minor)), { bonus_period: r.bonus_period_id! }),
+      );
+  }
+  const total = rows.reduce((a, r) => a + num(r.dispute_recalc_net_minor), 0);
+  return [makeResult(plan, 'minor_currency', Math.round(total), {})];
+};

@@ -10,7 +10,7 @@ import {
 } from '@/modules/intelligence';
 
 describe('metric registry', () => {
-  it('registers exactly the approved metrics (count tracked by METRIC_IDS — 14 as of 8-B3)', () => {
+  it('registers exactly the approved metrics (count tracked by METRIC_IDS — 15 incl. dispute_financial_impact)', () => {
     expect(metricRegistry.all()).toHaveLength(METRIC_IDS.length);
     for (const id of METRIC_IDS) expect(metricRegistry.has(id)).toBe(true);
   });
