@@ -548,22 +548,29 @@ describe('8-B3 executors — finance money-delta views (role-gated, SI-12 honest
   });
 });
 
-describe('comparison anchoring (regression — the shipped executive/financial dashboard defect)', () => {
-  // A RELATIVE selector + comparison is rejected by resolveComparisonPeriod (comparison_not_executable)
-  // and the service turns that into a WHOLE-query ok:false — so a primary bundle built that way makes
-  // every card render UnavailableCard. The dashboards must anchor to a bonus_period (anchoredMetricPeriod).
-  // The mocked-OUTCOME view-model tests could not catch this; this exercises the real service path.
-  it('a RELATIVE selector + comparison → ok:false comparison_not_executable (the OLD construction)', async () => {
-    const out = await run(
-      { metrics: ['payout_total'], dimensions: [], filters: [], period: { kind: 'relative', trailing: 'current' }, comparison: { basis: 'previous_period' } },
-      READ,
-      { v_finance_payout: [{ bonus_period_id: P1, employee_id: EMP1, final_amount_minor: 1000 }] },
+describe('graceful comparison degradation (ITEM 1 — comparison_not_executable is non-fatal)', () => {
+  // Previously a RELATIVE/range selector + comparison was rejected by resolveComparisonPeriod
+  // (comparison_not_executable) and the service turned that into a WHOLE-query ok:false — so a primary
+  // bundle built that way made every card render UnavailableCard. It now DEGRADES: the metrics resolve
+  // WITHOUT a delta and an explicit non-silent signal (comparisonUnavailable + a warning) is set (§23).
+  // The #57 anchoredMetricPeriod anchoring STAYS (it produces real deltas); this is a safety net.
+  // The mocked-OUTCOME view-model tests could not catch the ambiguity; this exercises the real service.
+  it('a RELATIVE selector + comparison → NOW ok:true, metrics resolve, delta dropped, signal set (the FLIP)', async () => {
+    const out = ok(
+      await run(
+        { metrics: ['payout_total'], dimensions: [], filters: [], period: { kind: 'relative', trailing: 'current' }, comparison: { basis: 'previous_period' } },
+        READ,
+        // relative 'current' resolves to the newest period (P2) — provide its payout so the metric resolves.
+        { v_finance_payout: [{ bonus_period_id: P2, employee_id: EMP1, final_amount_minor: 1500 }] },
+      ),
     );
-    expect(out.ok).toBe(false);
-    if (!out.ok) expect(out.executionErrors?.some((e) => e.code === 'comparison_not_executable')).toBe(true);
+    expect(out.metrics[0]!.results[0]!.value).toBe(1500); // primary metric STILL resolves
+    expect(out.metrics[0]!.comparison).toBeUndefined(); // delta dropped (not fabricated)
+    expect(out.comparisonUnavailable).toBe(true); // explicit non-silent signal
+    expect(out.warnings?.some((w) => w.code === 'comparison_not_executable')).toBe(true); // carries the reason
   });
 
-  it('an ANCHORED bonus_period selector + comparison → ok:true with a previous-period delta (the FIX)', async () => {
+  it('an ANCHORED bonus_period selector + comparison → ok:true WITH a delta, no degradation signal', async () => {
     const out = ok(
       await run(
         { metrics: ['payout_total'], dimensions: [], filters: [], period: { kind: 'bonus_period', bonusPeriodId: P2 }, comparison: { basis: 'previous_period' } },
@@ -578,5 +585,37 @@ describe('comparison anchoring (regression — the shipped executive/financial d
     );
     expect(out.metrics[0]!.results[0]!.value).toBe(2000);
     expect(out.metrics[0]!.comparison?.deltas[0]!.delta).toBe(1000);
+    expect(out.comparisonUnavailable).toBeFalsy(); // a real delta was produced — nothing degraded
+    expect(out.warnings).toBeUndefined();
+  });
+
+  it('anchored to the EARLIEST period + comparison → ok:true, no delta, NOT flagged (benign no-prior-period)', async () => {
+    // P1 is the earliest period → resolveComparisonPeriod returns null (nothing to compare to). This is a
+    // data fact, not an ambiguous-window degradation, so it degrades to no-delta WITHOUT a signal.
+    const out = ok(
+      await run(
+        { metrics: ['payout_total'], dimensions: [], filters: [], period: { kind: 'bonus_period', bonusPeriodId: P1 }, comparison: { basis: 'previous_period' } },
+        READ,
+        { v_finance_payout: [{ bonus_period_id: P1, employee_id: EMP1, final_amount_minor: 800 }] },
+      ),
+    );
+    expect(out.metrics[0]!.results[0]!.value).toBe(800);
+    expect(out.metrics[0]!.comparison).toBeUndefined(); // no prior period → no delta
+    expect(out.comparisonUnavailable).toBeFalsy(); // benign, not a capability-limited drop
+    expect(out.warnings).toBeUndefined();
+  });
+
+  it('a GENUINE period error (nonexistent anchor) + comparison → still ok:false — real errors are NOT swallowed', async () => {
+    // Only the ambiguous-window case degrades; a real failure (the anchor bonus_period does not exist)
+    // must still fail the whole query. (The primary period resolver rejects first — the degrade branch is
+    // reached ONLY for a resolvable primary, so a real period error can never be swallowed as a warning.)
+    const MISSING = 'a0000000-0000-4000-8000-0000000000ff';
+    const out = await run(
+      { metrics: ['payout_total'], dimensions: [], filters: [], period: { kind: 'bonus_period', bonusPeriodId: MISSING }, comparison: { basis: 'previous_period' } },
+      READ,
+      { v_finance_payout: [{ bonus_period_id: P1, employee_id: EMP1, final_amount_minor: 1000 }] },
+    );
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.executionErrors?.some((e) => e.code === 'period_not_found')).toBe(true);
   });
 });

@@ -44,7 +44,21 @@ export interface MetricQueryResult {
 }
 
 export type SemanticQueryOutcome =
-  | { ok: true; metrics: MetricQueryResult[] }
+  | {
+      ok: true;
+      metrics: MetricQueryResult[];
+      /**
+       * Set true ONLY when a requested comparison could not be executed for an ambiguous window
+       * (`comparison_not_executable` — a range/relative selector) and was DROPPED instead of failing
+       * the whole query. The metrics still resolve; there is simply no delta. Absent = either no
+       * comparison was requested, or it was executed (delta present), or the anchor was the earliest
+       * period (a benign "no prior period" — not flagged). A caller can surface this explicitly (§23:
+       * never silently drop a delta) — additive, so existing ok:true consumers are unaffected.
+       */
+      comparisonUnavailable?: boolean;
+      /** Non-fatal signals carrying the machine code + reason for a degraded result (e.g. the dropped comparison). */
+      warnings?: ExecutionError[];
+    }
   | { ok: false; validationErrors?: ValidationError[]; executionErrors?: ExecutionError[] };
 
 export interface ExecuteOptions {
@@ -176,10 +190,25 @@ export async function executeSemanticQuery(
   if ('code' in period) return { ok: false, executionErrors: [period] };
 
   let comparisonPeriod: ResolvedPeriod | null = null;
+  const warnings: ExecutionError[] = [];
   if (query.comparison) {
     const cmp = await resolveComparisonPeriod(client, ctx.organizationId, query.period, query.comparison);
-    if (cmp && 'code' in cmp) return { ok: false, executionErrors: [cmp] };
-    comparisonPeriod = cmp;
+    if (cmp && 'code' in cmp) {
+      // GRACEFUL DEGRADATION: the ambiguous-window case (a range/relative selector — there is no
+      // well-defined "previous" of it) is NON-FATAL. Resolve the primary metrics anyway and drop the
+      // delta, surfacing an explicit non-silent signal (§23). Every OTHER execution error (e.g.
+      // period_not_found) is a GENUINE failure and still fails the whole query — never swallowed.
+      if (cmp.code === 'comparison_not_executable') {
+        warnings.push(cmp);
+        comparisonPeriod = null; // metrics resolve without a delta; the loop's comparison guard is skipped.
+      } else {
+        return { ok: false, executionErrors: [cmp] };
+      }
+    } else {
+      // A ResolvedPeriod (delta computable) OR null — the anchor is the earliest period, a benign
+      // "no prior period" that already degrades to no delta and is deliberately NOT flagged.
+      comparisonPeriod = cmp;
+    }
   }
 
   // 4) Execute each metric (and its comparison) under the RLS user client.
@@ -200,5 +229,8 @@ export async function executeSemanticQuery(
     }
     metrics.push({ metricId, results, comparison });
   }
+  // A dropped comparison (ambiguous window) is signalled explicitly, never silently (§23). Fields are
+  // added ONLY when the query degraded, so an untouched ok:true outcome keeps its exact prior shape.
+  if (warnings.length > 0) return { ok: true, metrics, comparisonUnavailable: true, warnings };
   return { ok: true, metrics };
 }
